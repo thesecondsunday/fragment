@@ -225,13 +225,15 @@ const botNames = ['Echo','Mira','Waltz','Kite','Phantom','Ivy','Rook','Bolt','Ju
 const archetypes = ['starter','swordsman','ronin','azure','solar_lance','hakka','deadeye','hydra','world_eater','black_star','bloodlord','bullet_storm','machine','minigunner','sniper','rocketeer','gravity_mage','stormcaller'];
 const colors = ['#ff775d','#6a7cf7','#53b07b','#ffcf58','#76d7ff','#cb80ff','#d84a4a','#9aa9b8'];
 function botCountForMode(mode){
+  // One authoritative bot roster per room, not per player.
+  // Lower counts improve readability and significantly reduce network/render load.
   if(mode === 'pvp' || mode === 'bossrush') return 0;
   if(mode === 'test') return 6;
-  if(mode === 'duo') return 10;
-  if(mode === 'squad') return 16;
-  if(mode === 'teams') return 12;
-  if(mode === 'br') return 16;
-  return 10;
+  if(mode === 'duo') return 6;
+  if(mode === 'squad') return 8;
+  if(mode === 'teams') return 10;
+  if(mode === 'br') return 12;
+  return 7;
 }
 function teamForBot(mode, i, count){
   if(mode === 'teams') return i < Math.ceil(count/2) ? 'blue' : 'red';
@@ -395,11 +397,13 @@ function killServerBot(room, bot, source){
   if(!bot || bot.dead) return;
   bot.dead=true;
   bot.hp=0;
-  bot.respawnAt=Date.now()+(room.mode==='br'?999999999:2800);
+  bot.respawnAt=Date.now()+(room.mode==='br'?999999999:3200);
   bot.score=0;
   bot.lastTargetId=null;
-  for(let i=0;i<10;i++) spawnSharedFragment(room,'xp',bot.x+rand(-46,46),bot.y+rand(-46,46));
-  if(Math.random()<.22) spawnSharedFragment(room,'ability',bot.x+rand(-70,70),bot.y+rand(-70,70));
+
+  const dropCount=room.mode==='br'?8:11;
+  spawnDeathFragmentBurst(room,bot.x,bot.y,dropCount,'bot_death',.26);
+
   if(source?.kind==='player' && source.client){
     send(source.client,{type:'bot_award',botId:bot.id,botName:bot.name,xp:40,score:250});
   }
@@ -438,129 +442,157 @@ function deliverBotDamage(room, attacker, target, amount, cause){
 }
 function updateServerBots(room, dt){
   if(!room.matchStarted || !room.bots.length) return;
-  const now = Date.now();
+  const now=Date.now();
+  const step=dt/16.6;
+
   for(const bot of room.bots){
-    if(!Number.isFinite(bot.x) || !Number.isFinite(bot.y) || !Number.isFinite(bot.vx) || !Number.isFinite(bot.vy)){
-      const p=randomArenaPoint(760,360);
+    if(!Number.isFinite(bot.x)||!Number.isFinite(bot.y)||!Number.isFinite(bot.vx)||!Number.isFinite(bot.vy)){
+      const p=randomArenaPoint(900,420);
       bot.x=p.x; bot.y=p.y; bot.vx=0; bot.vy=0;
     }
+
     if(bot.dead){
-      if(room.mode !== 'br' && now >= bot.respawnAt){
-        const p=randomArenaPoint(760,360);
-        const roam=randomArenaPoint(620,260);
+      if(room.mode!=='br' && now>=bot.respawnAt){
+        const occupied=room.bots.filter(o=>o!==bot&&!o.dead);
+        let p=randomArenaPoint(900,420);
+        for(let tries=0;tries<50;tries++){
+          const candidate=randomArenaPoint(900,420);
+          if(occupied.every(o=>dist(o,candidate)>520)){ p=candidate; break; }
+        }
+        const roam=randomArenaPoint(900,420);
         bot.dead=false; bot.hp=bot.maxHp; bot.x=p.x; bot.y=p.y;
-        bot.vx=0; bot.vy=0; bot.fireCd=rand(1.2,2.0); bot.score=0; bot.frags=0;
-        bot.lastHitBy=null; bot.meleeCd=rand(.9,1.5); bot.aimError=rand(-0.10,0.10);
-        bot.lastTargetId=null; bot.targetLockUntil=0;
-        bot.roamX=roam.x; bot.roamY=roam.y;
-        bot.spawnGraceUntil=now+rand(1800,2700);
+        bot.vx=0; bot.vy=0; bot.fireCd=rand(2.2,3.3); bot.meleeCd=rand(1.4,2.2);
+        bot.lastHitBy=null; bot.lastTargetId=null; bot.targetLockUntil=0;
+        bot.roamX=roam.x; bot.roamY=roam.y; bot.spawnGraceUntil=now+rand(2700,3700);
       }
       continue;
     }
-    if(bot.passive){ bot.angle += dt * 0.0009; continue; }
 
-    bot.think -= dt/1000;
-    if(bot.think <= 0){
-      bot.think = rand(.28,.72);
-      if(Math.random()<.36) bot.strafe *= -1;
-      if(Math.random()<.24){
-        const roam=randomArenaPoint(620,260);
+    if(bot.passive){
+      bot.vx*=.88; bot.vy*=.88; bot.angle+=dt*.00055;
+      continue;
+    }
+
+    bot.think-=dt/1000;
+    if(bot.think<=0){
+      bot.think=rand(.35,.8);
+      if(Math.random()<.28) bot.strafe*=-1;
+      if(Math.random()<.20){
+        const roam=randomArenaPoint(900,420);
         bot.roamX=roam.x; bot.roamY=roam.y;
       }
     }
 
-    const target = nearestTargetForBot(room, bot);
-    let moveX=0, moveY=0;
-    if(target && target.d < 1220){
-      const snap = target.snap;
-      const px = (snap.x||0) + (snap.vx||0) * 8;
-      const py = (snap.y||0) + (snap.vy||0) * 8;
-      const targetAngle = Math.atan2(py-bot.y, px-bot.x);
-      bot.angle = targetAngle;
-      const towardX=Math.cos(bot.angle), towardY=Math.sin(bot.angle);
-      const sideX=-Math.sin(bot.angle)*bot.strafe, sideY=Math.cos(bot.angle)*bot.strafe;
-      const desired = ['ronin','swordsman','world_eater','bloodlord'].includes(bot.archetype) ? 92 : ['deadeye','solar_lance','sniper'].includes(bot.archetype) ? 455 : 270;
-      const lowHp = bot.hp < bot.maxHp * .34;
-      if(lowHp && target.d < 380){
-        moveX -= towardX*1.10; moveY -= towardY*1.10;
-        moveX += sideX*.72; moveY += sideY*.72;
-      }else if(target.d > desired+78){
-        moveX += towardX*.91 + sideX*.27; moveY += towardY*.91 + sideY*.27;
-      }else if(target.d < desired-58){
-        moveX -= towardX*.84; moveY -= towardY*.84;
-        moveX += sideX*.58; moveY += sideY*.58;
+    const target=nearestTargetForBot(room,bot);
+    let mx=0,my=0;
+
+    if(target){
+      const t=target.snap;
+      const predictedX=t.x+(t.vx||0)*5;
+      const predictedY=t.y+(t.vy||0)*5;
+      const ang=Math.atan2(predictedY-bot.y,predictedX-bot.x);
+      bot.angle=ang;
+      const tx=Math.cos(ang),ty=Math.sin(ang);
+      const sx=-ty*bot.strafe,sy=tx*bot.strafe;
+      const desired=bot.desiredRange||300;
+      const low=bot.hp<bot.maxHp*.28;
+
+      if(low && target.d<450){
+        mx-=tx*1.05; my-=ty*1.05; mx+=sx*.35; my+=sy*.35;
+      }else if(target.d>desired+95){
+        mx+=tx*.88; my+=ty*.88; mx+=sx*.14; my+=sy*.14;
+      }else if(target.d<desired-75){
+        mx-=tx*.78; my-=ty*.78; mx+=sx*.30; my+=sy*.30;
       }else{
-        moveX += sideX*(1.10*bot.dodge); moveY += sideY*(1.10*bot.dodge);
+        mx+=sx*.62; my+=sy*.62;
       }
 
-      bot.meleeCd = Math.max(0,(bot.meleeCd||0)-dt/1000);
-      const attackReady = now >= (bot.spawnGraceUntil||0);
-      if(attackReady && ['ronin','swordsman','world_eater','bloodlord'].includes(bot.archetype) && target.d < 118 && bot.meleeCd<=0){
-        bot.meleeCd=rand(.48,.82);
-        deliverBotDamage(room,bot,snap,bot.archetype==='ronin'?13:10,'melee');
-      }
+      bot.fireCd=Math.max(0,bot.fireCd-dt/1000);
+      bot.meleeCd=Math.max(0,bot.meleeCd-dt/1000);
 
-      bot.fireCd -= dt/1000;
-      if(attackReady && bot.fireCd <= 0 && target.d < 800){
-        const rapid=['bullet_storm','machine','minigunner'].includes(bot.archetype);
-        const long=['deadeye','solar_lance','sniper'].includes(bot.archetype);
-        bot.fireCd=rapid?rand(.22,.40):long?rand(.58,.92):rand(.42,.76);
-        bot.aimError=bot.aimError*.45+rand(-.15,.15)*.55;
-        const spread=(long?rand(-.07,.07):rand(-.13,.13))+bot.aimError;
-        const angle=targetAngle+spread;
-        const shot={kind:'basic',speed:long?9.4:8.2,life:long?120:105,dmg:long?14:rapid?6.2:8.5,color:bot.bodyColor,size:rapid?4:5,visualOnly:true,networkReplay:true};
-        broadcast(room.code,{type:'bot_projectile',botId:bot.id,bot:botSnapshot(bot),angle,options:shot,serial:++room.lastShotSerial});
-        const trueAngle=Math.atan2((snap.y||0)-bot.y,(snap.x||0)-bot.x);
-        const aim=Math.abs(angleDiff(angle,trueAngle));
-        const rangeFactor=clamp(1-target.d/940,.16,.92);
-        const accuracy=clamp((long?.55:.46)+rangeFactor*.34-aim*1.05,.16,.86)*bot.confidence;
-        if(aim<.34 && Math.random()<accuracy) deliverBotDamage(room,bot,snap,shot.dmg,'projectile');
+      if(now>=bot.spawnGraceUntil){
+        const melee=['ronin','swordsman','world_eater','bloodlord'].includes(bot.archetype);
+        if(melee && target.d<105 && bot.meleeCd<=0){
+          bot.meleeCd=rand(.9,1.35);
+          deliverBotDamage(room,bot,t,bot.archetype==='ronin'?7.5:6,'melee');
+        }
+
+        if(bot.fireCd<=0 && target.d<720){
+          const rapid=['bullet_storm','machine','minigunner'].includes(bot.archetype);
+          const long=['deadeye','solar_lance','sniper'].includes(bot.archetype);
+          bot.fireCd=rapid?rand(.52,.78):long?rand(1.05,1.5):rand(.78,1.15);
+
+          const spread=long?rand(-.055,.055):rapid?rand(-.14,.14):rand(-.10,.10);
+          const shotAngle=ang+spread+bot.aimError*.35;
+          const shot={
+            kind:'basic',
+            speed:long?8.7:7.6,
+            life:long?112:96,
+            dmg:long?9:rapid?4.2:6.2,
+            color:bot.bodyColor,
+            size:rapid?4:5,
+            visualOnly:true,
+            networkReplay:true
+          };
+          broadcast(room.code,{type:'bot_projectile',botId:bot.id,bot:botSnapshot(bot),angle:shotAngle,options:shot,serial:++room.lastShotSerial});
+
+          const trueAngle=Math.atan2(t.y-bot.y,t.x-bot.x);
+          const error=Math.abs(angleDiff(shotAngle,trueAngle));
+          const distanceAccuracy=clamp(1-target.d/900,.08,.72);
+          const hitChance=clamp((long?.34:rapid?.22:.28)+distanceAccuracy*.38-error*.92,.08,.68)*bot.confidence;
+          if(error<.30 && Math.random()<hitChance) deliverBotDamage(room,bot,t,shot.dmg,'projectile');
+        }
       }
     }else{
-      const dx=bot.roamX-bot.x, dy=bot.roamY-bot.y, L=Math.hypot(dx,dy)||1;
-      if(L<90){
-        const roam=randomArenaPoint(620,260);
+      const dx=bot.roamX-bot.x,dy=bot.roamY-bot.y,L=Math.hypot(dx,dy)||1;
+      if(L<120){
+        const roam=randomArenaPoint(900,420);
         bot.roamX=roam.x; bot.roamY=roam.y;
       }
-      moveX += dx/L*.70; moveY += dy/L*.70; bot.angle=Math.atan2(dy,dx);
+      mx+=dx/L*.58; my+=dy/L*.58; bot.angle=Math.atan2(dy,dx);
     }
 
-    let nearby=0;
+    // Strong physical separation. This is computed once on the authoritative
+    // server, so every player sees the same non-stacked bot positions.
+    let closeCount=0;
     for(const other of room.bots){
-      if(other===bot || other.dead) continue;
-      const d=Math.hypot(bot.x-other.x,bot.y-other.y);
-      if(d>0 && d<225){
-        nearby++;
-        const force=Math.pow((225-d)/225,.70);
-        moveX += (bot.x-other.x)/d*force*2.25;
-        moveY += (bot.y-other.y)/d*force*2.25;
+      if(other===bot||other.dead) continue;
+      const dx=bot.x-other.x,dy=bot.y-other.y,d=Math.hypot(dx,dy);
+      if(d>0&&d<260){
+        const force=Math.pow((260-d)/260,.62);
+        mx+=(dx/d)*force*2.7;
+        my+=(dy/d)*force*2.7;
+        closeCount++;
       }
     }
-    const centerDist=Math.hypot(bot.x,bot.y);
-    if(centerDist<920 && nearby>=2){
-      const outX=bot.x/(centerDist||1), outY=bot.y/(centerDist||1);
-      const force=.55+nearby*.13;
-      moveX += outX*force;
-      moveY += outY*force;
-    }
-    if(bot.x < -HALF_W+260) moveX += 1.3;
-    if(bot.x > HALF_W-260) moveX -= 1.3;
-    if(bot.y < -HALF_H+260) moveY += 1.3;
-    if(bot.y > HALF_H-260) moveY -= 1.3;
 
-    const mag=Math.hypot(moveX,moveY)||1;
-    const sp=['ronin','swordsman'].includes(bot.archetype)?4.2:3.35;
-    bot.vx=bot.vx*.84+(moveX/mag)*sp*.16;
-    bot.vy=bot.vy*.84+(moveY/mag)*sp*.16;
-    bot.x=clamp(bot.x+bot.vx*dt/16.6,-HALF_W+20,HALF_W-20);
-    bot.y=clamp(bot.y+bot.vy*dt/16.6,-HALF_H+20,HALF_H-20);
+    // Do not let the entire roster idle in the middle.
+    const centerD=Math.hypot(bot.x,bot.y);
+    if(centerD<720 && closeCount>=2){
+      mx+=(bot.x/(centerD||1))*.75;
+      my+=(bot.y/(centerD||1))*.75;
+    }
+
+    if(bot.x<-HALF_W+300) mx+=1;
+    if(bot.x> HALF_W-300) mx-=1;
+    if(bot.y<-HALF_H+300) my+=1;
+    if(bot.y> HALF_H-300) my-=1;
+
+    const mag=Math.hypot(mx,my)||1;
+    const speed=['ronin','swordsman'].includes(bot.archetype)?3.45:2.85;
+    bot.vx=bot.vx*.82+(mx/mag)*speed*.18;
+    bot.vy=bot.vy*.82+(my/mag)*speed*.18;
+    bot.x=clamp(bot.x+bot.vx*step,-HALF_W+30,HALF_W-30);
+    bot.y=clamp(bot.y+bot.vy*step,-HALF_H+30,HALF_H-30);
   }
 
-  if(now-room.lastBotBroadcast>100){
+  // 8 Hz snapshots are smooth enough with interpolation and much cheaper than 10 Hz.
+  if(now-room.lastBotBroadcast>125){
     room.lastBotBroadcast=now;
     broadcast(room.code,{type:'bots_state',mode:room.mode,bots:room.bots.map(botSnapshot)});
   }
 }
+
 function terrainSnapshot(f){
   return {id:f.id, type:f.type, x:Math.round(f.x*10)/10, y:Math.round(f.y*10)/10, life:Math.max(0,Math.round((f.life||0)*1000)), spawn:Math.max(0,Math.round((f.spawn||0)*1000)), r:Math.round(f.r||100), angle:f.angle||0};
 }
@@ -617,11 +649,21 @@ const bossDefs = [
   {id:'black_entity', name:'The Black Entity', color:'#101820', skin:'blackstar', archetype:'shadow', hp:1180, r:45, speed:1.42, desc:'Anomaly boss.'},
   {id:'remembrance_core', name:'The Remembrance Core', color:'#7fa0ff', skin:'savefile', archetype:'spark', hp:1240, r:46, speed:1.08, desc:'Broken VN/save boss.'}
 ];
-function fragCountsForMode(mode){
-  if(mode === 'bossrush') return {xp:0,natural:0,ability:0,evo:0,world:0,cursed:0};
-  if(mode === 'test') return {xp:26,natural:8,ability:5,evo:3,world:0,cursed:0};
-  if(mode === 'pvp') return {xp:60,natural:24,ability:8,evo:5,world:1,cursed:2};
-  return {xp:78,natural:30,ability:8,evo:5,world:1,cursed:2};
+function fragCountsForMode(mode, playerCount=2){
+  const players=clamp(Math.floor(Number(playerCount)||2),1,6);
+  const extra=Math.max(0,players-2);
+  if(mode==='bossrush') return {xp:0,natural:0,ability:0,evo:0,world:0,cursed:0};
+  if(mode==='test') return {xp:44,natural:12,ability:6,evo:4,world:0,cursed:0};
+  if(mode==='pvp') return {xp:105+extra*8,natural:32+extra*2,ability:8+Math.min(3,extra),evo:5+Math.min(2,extra),world:1,cursed:2};
+  if(mode==='br') return {xp:132+extra*8,natural:38+extra*2,ability:9+Math.min(3,extra),evo:6+Math.min(2,extra),world:1,cursed:2};
+  return {
+    xp:115+extra*10,
+    natural:36+extra*3,
+    ability:9+Math.min(3,extra),
+    evo:6+Math.min(2,extra),
+    world:2,
+    cursed:2
+  };
 }
 function spawnSharedFragment(room, kind='xp', x=null, y=null, extra=null){
   x = x == null ? rand(-HALF_W+140, HALF_W-140) : x;
@@ -652,9 +694,32 @@ function fragmentSnapshot(f){
     rarityIndex:f.rarityIndex, ability:f.ability, core:f.core, mode:f.mode, curse:f.curse, color:f.color
   };
 }
+function broadcastFragmentBatch(room, spawned, reason='drop'){
+  if(!room || !Array.isArray(spawned) || !spawned.length) return;
+  broadcast(room.code,{
+    type:'fragment_spawn_batch',
+    reason,
+    fragments:spawned.map(fragmentSnapshot)
+  });
+}
+function spawnDeathFragmentBurst(room, x, y, count, reason='death', abilityChance=0){
+  const spawned=[];
+  const safeCount=clamp(Math.floor(Number(count)||0),0,60);
+  for(let i=0;i<safeCount;i++){
+    const a=rand(0,Math.PI*2);
+    const radius=Math.sqrt(Math.random())*rand(38,115);
+    const kind=i>0 && i%8===0 ? 'natural' : 'xp';
+    spawned.push(spawnSharedFragment(room,kind,x+Math.cos(a)*radius,y+Math.sin(a)*radius));
+  }
+  if(abilityChance>0 && Math.random()<abilityChance){
+    spawned.push(spawnSharedFragment(room,'ability',x+rand(-55,55),y+rand(-55,55)));
+  }
+  broadcastFragmentBatch(room,spawned,reason);
+  return spawned;
+}
 function initSharedFragments(room){
   room.fragments = [];
-  const counts = fragCountsForMode(room.mode);
+  const counts = fragCountsForMode(room.mode, room.clients.size);
   for(const [kind,count] of Object.entries(counts)) for(let i=0;i<count;i++) spawnSharedFragment(room, kind);
 }
 function initSharedWorld(room){
@@ -668,17 +733,37 @@ function initSharedWorld(room){
   room.nextBossAt = ['pvp','test','br','bossrush'].includes(room.mode) ? 9999999999999 : Date.now()+rand(24000,36000);
 }
 function maybeRefillFragments(room){
-  if(!room.matchStarted || room.mode === 'bossrush') return;
-  const counts = {xp:0,natural:0,ability:0,evo:0,world:0,cursed:0};
-  for(const f of room.fragments) counts[f.kind] = (counts[f.kind]||0)+1;
-  const want = fragCountsForMode(room.mode);
-  if(counts.xp < want.xp) spawnSharedFragment(room,'xp');
-  if(counts.natural < want.natural && Math.random()<.65) spawnSharedFragment(room,'natural');
-  if(counts.ability < want.ability && Math.random()<.30) spawnSharedFragment(room,'ability');
-  if(counts.evo < want.evo && Math.random()<.18) spawnSharedFragment(room,'evo');
-  if(counts.world < want.world && !room.world.mode && Math.random()<.08) spawnSharedFragment(room,'world');
-  if(counts.cursed < want.cursed && Math.random()<.07) spawnSharedFragment(room,'cursed');
-  if(room.fragments.length > 190) room.fragments.splice(0, room.fragments.length-190);
+  if(!room.matchStarted || room.mode==='bossrush') return;
+  const now=Date.now();
+  if(now<(room.nextFragmentRefillAt||0)) return;
+  room.nextFragmentRefillAt=now+220;
+
+  const counts={xp:0,natural:0,ability:0,evo:0,world:0,cursed:0};
+  for(const f of room.fragments) counts[f.kind]=(counts[f.kind]||0)+1;
+  const want=fragCountsForMode(room.mode,room.clients.size);
+
+  let budget=3;
+  const spawnIfMissing=(kind, condition=true)=>{
+    if(budget<=0 || !condition || counts[kind]>=want[kind]) return false;
+    spawnSharedFragment(room,kind);
+    counts[kind]++;
+    budget--;
+    return true;
+  };
+
+  while(budget>0){
+    const deficits=Object.keys(want)
+      .filter(kind=>want[kind]>0 && counts[kind]<want[kind])
+      .sort((a,b)=>(want[b]-counts[b])-(want[a]-counts[a]));
+    if(!deficits.length) break;
+    const kind=deficits[0];
+    if(kind==='world' && room.world.mode){ counts.world=want.world; continue; }
+    if(!spawnIfMissing(kind)) break;
+  }
+
+  if(room.fragments.length>235){
+    room.fragments.splice(0,room.fragments.length-235);
+  }
 }
 function activateSharedWorld(room, modeObj=null){
   const def = modeObj?.key ? (worldDefs.find(w=>w.key===modeObj.key) || modeObj) : worldDefs[irand(0, worldDefs.length)];
@@ -791,8 +876,8 @@ function broadcastSharedState(room, immediate=false){
 }
 function updateSharedBroadcasts(room){
   const now=Date.now();
-  if(now-room.lastFragmentBroadcast>550){ room.lastFragmentBroadcast=now; broadcast(room.code, {type:'fragments_state', fragments:room.fragments.map(fragmentSnapshot)}); }
-  if(now-room.lastWorldBroadcast>450){ room.lastWorldBroadcast=now; broadcast(room.code, {type:'world_state', world:worldSnapshot(room)}); }
+  if(now-room.lastFragmentBroadcast>700){ room.lastFragmentBroadcast=now; broadcast(room.code, {type:'fragments_state', fragments:room.fragments.map(fragmentSnapshot)}); }
+  if(now-room.lastWorldBroadcast>1200){ room.lastWorldBroadcast=now; broadcast(room.code, {type:'world_state', world:worldSnapshot(room)}); }
   if(now-room.lastBossBroadcast>120){ room.lastBossBroadcast=now; broadcast(room.code, {type:'bosses_state', bosses:room.bosses.map(bossSnapshot)}); }
 }
 function collectSharedFragment(room, client, fid){
@@ -972,8 +1057,10 @@ function handleMessage(client, msg){
     boss.hp-=amount;
     if(boss.hp<=0){
       boss.hp=0; boss.dead=true; boss.removeAt=Date.now()+650;
-      for(let i=0;i<34;i++) spawnSharedFragment(room,i%5===0?'natural':'xp',boss.x+rand(-150,150),boss.y+rand(-150,150));
-      spawnSharedFragment(room,'ability',boss.x,boss.y,['judgement_laser','fragment_storm','reflect_shield','loot_radar'][irand(0,4)]);
+      const bossDrops=spawnDeathFragmentBurst(room,boss.x,boss.y,30,'boss_death',0);
+      const abilityDrop=spawnSharedFragment(room,'ability',boss.x,boss.y,['judgement_laser','fragment_storm','reflect_shield','loot_radar'][irand(0,4)]);
+      bossDrops.push(abilityDrop);
+      broadcastFragmentBatch(room,[abilityDrop],'boss_ability_drop');
       send(client,{type:'boss_award',bossId:boss.id,bossName:boss.name,xp:520,score:2800});
       broadcast(room.code,{type:'boss_event',action:'killed',bossId:boss.id,bossName:boss.name,killerId:client.id,killerName:client.name});
     }
@@ -988,18 +1075,49 @@ function handleMessage(client, msg){
       client
     });
   }else if(msg.type === 'player_death'){
+    const now=Date.now();
+    if(now-(client.lastDeathDropAt||0)<1800) return;
+    client.lastDeathDropAt=now;
+
     const snap=msg.snapshot||client.snapshot||{};
     client.spawnProtectedUntil=0;
     if(client.snapshot) client.snapshot.dead=true;
     const x=clamp(finiteNumber(snap.x,0),-HALF_W+50,HALF_W-50);
     const y=clamp(finiteNumber(snap.y,0),-HALF_H+50,HALF_H-50);
-    const frags=clamp(finiteNumber(snap.frags,0),0,80);
-    const dropCount=clamp(12+frags*1.2,12,42);
-    for(let i=0;i<dropCount;i++) spawnSharedFragment(room,'xp',x+rand(-42,42),y+rand(-42,42));
+    const carried=clamp(finiteNumber(snap.frags,0),0,100);
+    const dropCount=clamp(Math.floor(16+carried*.72),16,46);
+
+    spawnDeathFragmentBurst(room,x,y,dropCount,'player_death',.18);
     broadcast(room.code,{type:'death_event',clientId:client.id,name:client.name,snapshot:snap,killer:msg.killer||null},client);
-    updateSharedBroadcasts(room);
   }else if(msg.type === 'chat'){
-    broadcast(room.code,{type:'chat',name:client.name,msg:String(msg.msg||'').slice(0,120)},client);
+    const now=Date.now();
+    const body=String(msg.msg||'').replace(/[<>]/g,'').trim().slice(0,120);
+    if(!body) return;
+
+    if(now<(client.chatMutedUntil||0)){
+      const seconds=Math.max(1,Math.ceil((client.chatMutedUntil-now)/1000));
+      send(client,{type:'chat',name:'SERVER',msg:`Chat cooldown: wait ${seconds}s.`});
+      return;
+    }
+
+    client.chatTimes=(client.chatTimes||[]).filter(t=>now-t<5000);
+    const duplicate=body.toLowerCase()===(client.lastChatBody||'').toLowerCase() && now-(client.lastChatAt||0)<4000;
+    if(duplicate){
+      send(client,{type:'chat',name:'SERVER',msg:'Duplicate message blocked.'});
+      return;
+    }
+
+    if(client.chatTimes.length>=4){
+      client.chatMutedUntil=now+9000;
+      client.chatTimes=[];
+      send(client,{type:'chat',name:'SERVER',msg:'Chat spam detected. Muted for 9 seconds.'});
+      return;
+    }
+
+    client.chatTimes.push(now);
+    client.lastChatBody=body;
+    client.lastChatAt=now;
+    broadcast(room.code,{type:'chat',name:client.name,msg:body});
   }else if(msg.type === 'event'){
     const eventType=safeToken(msg.eventType||msg.name||'',48);
     broadcast(room.code,{...msg,eventType,sourceId:client.id},client);
@@ -1086,7 +1204,13 @@ server.on('upgrade', (req, socket) => {
     `Sec-WebSocket-Accept: ${accept}`,
     '', ''
   ].join('\r\n'));
-  const client = {id:id(), socket, room:null, name:'Player', snapshot:null, buffer:null, ready:false, inMatch:false, serverTeam:'neutral', spawnProtectedUntil:0, lastSeen:Date.now(), lastParseErrorAt:0};
+  const client = {
+    id:id(), socket, room:null, name:'Player', snapshot:null, buffer:null,
+    ready:false, inMatch:false, serverTeam:'neutral', spawnProtectedUntil:0,
+    lastSeen:Date.now(), lastParseErrorAt:0,
+    chatTimes:[], chatMutedUntil:0, lastChatBody:'', lastChatAt:0,
+    lastDeathDropAt:0
+  };
   clients.add(client);
   socket.on('data', chunk => decodeFrames(client, chunk));
   socket.on('close', () => { removeFromRoom(client); clients.delete(client); });

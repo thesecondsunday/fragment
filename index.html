@@ -4654,9 +4654,9 @@ function netApplyBotSnapshots(list, partial=false){
       ent.netBotId=snap.id;
       ent.networkBot=true;
       ent.human=false;
-      ent.skin={kind:'square', image:null};
+      ent.skin={kind:'circle', image:null};
       ent.cosmetics={trail:'none', aura:'none', hat:'none'};
-      ent.title='SERVER BOT';
+      ent.title='';
       ent.invisible=0;
       ent.spawnAnim=0;
       ent.ai={passive:!!snap.passive, personality:snap.passive?'dummy':'server', think:999, strafe:1, bravery:1, aggro:1, roamX:snap.x||0, roamY:snap.y||0, lastHp:snap.hp||100, panic:0};
@@ -4673,7 +4673,7 @@ function netApplyBotSnapshots(list, partial=false){
     ent.dead=!!snap.dead;
     ent.score=snap.score||0; ent.frags=snap.frags||0; ent.level=snap.level||1;
     ent.team=snap.team||'neutral'; ent.ally=!!snap.ally; ent.archetype=snap.archetype||'starter'; ent.bodyColor=snap.bodyColor||'#ff775d';
-    ent.bodyAccent='#ffffff'; ent.skin={kind:'square', image:null}; ent.invisible=0; ent.spawnAnim=0;
+    ent.bodyAccent='#ffffff'; ent.skin={kind:'circle', image:null}; ent.invisible=0; ent.spawnAnim=0;
     ent.abilities[0]=primaryName(ent.archetype);
     ent.ai.passive=!!snap.passive;
     ent.testDummy=!!snap.passive;
@@ -4688,11 +4688,20 @@ function netApplyBotSnapshots(list, partial=false){
 }
 function updateNetworkBot(ent, dt){
   if(!ent) return;
-  const snap=0.20;
-  ent.x=lerp(ent.x, ent.tx ?? ent.x, snap);
-  ent.y=lerp(ent.y, ent.ty ?? ent.y, snap);
+  const age=performance.now()-(ent.lastNet||0);
+  if(age>3500){
+    ent.dead=true;
+    return;
+  }
+  const snap=1-Math.pow(.0018,dt/1000);
+  ent.x=lerp(ent.x,ent.tx??ent.x,clamp(snap,.08,.34));
+  ent.y=lerp(ent.y,ent.ty??ent.y,clamp(snap,.08,.34));
+  if(Math.hypot((ent.tx??ent.x)-ent.x,(ent.ty??ent.y)-ent.y)>900){
+    ent.x=ent.tx; ent.y=ent.ty;
+  }
+  ent.invisible=0;
+  ent.alpha=1;
   ent.trailTick=(ent.trailTick||0)+dt;
-  updateCosmeticTrail(ent, dt);
 }
 
 function netFragmentFromSnapshot(snap){
@@ -4718,6 +4727,20 @@ function netApplyFragments(list){
   for(const snap of list){ const f=netFragmentFromSnapshot(snap); if(f){ seen.add(f.netId); ordered.push(f); } }
   for(const [id,f] of multiplayer.fragById){ if(!seen.has(id)){ multiplayer.fragById.delete(id); } }
   fragments=ordered.filter(f=>!f.pendingCollect);
+}
+function netApplyFragmentSpawnBatch(list){
+  if(!Array.isArray(list) || !netUsesServerWorld()) return;
+  for(const snap of list){
+    const f=netFragmentFromSnapshot(snap);
+    if(!f) continue;
+    if(!fragments.includes(f)) fragments.push(f);
+    f.pendingCollect=false;
+    f.spawnPulse=1;
+  }
+  if(list.length){
+    const first=list[0];
+    ring(first.x||0,first.y||0,'#ffcf58',72);
+  }
 }
 function netRequestFragmentCollect(f, ent){
   if(!f || !f.netId || f.pendingCollect) return;
@@ -4771,15 +4794,27 @@ function netApplyWorldState(msg){
   worldZones=Array.isArray(data.zones) ? data.zones.map(z=>({id:z.id, kind:z.kind, x:z.x||0, y:z.y||0, r:z.r||240, life:Math.max(0,(Number(z.life)||0)/1000), tick:.25, warn:0, pulse:0})) : [];
   if(Array.isArray(data.terrain)){
     const seen=new Set();
-    terrainFeatures=data.terrain.map(t=>{
+    for(const t of data.terrain){
       seen.add(t.id);
-      const old=multiplayer.terrainById.get(t.id) || {};
-      const f={id:t.id, type:t.type||old.type||'crater', x:t.x??old.x??0, y:t.y??old.y??0, tx:t.x??old.x??0, ty:t.y??old.y??0, life:Math.max(0,(Number(t.life)||0)/1000), spawn:Math.max(0,(Number(t.spawn)||0)/1000), r:t.r||old.r||100, angle:t.angle??old.angle??0};
-      if(old.id){ f.x=lerp(old.x,f.tx,.45); f.y=lerp(old.y,f.ty,.45); }
-      multiplayer.terrainById.set(t.id,f);
-      return f;
-    });
-    for(const id of [...multiplayer.terrainById.keys()]) if(!seen.has(id)) multiplayer.terrainById.delete(id);
+      let f=multiplayer.terrainById.get(t.id);
+      if(!f){
+        f={id:t.id,type:t.type||'crater',x:t.x||0,y:t.y||0,tx:t.x||0,ty:t.y||0,life:0,spawn:0,r:t.r||100,angle:t.angle||0};
+        multiplayer.terrainById.set(t.id,f);
+      }
+      f.type=t.type||f.type;
+      f.tx=t.x??f.x;
+      f.ty=t.y??f.y;
+      f.x=lerp(f.x,f.tx,.28);
+      f.y=lerp(f.y,f.ty,.28);
+      f.life=Math.max(0,(Number(t.life)||0)/1000);
+      f.spawn=Math.min(f.spawn||0,Math.max(0,(Number(t.spawn)||0)/1000));
+      f.r=t.r||f.r||100;
+      f.angle=t.angle??f.angle??0;
+    }
+    for(const id of [...multiplayer.terrainById.keys()]){
+      if(!seen.has(id)) multiplayer.terrainById.delete(id);
+    }
+    terrainFeatures=[...multiplayer.terrainById.values()];
   }
   if(data.hotZone){
     hotZone={id:data.hotZone.id, biome:data.hotZone.biome, timer:Math.max(0,(Number(data.hotZone.timer)||0)/1000), pulse:data.hotZone.pulse||0};
@@ -4860,7 +4895,8 @@ function netApplyBossSnapshots(list, partial=false){
       b.spawnAnim=0; b.bossGrace=0;
       b.bossKind=snap.bossKind||def.id; b.bossColor=snap.color||def.color; b.bodyColor=b.bossColor; b.skin={kind:snap.skin||def.skin||'elevatorpanel', image:null};
       if(!bosses.includes(b)) bosses.push(b);
-      createBossArena(b);
+      // Online bosses use the shared map directly. Creating a local arena here
+      // looked like the map respawned and duplicated terrain for every client.
       multiplayer.bossById.set(snap.id,b);
       bossSpawnWarning(b);
     }
@@ -4879,7 +4915,6 @@ function updateNetworkBosses(dt){
     if(performance.now()-(b.lastNet||0)>7000){ multiplayer.bossById.delete(id); const idx=bosses.indexOf(b); if(idx>=0) bosses.splice(idx,1); bossArenas=bossArenas.filter(a=>a.boss!==b); continue; }
     b.x=lerp(b.x,b.tx??b.x,.18); b.y=lerp(b.y,b.ty??b.y,.18);
     b.spawnAnim=0; b.bossGrace=0;
-    const arena=bossArenaFor(b); if(arena) updateBossArenaFight(b,arena,dt,null);
   }
 }
 function netSpawnBossProjectile(msg){
@@ -5129,6 +5164,7 @@ function netConnectAndJoin(){
     else if(msg.type==='hit') netApplyHit(msg);
     else if(msg.type==='bots_state') netApplyBotSnapshots(msg.bots);
     else if(msg.type==='fragments_state') netApplyFragments(msg.fragments);
+    else if(msg.type==='fragment_spawn_batch') netApplyFragmentSpawnBatch(msg.fragments);
     else if(msg.type==='fragment_collected') netRemoveFragment(msg.id);
     else if(msg.type==='fragment_reward') netRewardFragment(msg.fragment);
     else if(msg.type==='world_state') netApplyWorldState(msg);
@@ -6238,7 +6274,7 @@ function spawnInitial(){
 }
 
 
-const PERF_LIMITS = {particles:900, projectiles:520, fragments:1050, gravityWells:24, thunderFields:18, flamePools:26, magnetFields:8, worldZones:10};
+const PERF_LIMITS = {particles:560, projectiles:320, fragments:250, gravityWells:14, thunderFields:10, flamePools:16, magnetFields:6, worldZones:8};
 function trimArrayFront(arr, max){
   if(arr.length>max) arr.splice(0, arr.length-max);
 }
@@ -12122,6 +12158,35 @@ function getHatLabelLift(ent){
 function drawEntity(ent, camX, camY){
   if(ent.dead) return;
   const x=ent.x-camX, y=ent.y-camY; if(x<-100||y<-100||x>W/cameraZoom+100||y>H/cameraZoom+100) return;
+
+  // Invisibility now affects the entire entity, not only the body. Remote
+  // Shadow/Phantom/Nightmare players lose their name, HP bar, hat and aura too.
+  if((ent.invisible||0)>0 && !ent.boss){
+    const self=ent===player || ent===controlledEntity();
+    ctx.save();
+    ctx.globalAlpha=self ? (isShadowPath(ent)?.22:.28) : (isShadowPath(ent)?.045:.075);
+    drawSkin(ent,x,y);
+    if(self) drawEntityHat(ent,x,y);
+    ctx.restore();
+
+    if(self){
+      ctx.save();
+      ctx.globalAlpha=.62;
+      ctx.strokeStyle=isShadowPath(ent)?'#9b7dff':'#d7f7ff';
+      ctx.lineWidth=2;
+      ctx.setLineDash([5,7]);
+      ctx.beginPath();
+      ctx.arc(x,y,ent.r+10+Math.sin(performance.now()/110)*2,0,Math.PI*2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font='900 10px Arial';
+      ctx.textAlign='center';
+      ctx.fillStyle=isShadowPath(ent)?'#9b7dff':'#d7f7ff';
+      ctx.fillText('INVISIBLE',x,y-ent.r-18);
+      ctx.restore();
+    }
+    return;
+  }
   if(ent.boss){ ctx.strokeStyle='#ffcf58'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(x,y,ent.r+10+Math.sin(performance.now()/220)*4,0,Math.PI*2); ctx.stroke(); }
   const roninActor=controlledEntity();
   const roninProgress=roninLockProgress(roninActor, ent);
@@ -12315,7 +12380,6 @@ function drawEntity(ent, camX, camY){
     ctx.fillText('INVINCIBLE '+Math.ceil(t)+'s', x, y-ent.r-52-shieldLift);
     ctx.restore();
   }
-  if(ent.invisible>0 && ent.human) ctx.globalAlpha=isShadowPath(ent) ? .42 : .35;
   if(ent.spawnAnim>0) ctx.globalAlpha=.35 + .18*Math.sin(performance.now()/80);
   drawSkin(ent,x,y);
   ctx.globalAlpha=1;
@@ -12908,14 +12972,17 @@ function draw(){
     ctx.setTransform(cam.zoom||cameraZoom,0,0,cam.zoom||cameraZoom,0,0);
     drawBackground(cam.x, cam.y, cam.w, cam.h);
     drawMapSystems(cam.x, cam.y, cam.w, cam.h);
-    for(const f of fragments) drawFragment(f,cam.x,cam.y);
+    for(const f of fragments){
+      const fx=(f.x-cam.x)*(cam.zoom||cameraZoom);
+      const fy=(f.y-cam.y)*(cam.zoom||cameraZoom);
+      if(fx>-80&&fy>-80&&fx<W+80&&fy<H+80) drawFragment(f,cam.x,cam.y);
+    }
     drawFlaresAndStrikes(cam.x,cam.y);
     drawAbilityObjects(cam.x,cam.y);
     drawProjectiles(cam.x,cam.y);
     for(const c of (player.clones||[])) drawEntity(c,cam.x,cam.y);
     for(const r of remotePlayers) drawEntity(r,cam.x,cam.y);
     for(const b of bots) drawEntity(b,cam.x,cam.y);
-    for(const b of bots) if(b.networkBot) drawNetworkBotMarker(b,cam.x,cam.y);
     for(const b of bosses) drawEntity(b,cam.x,cam.y);
     drawEntity(player,cam.x,cam.y);
     drawParticles(cam.x,cam.y);
@@ -12985,10 +13052,29 @@ function updateServerChat(dt){
     addChat(speaker, lines[irand(0,lines.length)]);
   }
 }
+const localChatGuard={times:[], cooldownUntil:0};
 ui.chatInput.addEventListener('keydown', e=>{
   if(e.key==='Enter'){
     const msg=ui.chatInput.value.trim();
-    if(msg){ addChat(player?player.name:'Player', msg); netSendChat(msg); ui.chatInput.value=''; }
+    if(msg){
+      const now=performance.now();
+      localChatGuard.times=localChatGuard.times.filter(t=>now-t<5000);
+      if(now<localChatGuard.cooldownUntil){
+        notify('Chat cooldown','Please wait before sending another message.');
+      }else if(localChatGuard.times.length>=4){
+        localChatGuard.cooldownUntil=now+3500;
+        localChatGuard.times=[];
+        notify('Chat spam blocked','Slow down for a few seconds.');
+      }else{
+        localChatGuard.times.push(now);
+        if(multiplayer.connected){
+          netSendChat(msg);
+        }else{
+          addChat(player?player.name:'Player',msg);
+        }
+        ui.chatInput.value='';
+      }
+    }
   }
   e.stopPropagation();
 });
