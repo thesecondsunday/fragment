@@ -10,6 +10,11 @@ const url = require('url');
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
 const WORLD_W = 9600, WORLD_H = 6400, HALF_W = WORLD_W / 2, HALF_H = WORLD_H / 2;
+const MAX_SQUAD_PLAYERS = 6;
+const MAX_FRAME_BYTES = 1024 * 1024;
+const MAX_SOCKET_BACKLOG = 2 * 1024 * 1024;
+const SUPPORTED_MODES = new Set(['normal','test','duo','squad','teams','br','bossrush','pvp']);
+const DROPPABLE_PACKET_TYPES = new Set(['peer_state','bots_state','fragments_state','world_state','bosses_state']);
 const rooms = new Map();
 const clients = new Set();
 
@@ -18,13 +23,88 @@ function cleanRoom(v){ return String(v || '').trim().toUpperCase().replace(/[^A-
 function safeName(v){ return String(v || 'Player').replace(/[<>]/g,'').slice(0,24) || 'Player'; }
 function cleanMode(v){
   const mode = String(v || 'normal').toLowerCase();
-  return ['normal','test','duo','teams','br','bossrush','pvp'].includes(mode) ? mode : 'normal';
+  return SUPPORTED_MODES.has(mode) ? mode : 'normal';
 }
 function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
 function rand(a, b){ return a + Math.random() * (b - a); }
 function irand(a, b){ return Math.floor(rand(a, b)); }
 function dist(a, b){ return Math.hypot((a.x||0)-(b.x||0), (a.y||0)-(b.y||0)); }
 function angleDiff(a, b){ return Math.atan2(Math.sin(a-b), Math.cos(a-b)); }
+function finiteNumber(v, fallback=0, min=-Infinity, max=Infinity){
+  const n = Number(v);
+  return Number.isFinite(n) ? clamp(n, min, max) : fallback;
+}
+function safeToken(v, max=48){ return String(v || '').replace(/[^a-zA-Z0-9_:\-]/g,'').slice(0,max); }
+function sameCombatTeam(a, b){ return !!a && !!b && a !== 'neutral' && b !== 'neutral' && a === b; }
+function randomArenaPoint(minRadius=0, margin=360){
+  for(let tries=0; tries<18; tries++){
+    const p={x:rand(-HALF_W+margin, HALF_W-margin), y:rand(-HALF_H+margin, HALF_H-margin)};
+    if(Math.hypot(p.x,p.y) >= minRadius) return p;
+  }
+  const ang=rand(0,Math.PI*2);
+  const r=Math.max(minRadius, Math.min(HALF_W,HALF_H)-margin-80);
+  return {x:Math.cos(ang)*r, y:Math.sin(ang)*r};
+}
+function teamForClient(room, client){
+  if(['duo','squad','test'].includes(room.mode)) return 'blue';
+  if(room.mode === 'teams'){
+    const list=[...room.clients];
+    const idx=Math.max(0,list.indexOf(client));
+    return idx % 2 === 0 ? 'blue' : 'red';
+  }
+  return 'neutral';
+}
+function assignRoomTeams(room){
+  for(const client of room.clients){
+    client.serverTeam = teamForClient(room, client);
+    if(client.snapshot) client.snapshot.team = client.serverTeam;
+  }
+}
+function clientIsInvincible(client){
+  if(!client || !client.snapshot || client.snapshot.dead) return true;
+  return (client.spawnProtectedUntil||0) > Date.now() || finiteNumber(client.snapshot.spawnInvincible,0,0,20) > 0.03;
+}
+function sendDamageToClient(client, payload){
+  if(!client || !client.inMatch || !client.snapshot || client.snapshot.dead || clientIsInvincible(client)) return false;
+  return send(client, payload);
+}
+function sanitizeSnapshot(client, room, raw){
+  raw = raw && typeof raw === 'object' ? raw : {};
+  const previous = client.snapshot;
+  const maxHp = finiteNumber(raw.maxHp, finiteNumber(previous?.maxHp,100,1,100000), 1, 100000);
+  const dead = !!raw.dead;
+  if((!previous && !dead) || (previous?.dead && !dead)){
+    client.spawnProtectedUntil = Date.now() + 2600;
+  }
+  const snap = {...raw};
+  snap.id = client.id;
+  snap.entityId = safeToken(raw.entityId || '',64);
+  snap.name = safeName(raw.name || client.name);
+  snap.title = String(raw.title || '').replace(/[<>]/g,'').slice(0,40);
+  snap.clan = String(raw.clan || '').replace(/[<>]/g,'').slice(0,20);
+  snap.x = finiteNumber(raw.x, finiteNumber(previous?.x,0), -HALF_W, HALF_W);
+  snap.y = finiteNumber(raw.y, finiteNumber(previous?.y,0), -HALF_H, HALF_H);
+  snap.vx = finiteNumber(raw.vx,0,-80,80);
+  snap.vy = finiteNumber(raw.vy,0,-80,80);
+  snap.r = finiteNumber(raw.r,18,4,120);
+  snap.angle = finiteNumber(raw.angle,0,-Math.PI*8,Math.PI*8);
+  snap.maxHp = maxHp;
+  snap.hp = finiteNumber(raw.hp,maxHp,0,maxHp);
+  snap.level = Math.floor(finiteNumber(raw.level,1,1,999));
+  snap.score = Math.floor(finiteNumber(raw.score,0,0,1e9));
+  snap.frags = Math.floor(finiteNumber(raw.frags,0,0,1e6));
+  snap.dead = dead;
+  snap.team = client.serverTeam || teamForClient(room,client);
+  snap.archetype = safeToken(raw.archetype || 'starter',48) || 'starter';
+  snap.bodyColor = /^#[0-9a-fA-F]{3,8}$/.test(String(raw.bodyColor||'')) ? String(raw.bodyColor) : '#5d8cff';
+  snap.skinKind = safeToken(raw.skinKind || 'circle',32) || 'circle';
+  snap.spawnInvincible = finiteNumber(raw.spawnInvincible,0,0,20);
+  snap.reflect = finiteNumber(raw.reflect,0,0,30);
+  snap.bulletEater = finiteNumber(raw.bulletEater,0,0,30);
+  snap.invisible = finiteNumber(raw.invisible,0,0,30);
+  snap.abilities = Array.isArray(raw.abilities) ? raw.abilities.slice(0,5).map(v=>v==null?null:safeToken(v,48)) : [];
+  return snap;
+}
 
 function makeRoom(code){
   return {
@@ -51,6 +131,8 @@ function makeRoom(code){
     lastBossBroadcast:0,
     lastWorldBroadcast:0,
     nextBossAt:Date.now()+32000,
+    lastErrorAt:0,
+    lastSquadLimitNotice:0,
     createdAt:Date.now()
   };
 }
@@ -70,13 +152,21 @@ function chooseLeader(room){
 }
 function lobbyPayload(room){
   chooseLeader(room);
+  assignRoomTeams(room);
   return {
     type:'lobby_state',
     room:room.code,
     leaderId:room.leaderId,
     mode:room.mode,
     matchStarted:room.matchStarted,
-    players:[...room.clients].map(c=>({clientId:c.id, name:c.name, ready:!!c.ready, leader:c.id===room.leaderId, inMatch:!!c.inMatch}))
+    players:[...room.clients].map(c=>({
+      clientId:c.id,
+      name:c.name,
+      ready:!!c.ready,
+      leader:c.id===room.leaderId,
+      inMatch:!!c.inMatch,
+      team:c.serverTeam||'neutral'
+    }))
   };
 }
 function broadcastLobby(room){ broadcast(room.code, lobbyPayload(room)); }
@@ -95,9 +185,11 @@ function removeFromRoom(client){
   client.inMatch = false;
 }
 function send(client, obj){
-  if(!client || client.socket.destroyed) return false;
+  if(!client || !client.socket || client.socket.destroyed || !client.socket.writable) return false;
   try{
+    if(client.socket.writableLength > MAX_SOCKET_BACKLOG && DROPPABLE_PACKET_TYPES.has(obj?.type)) return false;
     const data = Buffer.from(JSON.stringify(obj));
+    if(data.length > MAX_FRAME_BYTES) return false;
     let header;
     if(data.length < 126){
       header = Buffer.from([0x81, data.length]);
@@ -110,7 +202,9 @@ function send(client, obj){
     }
     client.socket.write(Buffer.concat([header, data]));
     return true;
-  }catch(e){ return false; }
+  }catch(e){
+    return false;
+  }
 }
 function broadcast(roomCode, obj, except=null){
   const room = rooms.get(roomCode);
@@ -131,42 +225,46 @@ const botNames = ['Echo','Mira','Waltz','Kite','Phantom','Ivy','Rook','Bolt','Ju
 const archetypes = ['starter','swordsman','ronin','azure','solar_lance','hakka','deadeye','hydra','world_eater','black_star','bloodlord','bullet_storm','machine','minigunner','sniper','rocketeer','gravity_mage','stormcaller'];
 const colors = ['#ff775d','#6a7cf7','#53b07b','#ffcf58','#76d7ff','#cb80ff','#d84a4a','#9aa9b8'];
 function botCountForMode(mode){
-  // Lower, readable online counts. Large local bot swarms looked cluttered online and made synced combat hard to read.
   if(mode === 'pvp' || mode === 'bossrush') return 0;
   if(mode === 'test') return 6;
-  if(mode === 'duo') return 8;
+  if(mode === 'duo') return 10;
+  if(mode === 'squad') return 16;
   if(mode === 'teams') return 12;
   if(mode === 'br') return 16;
-  return 6;
+  return 10;
 }
-function teamForBot(mode, i){
-  if(mode === 'teams') return i < 24 ? 'blue' : 'red';
-  if(mode === 'duo') return 'red';
-  if(mode === 'test') return 'red';
+function teamForBot(mode, i, count){
+  if(mode === 'teams') return i < Math.ceil(count/2) ? 'blue' : 'red';
+  if(['duo','squad','test'].includes(mode)) return 'red';
   return 'neutral';
 }
 function spawnServerBots(room){
   room.bots = [];
   const count = botCountForMode(room.mode);
   for(let i=0;i<count;i++){
-    const team = teamForBot(room.mode, i);
+    const team = teamForBot(room.mode, i, count);
     const passive = room.mode === 'test';
-    const namePrefix = room.mode === 'br' ? 'BR ' : room.mode === 'teams' ? (team === 'blue' ? 'Blue ' : 'Red ') : '';
+    const namePrefix = room.mode === 'br' ? 'BR ' : room.mode === 'teams' ? (team === 'blue' ? 'Blue ' : 'Red ') : room.mode === 'squad' ? 'Enemy ' : '';
+    const point = room.mode === 'test'
+      ? {x:((i % 4) - 1.5) * 260, y:(Math.floor(i / 4) - 1) * 230}
+      : randomArenaPoint(720,360);
+    const roam = randomArenaPoint(620,260);
     const bot = {
       id:'bot_' + id(5),
       name: passive ? `Dummy ${String(i+1).padStart(2,'0')}` : `${namePrefix}${botNames[i % botNames.length]}-${String(i+1).padStart(2,'0')}`,
-      x: room.mode === 'test' ? ((i % 4) - 1.5) * 260 : rand(-HALF_W+360, HALF_W-360),
-      y: room.mode === 'test' ? (Math.floor(i / 4) - 1) * 230 : rand(-HALF_H+360, HALF_H-360),
+      x:point.x, y:point.y,
       vx:0, vy:0, r:18, angle:rand(0, Math.PI*2),
       hp: passive ? 280 : 115, maxHp: passive ? 280 : 115,
       score:0, frags:0, level:1,
       team, ally:team === 'blue', passive,
       archetype: archetypes[i % archetypes.length],
       bodyColor: passive ? '#7fd8ff' : colors[i % colors.length],
-      fireCd: rand(0.35, 1.2), think:0, strafe:Math.random()<0.5 ? -1 : 1,
+      fireCd:rand(1.3,2.1), think:0, strafe:Math.random()<0.5 ? -1 : 1,
       aimError:rand(-0.10,0.10), dodge:rand(.75,1.25), confidence:rand(.75,1.22),
-      meleeCd:0, lastTargetId:null,
-      roamX:rand(-HALF_W+260, HALF_W-260), roamY:rand(-HALF_H+260, HALF_H-260),
+      meleeCd:rand(.9,1.5), lastTargetId:null, targetLockUntil:0,
+      personality:['duelist','hunter','scavenger','coward','roamer'][i%5],
+      roamX:roam.x, roamY:roam.y,
+      spawnGraceUntil:Date.now()+rand(1700,2600),
       dead:false, respawnAt:0, lastHitBy:null
     };
     room.bots.push(bot);
@@ -175,20 +273,34 @@ function spawnServerBots(room){
 function startMatch(room){
   room.matchStarted = true;
   room.matchId++;
-  for(const c of room.clients){ c.inMatch = true; }
+  assignRoomTeams(room);
+  const now=Date.now();
+  for(const c of room.clients){
+    c.inMatch = true;
+    c.spawnProtectedUntil = now + 2600;
+    if(c.snapshot) c.snapshot.team = c.serverTeam;
+  }
   spawnServerBots(room);
   initSharedWorld(room);
   const botsState = {type:'bots_state', mode:room.mode, bots:room.bots.map(botSnapshot), immediate:true};
-  broadcast(room.code, {type:'match_start', mode:room.mode, matchId:room.matchId, startedAt:Date.now()});
+  broadcast(room.code, {type:'match_start', mode:room.mode, matchId:room.matchId, startedAt:now});
   broadcast(room.code, botsState);
   broadcastSharedState(room, true);
   broadcastLobby(room);
 }
 function maybeStartMatch(room){
   if(room.matchStarted) return;
-  // Online matches intentionally require at least two connected players.
-  // This prevents the leader from accidentally launching before friends join.
   if(room.clients.size < 2) return;
+  if(room.mode === 'squad' && room.clients.size > MAX_SQUAD_PLAYERS){
+    const now=Date.now();
+    if(now-(room.lastSquadLimitNotice||0)>1800){
+      room.lastSquadLimitNotice=now;
+      broadcast(room.code,{type:'chat',name:'SERVER',msg:`Squad mode supports up to ${MAX_SQUAD_PLAYERS} players. Remove extra players before readying.`});
+    }
+    for(const c of room.clients) c.ready=false;
+    broadcastLobby(room);
+    return;
+  }
   for(const c of room.clients){ if(!c.ready) return; }
   startMatch(room);
 }
@@ -210,133 +322,244 @@ function livePlayerSnapshots(room){
     .filter(c=>c.snapshot && !c.snapshot.dead && c.inMatch)
     .map(c=>({client:c, ...c.snapshot}));
 }
-function botCanTarget(bot, snap){
-  if(!snap || snap.dead) return false;
-  if(bot.team && snap.team && bot.team !== 'neutral' && snap.team !== 'neutral' && bot.team === snap.team) return false;
+function botCanTarget(bot, target){
+  if(!target || target.dead) return false;
+  if(sameCombatTeam(bot.team, target.team)) return false;
+  if(target.kind === 'player' && clientIsInvincible(target.client)) return false;
   return true;
 }
 function nearestTargetForBot(room, bot){
-  let best=null, bestD=Infinity;
+  const now=Date.now();
+  const candidates=[];
   for(const snap of livePlayerSnapshots(room)){
-    if(!botCanTarget(bot, snap)) continue;
-    const d = Math.hypot((snap.x||0)-bot.x, (snap.y||0)-bot.y);
-    if(d < bestD){ bestD = d; best = snap; }
+    candidates.push({
+      kind:'player',
+      id:snap.client.id,
+      key:'player:'+snap.client.id,
+      name:snap.name||snap.client.name,
+      client:snap.client,
+      x:snap.x||0, y:snap.y||0, vx:snap.vx||0, vy:snap.vy||0,
+      hp:snap.hp||1, maxHp:snap.maxHp||1,
+      team:snap.client.serverTeam||snap.team||'neutral',
+      dead:!!snap.dead,
+      human:true
+    });
   }
-  return best ? {snap:best, d:bestD} : null;
+  for(const other of room.bots){
+    if(other===bot || other.dead) continue;
+    candidates.push({
+      kind:'bot',
+      id:other.id,
+      key:'bot:'+other.id,
+      name:other.name,
+      bot:other,
+      x:other.x, y:other.y, vx:other.vx||0, vy:other.vy||0,
+      hp:other.hp, maxHp:other.maxHp,
+      team:other.team||'neutral',
+      dead:!!other.dead,
+      human:false
+    });
+  }
+
+  const locked = candidates.find(t=>t.key===bot.lastTargetId);
+  if(locked && bot.targetLockUntil>now && botCanTarget(bot,locked)){
+    const d=dist(bot,locked);
+    if(d<1250) return {snap:locked,d};
+  }
+
+  let best=null, bestScore=-Infinity;
+  for(const target of candidates){
+    if(!botCanTarget(bot,target)) continue;
+    const d=dist(bot,target);
+    if(d>1220) continue;
+    const hpRatio=clamp((target.hp||1)/Math.max(1,target.maxHp||1),0,1);
+    let assigned=0;
+    for(const other of room.bots){
+      if(other!==bot && !other.dead && other.lastTargetId===target.key) assigned++;
+    }
+    let score = -d*.43 + (1-hpRatio)*165 - assigned*62;
+    score += target.kind==='bot' ? 46 : 8;
+    if(bot.lastHitBy===target.id) score += 240;
+    if(d<300) score += 74;
+    if(bot.personality==='hunter') score += (1-hpRatio)*90;
+    if(bot.personality==='scavenger' && hpRatio>.62) score -= 85;
+    if(bot.personality==='coward' && d<260 && target.hp>bot.hp) score -= 150;
+    if(score>bestScore){ bestScore=score; best=target; }
+  }
+  if(!best) return null;
+  bot.lastTargetId=best.key;
+  bot.targetLockUntil=now+rand(850,1750);
+  return {snap:best,d:dist(bot,best)};
+}
+function killServerBot(room, bot, source){
+  if(!bot || bot.dead) return;
+  bot.dead=true;
+  bot.hp=0;
+  bot.respawnAt=Date.now()+(room.mode==='br'?999999999:2800);
+  bot.score=0;
+  bot.lastTargetId=null;
+  for(let i=0;i<10;i++) spawnSharedFragment(room,'xp',bot.x+rand(-46,46),bot.y+rand(-46,46));
+  if(Math.random()<.22) spawnSharedFragment(room,'ability',bot.x+rand(-70,70),bot.y+rand(-70,70));
+  if(source?.kind==='player' && source.client){
+    send(source.client,{type:'bot_award',botId:bot.id,botName:bot.name,xp:40,score:250});
+  }
+  broadcast(room.code,{
+    type:'bot_killed',
+    botId:bot.id,
+    botName:bot.name,
+    killerId:source?.id||'',
+    killerName:source?.name||'Environment'
+  });
+}
+function damageServerBot(room, bot, amount, source){
+  if(!bot || bot.dead) return false;
+  const dmg=clamp(finiteNumber(amount,0),0,500);
+  if(dmg<=0) return false;
+  bot.hp-=dmg;
+  bot.lastHitBy=source?.id||null;
+  if(bot.hp<=0) killServerBot(room,bot,source);
+  return true;
+}
+function deliverBotDamage(room, attacker, target, amount, cause){
+  if(!target || !botCanTarget(attacker,target)) return false;
+  if(target.kind==='player'){
+    return sendDamageToClient(target.client,{
+      type:'bot_hit',
+      botId:attacker.id,
+      botName:attacker.name,
+      amount,
+      cause
+    });
+  }
+  if(target.kind==='bot'){
+    return damageServerBot(room,target.bot,amount,{kind:'bot',id:attacker.id,name:attacker.name,bot:attacker});
+  }
+  return false;
 }
 function updateServerBots(room, dt){
   if(!room.matchStarted || !room.bots.length) return;
   const now = Date.now();
   for(const bot of room.bots){
+    if(!Number.isFinite(bot.x) || !Number.isFinite(bot.y) || !Number.isFinite(bot.vx) || !Number.isFinite(bot.vy)){
+      const p=randomArenaPoint(760,360);
+      bot.x=p.x; bot.y=p.y; bot.vx=0; bot.vy=0;
+    }
     if(bot.dead){
       if(room.mode !== 'br' && now >= bot.respawnAt){
-        bot.dead=false; bot.hp=bot.maxHp; bot.x=rand(-HALF_W+360, HALF_W-360); bot.y=rand(-HALF_H+360, HALF_H-360);
-        bot.vx=0; bot.vy=0; bot.fireCd=rand(.4,1.1); bot.score=0; bot.frags=0; bot.lastHitBy=null; bot.meleeCd=0; bot.aimError=rand(-0.10,0.10);
+        const p=randomArenaPoint(760,360);
+        const roam=randomArenaPoint(620,260);
+        bot.dead=false; bot.hp=bot.maxHp; bot.x=p.x; bot.y=p.y;
+        bot.vx=0; bot.vy=0; bot.fireCd=rand(1.2,2.0); bot.score=0; bot.frags=0;
+        bot.lastHitBy=null; bot.meleeCd=rand(.9,1.5); bot.aimError=rand(-0.10,0.10);
+        bot.lastTargetId=null; bot.targetLockUntil=0;
+        bot.roamX=roam.x; bot.roamY=roam.y;
+        bot.spawnGraceUntil=now+rand(1800,2700);
       }
       continue;
     }
     if(bot.passive){ bot.angle += dt * 0.0009; continue; }
+
     bot.think -= dt/1000;
     if(bot.think <= 0){
-      bot.think = rand(.35,.9);
-      if(Math.random()<.4) bot.strafe *= -1;
-      if(Math.random()<.25){ bot.roamX=rand(-HALF_W+260, HALF_W-260); bot.roamY=rand(-HALF_H+260, HALF_H-260); }
+      bot.think = rand(.28,.72);
+      if(Math.random()<.36) bot.strafe *= -1;
+      if(Math.random()<.24){
+        const roam=randomArenaPoint(620,260);
+        bot.roamX=roam.x; bot.roamY=roam.y;
+      }
     }
+
     const target = nearestTargetForBot(room, bot);
     let moveX=0, moveY=0;
-    if(target && target.d < 1180){
+    if(target && target.d < 1220){
       const snap = target.snap;
-      bot.lastTargetId = snap.id || target.client?.id || null;
       const px = (snap.x||0) + (snap.vx||0) * 8;
       const py = (snap.y||0) + (snap.vy||0) * 8;
       const targetAngle = Math.atan2(py-bot.y, px-bot.x);
       bot.angle = targetAngle;
       const towardX=Math.cos(bot.angle), towardY=Math.sin(bot.angle);
       const sideX=-Math.sin(bot.angle)*bot.strafe, sideY=Math.cos(bot.angle)*bot.strafe;
-      const desired = ['ronin','swordsman','world_eater','bloodlord'].includes(bot.archetype) ? 86 : ['deadeye','solar_lance','sniper'].includes(bot.archetype) ? 430 : 250;
+      const desired = ['ronin','swordsman','world_eater','bloodlord'].includes(bot.archetype) ? 92 : ['deadeye','solar_lance','sniper'].includes(bot.archetype) ? 455 : 270;
       const lowHp = bot.hp < bot.maxHp * .34;
-      if(lowHp && target.d < 360){ moveX -= towardX*1.05; moveY -= towardY*1.05; moveX += sideX*.65; moveY += sideY*.65; }
-      else if(target.d > desired+70){ moveX += towardX*.92 + sideX*.22; moveY += towardY*.92 + sideY*.22; }
-      else if(target.d < desired-50){ moveX -= towardX*.82; moveY -= towardY*.82; moveX += sideX*.50; moveY += sideY*.50; }
-      else { moveX += sideX*(1.05*bot.dodge); moveY += sideY*(1.05*bot.dodge); }
+      if(lowHp && target.d < 380){
+        moveX -= towardX*1.10; moveY -= towardY*1.10;
+        moveX += sideX*.72; moveY += sideY*.72;
+      }else if(target.d > desired+78){
+        moveX += towardX*.91 + sideX*.27; moveY += towardY*.91 + sideY*.27;
+      }else if(target.d < desired-58){
+        moveX -= towardX*.84; moveY -= towardY*.84;
+        moveX += sideX*.58; moveY += sideY*.58;
+      }else{
+        moveX += sideX*(1.10*bot.dodge); moveY += sideY*(1.10*bot.dodge);
+      }
 
-      bot.meleeCd = Math.max(0, (bot.meleeCd||0)-dt/1000);
-      if(['ronin','swordsman','world_eater','bloodlord'].includes(bot.archetype) && target.d < 118 && bot.meleeCd<=0){
-        bot.meleeCd = rand(.46,.78);
-        const amount = bot.archetype==='ronin' ? 13 : 10;
-        send(snap.client, {type:'bot_hit', botId:bot.id, botName:bot.name, amount, cause:'melee'});
+      bot.meleeCd = Math.max(0,(bot.meleeCd||0)-dt/1000);
+      const attackReady = now >= (bot.spawnGraceUntil||0);
+      if(attackReady && ['ronin','swordsman','world_eater','bloodlord'].includes(bot.archetype) && target.d < 118 && bot.meleeCd<=0){
+        bot.meleeCd=rand(.48,.82);
+        deliverBotDamage(room,bot,snap,bot.archetype==='ronin'?13:10,'melee');
       }
 
       bot.fireCd -= dt/1000;
-      if(bot.fireCd <= 0 && target.d < 780){
-        const rapid = ['bullet_storm','machine','minigunner'].includes(bot.archetype);
-        const long = ['deadeye','solar_lance','sniper'].includes(bot.archetype);
-        bot.fireCd = rapid ? rand(.20,.38) : long ? rand(.52,.88) : rand(.38,.72);
-        bot.aimError = bot.aimError*0.45 + rand(-0.15,0.15)*0.55;
-        const spread = (long ? rand(-0.07,0.07) : rand(-0.13,0.13)) + bot.aimError;
-        const angle = targetAngle + spread;
-        const shot = {kind:'basic', speed:long?9.4:8.2, life:long?120:105, dmg:long?14:rapid?6.2:8.5, color:bot.bodyColor, size:rapid?4:5, visualOnly:true, networkReplay:true};
-        broadcast(room.code, {type:'bot_projectile', botId:bot.id, bot:botSnapshot(bot), angle, options:shot, serial:++room.lastShotSerial});
-        const trueAngle = Math.atan2((snap.y||0)-bot.y, (snap.x||0)-bot.x);
-        const aim = Math.abs(angleDiff(angle, trueAngle));
-        const rangeFactor = clamp(1 - target.d / 920, .18, .92);
-        const accuracy = clamp((long?.56:.48) + rangeFactor*.34 - aim*1.05, .18, .88) * bot.confidence;
-        if(aim < .34 && Math.random() < accuracy){
-          send(snap.client, {type:'bot_hit', botId:bot.id, botName:bot.name, amount:shot.dmg, cause:'projectile'});
-        }
+      if(attackReady && bot.fireCd <= 0 && target.d < 800){
+        const rapid=['bullet_storm','machine','minigunner'].includes(bot.archetype);
+        const long=['deadeye','solar_lance','sniper'].includes(bot.archetype);
+        bot.fireCd=rapid?rand(.22,.40):long?rand(.58,.92):rand(.42,.76);
+        bot.aimError=bot.aimError*.45+rand(-.15,.15)*.55;
+        const spread=(long?rand(-.07,.07):rand(-.13,.13))+bot.aimError;
+        const angle=targetAngle+spread;
+        const shot={kind:'basic',speed:long?9.4:8.2,life:long?120:105,dmg:long?14:rapid?6.2:8.5,color:bot.bodyColor,size:rapid?4:5,visualOnly:true,networkReplay:true};
+        broadcast(room.code,{type:'bot_projectile',botId:bot.id,bot:botSnapshot(bot),angle,options:shot,serial:++room.lastShotSerial});
+        const trueAngle=Math.atan2((snap.y||0)-bot.y,(snap.x||0)-bot.x);
+        const aim=Math.abs(angleDiff(angle,trueAngle));
+        const rangeFactor=clamp(1-target.d/940,.16,.92);
+        const accuracy=clamp((long?.55:.46)+rangeFactor*.34-aim*1.05,.16,.86)*bot.confidence;
+        if(aim<.34 && Math.random()<accuracy) deliverBotDamage(room,bot,snap,shot.dmg,'projectile');
       }
     }else{
       const dx=bot.roamX-bot.x, dy=bot.roamY-bot.y, L=Math.hypot(dx,dy)||1;
-      if(L<70){ bot.roamX=rand(-HALF_W+260, HALF_W-260); bot.roamY=rand(-HALF_H+260, HALF_H-260); }
-      moveX += dx/L*.65; moveY += dy/L*.65; bot.angle=Math.atan2(dy,dx);
+      if(L<90){
+        const roam=randomArenaPoint(620,260);
+        bot.roamX=roam.x; bot.roamY=roam.y;
+      }
+      moveX += dx/L*.70; moveY += dy/L*.70; bot.angle=Math.atan2(dy,dx);
     }
+
+    let nearby=0;
     for(const other of room.bots){
       if(other===bot || other.dead) continue;
-      const d=Math.hypot(bot.x-other.x, bot.y-other.y);
-      if(d>0 && d<145){ moveX += (bot.x-other.x)/d * ((145-d)/145)*1.4; moveY += (bot.y-other.y)/d * ((145-d)/145)*1.4; }
+      const d=Math.hypot(bot.x-other.x,bot.y-other.y);
+      if(d>0 && d<225){
+        nearby++;
+        const force=Math.pow((225-d)/225,.70);
+        moveX += (bot.x-other.x)/d*force*2.25;
+        moveY += (bot.y-other.y)/d*force*2.25;
+      }
     }
-    if(bot.x < -HALF_W+260) moveX += 1;
-    if(bot.x > HALF_W-260) moveX -= 1;
-    if(bot.y < -HALF_H+260) moveY += 1;
-    if(bot.y > HALF_H-260) moveY -= 1;
-    const mag = Math.hypot(moveX, moveY) || 1;
-    const sp = ['ronin','swordsman'].includes(bot.archetype) ? 4.2 : 3.35;
-    bot.vx = bot.vx*0.86 + (moveX/mag)*sp*0.14;
-    bot.vy = bot.vy*0.86 + (moveY/mag)*sp*0.14;
-    bot.x = clamp(bot.x + bot.vx * dt/16.6, -HALF_W+20, HALF_W-20);
-    bot.y = clamp(bot.y + bot.vy * dt/16.6, -HALF_H+20, HALF_H-20);
+    const centerDist=Math.hypot(bot.x,bot.y);
+    if(centerDist<920 && nearby>=2){
+      const outX=bot.x/(centerDist||1), outY=bot.y/(centerDist||1);
+      const force=.55+nearby*.13;
+      moveX += outX*force;
+      moveY += outY*force;
+    }
+    if(bot.x < -HALF_W+260) moveX += 1.3;
+    if(bot.x > HALF_W-260) moveX -= 1.3;
+    if(bot.y < -HALF_H+260) moveY += 1.3;
+    if(bot.y > HALF_H-260) moveY -= 1.3;
+
+    const mag=Math.hypot(moveX,moveY)||1;
+    const sp=['ronin','swordsman'].includes(bot.archetype)?4.2:3.35;
+    bot.vx=bot.vx*.84+(moveX/mag)*sp*.16;
+    bot.vy=bot.vy*.84+(moveY/mag)*sp*.16;
+    bot.x=clamp(bot.x+bot.vx*dt/16.6,-HALF_W+20,HALF_W-20);
+    bot.y=clamp(bot.y+bot.vy*dt/16.6,-HALF_H+20,HALF_H-20);
   }
-  if(now - room.lastBotBroadcast > 100){
-    room.lastBotBroadcast = now;
-    broadcast(room.code, {type:'bots_state', mode:room.mode, bots:room.bots.map(botSnapshot)});
+
+  if(now-room.lastBotBroadcast>100){
+    room.lastBotBroadcast=now;
+    broadcast(room.code,{type:'bots_state',mode:room.mode,bots:room.bots.map(botSnapshot)});
   }
-}
-
-
-
-// -----------------------------
-// Shared terrain + hot-zone state
-// -----------------------------
-const sharedBiomes = [
-  {name:'Meadow', x:-HALF_W, y:-HALF_H, w:WORLD_W/4, h:WORLD_H/2, color:'#2f5d45', detail:'#3d7455', accent:'#92d96d'},
-  {name:'Frozen Wastes', x:-HALF_W+WORLD_W/4, y:-HALF_H, w:WORLD_W/4, h:WORLD_H/2, color:'#5d87a5', detail:'#709ab7', accent:'#d8f3ff'},
-  {name:'Volcanic Basin', x:-HALF_W+WORLD_W/2, y:-HALF_H, w:WORLD_W/4, h:WORLD_H/2, color:'#7c4a3c', detail:'#9d6152', accent:'#ff8a54'},
-  {name:'Sky Salt Flats', x:-HALF_W+WORLD_W*3/4, y:-HALF_H, w:WORLD_W/4, h:WORLD_H/2, color:'#718391', detail:'#8b9aa5', accent:'#f3fbff'},
-  {name:'Ancient Forest', x:-HALF_W, y:0, w:WORLD_W/4, h:WORLD_H/2, color:'#345f3f', detail:'#46734d', accent:'#80c75a'},
-  {name:'Crystal Desert', x:-HALF_W+WORLD_W/4, y:0, w:WORLD_W/4, h:WORLD_H/2, color:'#b2a37d', detail:'#c7b994', accent:'#fff0a6'},
-  {name:'Corrupted Void', x:-HALF_W+WORLD_W/2, y:0, w:WORLD_W/4, h:WORLD_H/2, color:'#5b4267', detail:'#765689', accent:'#cb80ff'},
-  {name:'Storm Coast', x:-HALF_W+WORLD_W*3/4, y:0, w:WORLD_W/4, h:WORLD_H/2, color:'#42566d', detail:'#526a83', accent:'#b9d4ff'}
-];
-const terrainTypes = ['crater','vine','ice','void','road'];
-function spawnSharedTerrainFeature(room, type=null, x=null, y=null){
-  type = type || terrainTypes[irand(0, terrainTypes.length)];
-  x = x ?? rand(-HALF_W+380, HALF_W-380);
-  y = y ?? rand(-HALF_H+320, HALF_H-320);
-  const feature = {id:'terrain_'+(++room.lastTerrainSerial)+'_'+id(3), type, x, y, life:rand(44,78), spawn:1.35, r:type==='road'?170:type==='vine'?120:type==='crater'?95:type==='void'?115:135, angle:rand(0,Math.PI)};
-  room.terrainFeatures.push(feature);
-  if(room.terrainFeatures.length>28) room.terrainFeatures.splice(0, room.terrainFeatures.length-28);
-  broadcast(room.code, {type:'terrain_event', action:'spawn', feature:terrainSnapshot(feature)});
-  return feature;
 }
 function terrainSnapshot(f){
   return {id:f.id, type:f.type, x:Math.round(f.x*10)/10, y:Math.round(f.y*10)/10, life:Math.max(0,Math.round((f.life||0)*1000)), spawn:Math.max(0,Math.round((f.spawn||0)*1000)), r:Math.round(f.r||100), angle:f.angle||0};
@@ -496,6 +719,7 @@ function bossSnapshot(b){
 function nearestTargetForBoss(room, boss){
   let best=null, bestD=Infinity;
   for(const snap of livePlayerSnapshots(room)){
+    if(clientIsInvincible(snap.client)) continue;
     const d=Math.hypot((snap.x||0)-boss.x,(snap.y||0)-boss.y);
     if(d<bestD){bestD=d; best=snap;}
   }
@@ -504,7 +728,7 @@ function nearestTargetForBoss(room, boss){
 function updateSharedBosses(room, dt){
   if(!room.matchStarted || ['pvp','test','br','bossrush'].includes(room.mode)) return;
   const now=Date.now();
-  if(now > room.nextBossAt){ spawnSharedBoss(room); room.nextBossAt = now + rand(70000,100000); }
+  if(now > room.nextBossAt){ spawnSharedBoss(room); room.nextBossAt=now+rand(70000,100000); }
   for(const b of room.bosses){
     if(b.dead) continue;
     const target=nearestTargetForBoss(room,b);
@@ -515,21 +739,27 @@ function updateSharedBosses(room, dt){
       const tx=Math.cos(b.angle), ty=Math.sin(b.angle);
       const desired=430;
       let mx=0,my=0;
-      if(d>desired+80){ mx=tx; my=ty; } else if(d<desired-120){ mx=-tx; my=-ty; } else { mx=-Math.sin(b.angle)*0.75; my=Math.cos(b.angle)*0.75; }
-      b.vx=b.vx*0.90 + mx*b.speed*0.10;
-      b.vy=b.vy*0.90 + my*b.speed*0.10;
-      b.fireCd -= dt/1000;
+      if(d>desired+80){mx=tx;my=ty;}
+      else if(d<desired-120){mx=-tx;my=-ty;}
+      else{mx=-Math.sin(b.angle)*.75;my=Math.cos(b.angle)*.75;}
+      b.vx=b.vx*.90+mx*b.speed*.10;
+      b.vy=b.vy*.90+my*b.speed*.10;
+      b.fireCd-=dt/1000;
       if(b.fireCd<=0 && d<760){
-        b.fireCd = rand(.72,1.35);
-        const shot={kind:'boss', speed:5.2, life:135, dmg:13, color:b.color, size:9, visualOnly:true, networkReplay:true};
-        broadcast(room.code, {type:'boss_projectile', bossId:b.id, boss:bossSnapshot(b), angle:b.angle+rand(-.16,.16), options:shot});
-        if(d<650 && Math.random()<.42) send(snap.client, {type:'boss_hit', bossId:b.id, bossName:b.name, amount:shot.dmg});
+        b.fireCd=rand(.72,1.35);
+        const shot={kind:'boss',speed:5.2,life:135,dmg:13,color:b.color,size:9,visualOnly:true,networkReplay:true};
+        broadcast(room.code,{type:'boss_projectile',bossId:b.id,boss:bossSnapshot(b),angle:b.angle+rand(-.16,.16),options:shot});
+        if(d<650 && Math.random()<.42){
+          sendDamageToClient(snap.client,{type:'boss_hit',bossId:b.id,bossName:b.name,amount:shot.dmg});
+        }
       }
-    }else{ b.vx*=0.92; b.vy*=0.92; }
-    b.x=clamp(b.x+b.vx*dt/16.6, -HALF_W+80, HALF_W-80);
-    b.y=clamp(b.y+b.vy*dt/16.6, -HALF_H+80, HALF_H-80);
+    }else{
+      b.vx*=.92; b.vy*=.92;
+    }
+    b.x=clamp(b.x+b.vx*dt/16.6,-HALF_W+80,HALF_W-80);
+    b.y=clamp(b.y+b.vy*dt/16.6,-HALF_H+80,HALF_H-80);
   }
-  room.bosses = room.bosses.filter(b=>!b.removeAt || Date.now()<b.removeAt);
+  room.bosses=room.bosses.filter(b=>!b.removeAt||Date.now()<b.removeAt);
 }
 function updateSharedWorld(room, dt){
   if(!room.matchStarted || room.mode === 'bossrush') return;
@@ -577,147 +807,269 @@ function collectSharedFragment(room, client, fid){
   broadcast(room.code, {type:'fragment_collected', id:f.id, by:client.id}, null);
 }
 
+function normalizeTargetRef(room, sourceClient, rawRef){
+  const ref=String(rawRef||'').slice(0,96);
+  const m=/^(player|bot|boss):([a-zA-Z0-9_\-]+)$/.exec(ref);
+  if(!m) return '';
+  const [,kind,targetId]=m;
+  if(kind==='player'){
+    const target=getClientById(room,targetId);
+    if(!target || target===sourceClient || !target.snapshot || target.snapshot.dead) return '';
+    if(sameCombatTeam(sourceClient.serverTeam,target.serverTeam)) return '';
+    return 'player:'+targetId;
+  }
+  if(kind==='bot'){
+    const target=room.bots.find(b=>b.id===targetId && !b.dead);
+    if(!target || sameCombatTeam(sourceClient.serverTeam,target.team)) return '';
+    return 'bot:'+targetId;
+  }
+  const boss=room.bosses.find(b=>b.id===targetId && !b.dead);
+  return boss ? 'boss:'+targetId : '';
+}
+function chooseHomingTargetRef(room, sourceClient){
+  const owner=sourceClient.snapshot;
+  if(!owner) return '';
+  let best='',bestD=Infinity;
+  for(const target of room.clients){
+    if(target===sourceClient || !target.snapshot || target.snapshot.dead || clientIsInvincible(target)) continue;
+    if(sameCombatTeam(sourceClient.serverTeam,target.serverTeam)) continue;
+    const d=Math.hypot((target.snapshot.x||0)-(owner.x||0),(target.snapshot.y||0)-(owner.y||0));
+    if(d<bestD){bestD=d;best='player:'+target.id;}
+  }
+  for(const bot of room.bots){
+    if(bot.dead || sameCombatTeam(sourceClient.serverTeam,bot.team)) continue;
+    const d=Math.hypot(bot.x-(owner.x||0),bot.y-(owner.y||0));
+    if(d<bestD){bestD=d;best='bot:'+bot.id;}
+  }
+  for(const boss of room.bosses){
+    if(boss.dead) continue;
+    const d=Math.hypot(boss.x-(owner.x||0),boss.y-(owner.y||0));
+    if(d<bestD){bestD=d;best='boss:'+boss.id;}
+  }
+  return best;
+}
+function sanitizeProjectileOptions(room, client, raw){
+  const out={};
+  if(raw && typeof raw==='object'){
+    let count=0;
+    for(const [key,value] of Object.entries(raw)){
+      if(count++>64 || ['owner','hitIds'].includes(key)) continue;
+      if(typeof value==='number' && Number.isFinite(value)) out[key]=clamp(value,-100000,100000);
+      else if(typeof value==='boolean') out[key]=value;
+      else if(typeof value==='string') out[key]=value.slice(0,96);
+    }
+  }
+  out.kind=safeToken(out.kind||'basic',32)||'basic';
+  out.networkTargetRef=normalizeTargetRef(room,client,out.networkTargetRef);
+  if(!out.networkTargetRef && (out.homing || out.guided || ['homing','hive','gravity','poison'].includes(out.kind))){
+    out.networkTargetRef=chooseHomingTargetRef(room,client);
+  }
+  return out;
+}
 function handleMessage(client, msg){
   if(typeof msg !== 'object' || !msg) return;
+  client.lastSeen=Date.now();
+
   if(msg.type === 'join'){
     removeFromRoom(client);
-    const room = getRoom(msg.room);
-    client.room = room.code;
-    client.name = safeName(msg.name);
-    client.mode = cleanMode(msg.mode);
-    client.ready = false;
-    client.inMatch = false;
-    if(room.clients.size === 0){ room.mode = client.mode; room.matchStarted = false; room.bots = []; room.fragments = []; room.bosses = []; room.terrainFeatures=[]; room.hotZone=null; room.nextTerrainAt=Date.now()+9000; room.nextHotZoneAt=Date.now()+16000; room.world = {mode:null,timer:0,zones:[],nextAt:Date.now()+22000}; room.nextBossAt=Date.now()+32000; }
+    const room=getRoom(msg.room);
+    client.room=room.code;
+    client.name=safeName(msg.name);
+    client.mode=cleanMode(msg.mode);
+    client.ready=false;
+    client.inMatch=false;
+    client.snapshot=null;
+    client.spawnProtectedUntil=Date.now()+2600;
+    if(room.clients.size===0){
+      room.mode=client.mode;
+      room.matchStarted=false;
+      room.bots=[]; room.fragments=[]; room.bosses=[]; room.terrainFeatures=[]; room.hotZone=null;
+      room.nextTerrainAt=Date.now()+9000;
+      room.nextHotZoneAt=Date.now()+16000;
+      room.world={mode:null,timer:0,zones:[],nextAt:Date.now()+22000};
+      room.nextBossAt=Date.now()+32000;
+    }
     room.clients.add(client);
     chooseLeader(room);
-    send(client, {type:'welcome', clientId:client.id, room:room.code});
-    const peers = peersFor(client);
-    if(peers.length) send(client, {type:'peers', peers});
-    broadcast(room.code, {type:'peer_joined', clientId:client.id, name:client.name, mode:room.mode}, client);
+    assignRoomTeams(room);
+    send(client,{type:'welcome',clientId:client.id,room:room.code});
+    const peers=peersFor(client);
+    if(peers.length) send(client,{type:'peers',peers});
+    broadcast(room.code,{type:'peer_joined',clientId:client.id,name:client.name,mode:room.mode},client);
     broadcastLobby(room);
     if(room.matchStarted){
-      client.inMatch = true;
-      send(client, {type:'match_start', mode:room.mode, matchId:room.matchId, startedAt:Date.now(), lateJoin:true});
-      send(client, {type:'bots_state', mode:room.mode, bots:room.bots.map(botSnapshot)});
-      sendSharedState(client, room, true);
+      client.inMatch=true;
+      client.spawnProtectedUntil=Date.now()+3000;
+      send(client,{type:'match_start',mode:room.mode,matchId:room.matchId,startedAt:Date.now(),lateJoin:true});
+      send(client,{type:'bots_state',mode:room.mode,bots:room.bots.map(botSnapshot)});
+      sendSharedState(client,room,true);
     }
     return;
   }
+
   if(!client.room) return;
-  const room = rooms.get(client.room);
+  const room=rooms.get(client.room);
   if(!room) return;
+
   if(msg.type === 'mode_change'){
-    if(client.id !== room.leaderId || room.matchStarted) return;
-    room.mode = cleanMode(msg.mode);
-    for(const c of room.clients) c.ready = false;
+    if(client.id!==room.leaderId || room.matchStarted) return;
+    room.mode=cleanMode(msg.mode);
+    assignRoomTeams(room);
+    for(const c of room.clients) c.ready=false;
     broadcastLobby(room);
   }else if(msg.type === 'ready'){
     if(room.matchStarted) return;
-    client.ready = !!msg.ready;
-    if(msg.mode && client.id === room.leaderId) room.mode = cleanMode(msg.mode);
+    client.ready=!!msg.ready;
+    if(msg.mode && client.id===room.leaderId){
+      room.mode=cleanMode(msg.mode);
+      assignRoomTeams(room);
+    }
     broadcastLobby(room);
     maybeStartMatch(room);
   }else if(msg.type === 'state'){
-    client.snapshot = msg.snapshot || null;
-    if(client.snapshot){
-      client.snapshot.id = client.id;
-      client.snapshot.name = safeName(client.snapshot.name || client.name);
-      client.snapshot.team = client.snapshot.team || (room.mode === 'teams' ? (client.id === room.leaderId ? 'blue' : 'red') : 'neutral');
-    }
-    broadcast(room.code, {type:'peer_state', clientId:client.id, snapshot:client.snapshot}, client);
+    client.snapshot=sanitizeSnapshot(client,room,msg.snapshot);
+    broadcast(room.code,{type:'peer_state',clientId:client.id,snapshot:client.snapshot},client);
   }else if(msg.type === 'projectile'){
-    broadcast(room.code, {type:'projectile', ownerId:client.id, angle:Number(msg.angle)||0, options:msg.options || {}}, client);
+    const options=sanitizeProjectileOptions(room,client,msg.options);
+    broadcast(room.code,{
+      type:'projectile',
+      ownerId:client.id,
+      angle:finiteNumber(msg.angle,client.snapshot?.angle||0,-Math.PI*8,Math.PI*8),
+      options
+    },client);
+  }else if(msg.type === 'ability_event'){
+    const abilityId=safeToken(msg.abilityId,48);
+    if(!abilityId) return;
+    broadcast(room.code,{
+      type:'ability_event',
+      ownerId:client.id,
+      abilityId,
+      slotIndex:Math.floor(finiteNumber(msg.slotIndex,1,1,4)),
+      evolved:!!msg.evolved,
+      angle:finiteNumber(msg.angle,client.snapshot?.angle||0,-Math.PI*8,Math.PI*8),
+      x:finiteNumber(msg.x,client.snapshot?.x||0,-HALF_W,HALF_W),
+      y:finiteNumber(msg.y,client.snapshot?.y||0,-HALF_H,HALF_H)
+    },client);
   }else if(msg.type === 'hit'){
-    broadcast(room.code, {type:'hit', targetId:String(msg.targetId||''), amount:Number(msg.amount)||0, sourceId:client.id, sourceName:client.name}, client);
+    const target=getClientById(room,String(msg.targetId||''));
+    if(!target || target===client || !target.inMatch || !target.snapshot || target.snapshot.dead) return;
+    if(sameCombatTeam(client.serverTeam,target.serverTeam)) return;
+    const amount=clamp(finiteNumber(msg.amount,0),0,1000);
+    if(amount<=0) return;
+    sendDamageToClient(target,{
+      type:'hit',
+      targetId:target.id,
+      amount,
+      sourceId:client.id,
+      sourceName:client.name
+    });
   }else if(msg.type === 'fragment_collect'){
-    collectSharedFragment(room, client, String(msg.id||''));
+    collectSharedFragment(room,client,String(msg.id||''));
   }else if(msg.type === 'boss_hit'){
-    const boss = room.bosses.find(b=>b.id === String(msg.bossId||''));
+    const boss=room.bosses.find(b=>b.id===String(msg.bossId||''));
     if(!boss || boss.dead) return;
-    const amount = clamp(Number(msg.amount)||0, 0, 450);
-    boss.hp -= amount;
-    if(boss.hp <= 0){
-      boss.hp = 0; boss.dead = true; boss.removeAt = Date.now()+650;
-      for(let i=0;i<34;i++) spawnSharedFragment(room, i%5===0?'natural':'xp', boss.x+rand(-150,150), boss.y+rand(-150,150));
-      spawnSharedFragment(room, 'ability', boss.x, boss.y, ['judgement_laser','fragment_storm','reflect_shield','loot_radar'][irand(0,4)]);
-      send(client, {type:'boss_award', bossId:boss.id, bossName:boss.name, xp:520, score:2800});
-      broadcast(room.code, {type:'boss_event', action:'killed', bossId:boss.id, bossName:boss.name, killerId:client.id, killerName:client.name});
+    const amount=clamp(finiteNumber(msg.amount,0),0,450);
+    boss.hp-=amount;
+    if(boss.hp<=0){
+      boss.hp=0; boss.dead=true; boss.removeAt=Date.now()+650;
+      for(let i=0;i<34;i++) spawnSharedFragment(room,i%5===0?'natural':'xp',boss.x+rand(-150,150),boss.y+rand(-150,150));
+      spawnSharedFragment(room,'ability',boss.x,boss.y,['judgement_laser','fragment_storm','reflect_shield','loot_radar'][irand(0,4)]);
+      send(client,{type:'boss_award',bossId:boss.id,bossName:boss.name,xp:520,score:2800});
+      broadcast(room.code,{type:'boss_event',action:'killed',bossId:boss.id,bossName:boss.name,killerId:client.id,killerName:client.name});
     }
   }else if(msg.type === 'bot_hit'){
-    const bot = room.bots.find(b=>b.id === String(msg.botId||''));
+    const bot=room.bots.find(b=>b.id===String(msg.botId||''));
     if(!bot || bot.dead) return;
-    const amount = clamp(Number(msg.amount)||0, 0, 250);
-    bot.hp -= amount;
-    bot.lastHitBy = client.id;
-    if(bot.hp <= 0){
-      bot.dead = true;
-      bot.hp = 0;
-      bot.respawnAt = Date.now() + (room.mode === 'br' ? 999999999 : 2500);
-      bot.score = 0;
-      for(let i=0;i<10;i++) spawnSharedFragment(room, 'xp', bot.x+rand(-46,46), bot.y+rand(-46,46));
-      if(Math.random()<.22) spawnSharedFragment(room, 'ability', bot.x+rand(-70,70), bot.y+rand(-70,70));
-      send(client, {type:'bot_award', botId:bot.id, botName:bot.name, xp:40, score:250});
-      broadcast(room.code, {type:'bot_killed', botId:bot.id, botName:bot.name, killerId:client.id, killerName:client.name});
-    }
+    if(sameCombatTeam(client.serverTeam,bot.team)) return;
+    damageServerBot(room,bot,clamp(finiteNumber(msg.amount,0),0,250),{
+      kind:'player',
+      id:client.id,
+      name:client.name,
+      client
+    });
   }else if(msg.type === 'player_death'){
-    const snap = msg.snapshot || client.snapshot || {};
-    const x = clamp(Number(snap.x)||0, -HALF_W+50, HALF_W-50);
-    const y = clamp(Number(snap.y)||0, -HALF_H+50, HALF_H-50);
-    const frags = clamp(Number(snap.frags)||0, 0, 80);
-    const dropCount = clamp(12 + frags*1.2, 12, 42);
-    for(let i=0;i<dropCount;i++) spawnSharedFragment(room, 'xp', x+rand(-42,42), y+rand(-42,42));
-    broadcast(room.code, {type:'death_event', clientId:client.id, name:client.name, snapshot:snap, killer:msg.killer||null}, client);
+    const snap=msg.snapshot||client.snapshot||{};
+    client.spawnProtectedUntil=0;
+    if(client.snapshot) client.snapshot.dead=true;
+    const x=clamp(finiteNumber(snap.x,0),-HALF_W+50,HALF_W-50);
+    const y=clamp(finiteNumber(snap.y,0),-HALF_H+50,HALF_H-50);
+    const frags=clamp(finiteNumber(snap.frags,0),0,80);
+    const dropCount=clamp(12+frags*1.2,12,42);
+    for(let i=0;i<dropCount;i++) spawnSharedFragment(room,'xp',x+rand(-42,42),y+rand(-42,42));
+    broadcast(room.code,{type:'death_event',clientId:client.id,name:client.name,snapshot:snap,killer:msg.killer||null},client);
     updateSharedBroadcasts(room);
   }else if(msg.type === 'chat'){
-    broadcast(room.code, {type:'chat', name:client.name, msg:String(msg.msg||'').slice(0,120)}, client);
+    broadcast(room.code,{type:'chat',name:client.name,msg:String(msg.msg||'').slice(0,120)},client);
   }else if(msg.type === 'event'){
-    broadcast(room.code, {...msg, sourceId:client.id}, client);
+    const eventType=safeToken(msg.eventType||msg.name||'',48);
+    broadcast(room.code,{...msg,eventType,sourceId:client.id},client);
   }
 }
 function decodeFrames(client, chunk){
-  client.buffer = client.buffer ? Buffer.concat([client.buffer, chunk]) : chunk;
-  let offset = 0;
-  while(client.buffer.length - offset >= 2){
-    const b0 = client.buffer[offset];
-    const opcode = b0 & 0x0f;
-    const b1 = client.buffer[offset+1];
-    const masked = (b1 & 0x80) !== 0;
-    let len = b1 & 0x7f;
-    let header = 2;
-    if(len === 126){
-      if(client.buffer.length - offset < 4) break;
-      len = client.buffer.readUInt16BE(offset+2); header = 4;
-    }else if(len === 127){
-      if(client.buffer.length - offset < 10) break;
-      const big = client.buffer.readBigUInt64BE(offset+2);
-      if(big > BigInt(10 * 1024 * 1024)){ client.socket.destroy(); return; }
-      len = Number(big); header = 10;
+  if(!Buffer.isBuffer(chunk) || !chunk.length) return;
+  client.lastSeen=Date.now();
+  client.buffer=client.buffer?Buffer.concat([client.buffer,chunk]):chunk;
+  if(client.buffer.length>MAX_FRAME_BYTES*2){client.socket.destroy();return;}
+  let offset=0;
+  while(client.buffer.length-offset>=2){
+    const b0=client.buffer[offset];
+    const opcode=b0&0x0f;
+    const b1=client.buffer[offset+1];
+    const masked=(b1&0x80)!==0;
+    let len=b1&0x7f;
+    let header=2;
+    if(len===126){
+      if(client.buffer.length-offset<4) break;
+      len=client.buffer.readUInt16BE(offset+2); header=4;
+    }else if(len===127){
+      if(client.buffer.length-offset<10) break;
+      const big=client.buffer.readBigUInt64BE(offset+2);
+      if(big>BigInt(MAX_FRAME_BYTES)){client.socket.destroy();return;}
+      len=Number(big); header=10;
     }
-    const maskBytes = masked ? 4 : 0;
-    if(client.buffer.length - offset < header + maskBytes + len) break;
-    let payload = client.buffer.subarray(offset + header + maskBytes, offset + header + maskBytes + len);
+    if(len>MAX_FRAME_BYTES){client.socket.destroy();return;}
+    const maskBytes=masked?4:0;
+    if(client.buffer.length-offset<header+maskBytes+len) break;
+    let payload=client.buffer.subarray(offset+header+maskBytes,offset+header+maskBytes+len);
     if(masked){
-      const mask = client.buffer.subarray(offset + header, offset + header + 4);
-      payload = Buffer.from(payload.map((byte, i) => byte ^ mask[i % 4]));
+      const mask=client.buffer.subarray(offset+header,offset+header+4);
+      payload=Buffer.from(payload.map((byte,i)=>byte^mask[i%4]));
     }
-    offset += header + maskBytes + len;
-    if(opcode === 0x8){ client.socket.end(); return; }
-    if(opcode === 0x9){ sendPong(client); continue; }
-    if(opcode !== 0x1) continue;
-    try{ handleMessage(client, JSON.parse(payload.toString('utf8'))); }catch(e){}
+    offset+=header+maskBytes+len;
+    if(opcode===0x8){client.socket.end();return;}
+    if(opcode===0x9){sendPong(client);continue;}
+    if(opcode!==0x1) continue;
+    try{
+      const parsed=JSON.parse(payload.toString('utf8'));
+      handleMessage(client,parsed);
+    }catch(e){
+      if(Date.now()-(client.lastParseErrorAt||0)>5000){
+        client.lastParseErrorAt=Date.now();
+        console.warn('[Fragment.io] Ignored malformed client packet:',e.message);
+      }
+    }
   }
-  client.buffer = client.buffer.subarray(offset);
+  client.buffer=client.buffer.subarray(offset);
 }
 function sendPong(client){ try{ client.socket.write(Buffer.from([0x8a, 0])); }catch(e){} }
 function serveFile(req, res){
-  const parsed = url.parse(req.url).pathname;
-  let filePath = parsed === '/' ? path.join(ROOT, 'index.html') : path.join(ROOT, decodeURIComponent(parsed));
-  if(!filePath.startsWith(ROOT)){ res.writeHead(403); res.end('Forbidden'); return; }
-  fs.readFile(filePath, (err, data) => {
-    if(err){ res.writeHead(404); res.end('Not found'); return; }
-    const ext = path.extname(filePath).toLowerCase();
-    const type = ext === '.html' ? 'text/html; charset=utf-8' : ext === '.js' ? 'text/javascript; charset=utf-8' : ext === '.css' ? 'text/css; charset=utf-8' : 'application/octet-stream';
-    res.writeHead(200, {'Content-Type': type, 'Cache-Control':'no-store'});
+  let pathname;
+  try{ pathname=decodeURIComponent(url.parse(req.url).pathname||'/'); }
+  catch(e){ res.writeHead(400,{'Content-Type':'text/plain; charset=utf-8'}); res.end('Bad Request'); return; }
+  if(pathname==='/') pathname='/index.html';
+  const filePath=path.resolve(ROOT,'.'+pathname);
+  if(filePath!==ROOT && !filePath.startsWith(ROOT+path.sep)){
+    res.writeHead(403,{'Content-Type':'text/plain; charset=utf-8'}); res.end('Forbidden'); return;
+  }
+  fs.readFile(filePath,(err,data)=>{
+    if(err){res.writeHead(404,{'Content-Type':'text/plain; charset=utf-8'});res.end('Not found');return;}
+    const types={
+      '.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8',
+      '.json':'application/json; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg',
+      '.gif':'image/gif','.svg':'image/svg+xml','.ico':'image/x-icon','.webp':'image/webp',
+      '.mp3':'audio/mpeg','.wav':'audio/wav','.ogg':'audio/ogg'
+    };
+    res.writeHead(200,{'Content-Type':types[path.extname(filePath).toLowerCase()]||'application/octet-stream','Cache-Control':'no-store'});
     res.end(data);
   });
 }
@@ -734,24 +1086,46 @@ server.on('upgrade', (req, socket) => {
     `Sec-WebSocket-Accept: ${accept}`,
     '', ''
   ].join('\r\n'));
-  const client = {id:id(), socket, room:null, name:'Player', snapshot:null, buffer:null, ready:false, inMatch:false};
+  const client = {id:id(), socket, room:null, name:'Player', snapshot:null, buffer:null, ready:false, inMatch:false, serverTeam:'neutral', spawnProtectedUntil:0, lastSeen:Date.now(), lastParseErrorAt:0};
   clients.add(client);
   socket.on('data', chunk => decodeFrames(client, chunk));
   socket.on('close', () => { removeFromRoom(client); clients.delete(client); });
   socket.on('error', () => { removeFromRoom(client); clients.delete(client); });
 });
-setInterval(() => {
-  for(const [code, room] of rooms){
-    if(room.clients.size === 0){ rooms.delete(code); continue; }
-    updateServerBots(room, 50);
-    updateSharedWorld(room, 50);
-    updateSharedBosses(room, 50);
+function tickRoomSafely(code, room, dt){
+  try{
+    updateServerBots(room,dt);
+    updateSharedWorld(room,dt);
+    updateSharedBosses(room,dt);
     updateSharedBroadcasts(room);
+  }catch(err){
+    const now=Date.now();
+    if(now-(room.lastErrorAt||0)>4000){
+      room.lastErrorAt=now;
+      console.error(`[Fragment.io] Recovered room ${code} tick error:`,err);
+    }
   }
-}, 50);
-setInterval(() => {
-  for(const [code, room] of rooms){ if(room.clients.size === 0) rooms.delete(code); else broadcastLobby(room); }
-}, 5000);
+}
+setInterval(()=>{
+  for(const [code,room] of rooms){
+    if(room.clients.size===0){rooms.delete(code);continue;}
+    tickRoomSafely(code,room,50);
+  }
+},50);
+setInterval(()=>{
+  const now=Date.now();
+  for(const [code,room] of rooms){
+    if(room.clients.size===0){rooms.delete(code);continue;}
+    for(const client of [...room.clients]){
+      if(client.socket.destroyed || now-(client.lastSeen||now)>90000){
+        try{client.socket.destroy();}catch(e){}
+        removeFromRoom(client);
+        clients.delete(client);
+      }
+    }
+    if(room.clients.size) broadcastLobby(room);
+  }
+},5000);
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Fragment.io multiplayer server running on port ${PORT}`);
   console.log("Leader chooses the mode. Everyone in the room must press READY before the match starts.");
