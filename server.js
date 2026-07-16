@@ -103,6 +103,27 @@ function sanitizeSnapshot(client, room, raw){
   snap.bulletEater = finiteNumber(raw.bulletEater,0,0,30);
   snap.invisible = finiteNumber(raw.invisible,0,0,30);
   snap.abilities = Array.isArray(raw.abilities) ? raw.abilities.slice(0,5).map(v=>v==null?null:safeToken(v,48)) : [];
+  snap.clones = Array.isArray(raw.clones) ? raw.clones.slice(0,3).map((clone,index)=>{
+    clone = clone && typeof clone==='object' ? clone : {};
+    const cloneMaxHp=finiteNumber(clone.maxHp,Math.max(1,maxHp*.55),1,100000);
+    return {
+      cloneId:safeToken(clone.cloneId||('clone_'+index),64)||('clone_'+index),
+      name:safeName(clone.name||`${snap.name} Clone ${index+1}`),
+      x:finiteNumber(clone.x,snap.x,-HALF_W,HALF_W),
+      y:finiteNumber(clone.y,snap.y,-HALF_H,HALF_H),
+      vx:finiteNumber(clone.vx,0,-80,80),
+      vy:finiteNumber(clone.vy,0,-80,80),
+      r:finiteNumber(clone.r,Math.max(10,snap.r*.82),4,90),
+      angle:finiteNumber(clone.angle,snap.angle,-Math.PI*8,Math.PI*8),
+      hp:finiteNumber(clone.hp,cloneMaxHp,0,cloneMaxHp),
+      maxHp:cloneMaxHp,
+      dead:!!clone.dead,
+      archetype:safeToken(clone.archetype||snap.archetype,48)||snap.archetype,
+      bodyColor:/^#[0-9a-fA-F]{3,8}$/.test(String(clone.bodyColor||''))?String(clone.bodyColor):'#66d98b',
+      skinKind:safeToken(clone.skinKind||'circle',32)||'circle',
+      invisible:finiteNumber(clone.invisible,0,0,30)
+    };
+  }) : [];
   return snap;
 }
 
@@ -327,7 +348,10 @@ function livePlayerSnapshots(room){
 function botCanTarget(bot, target){
   if(!target || target.dead) return false;
   if(sameCombatTeam(bot.team, target.team)) return false;
-  if(target.kind === 'player' && clientIsInvincible(target.client)) return false;
+  if(target.kind==='player'){
+    if(clientIsInvincible(target.client)) return false;
+    if(finiteNumber(target.invisible,target.client?.snapshot?.invisible||0,0,30)>0.03) return false;
+  }
   return true;
 }
 function nearestTargetForBot(room, bot){
@@ -344,6 +368,7 @@ function nearestTargetForBot(room, bot){
       hp:snap.hp||1, maxHp:snap.maxHp||1,
       team:snap.client.serverTeam||snap.team||'neutral',
       dead:!!snap.dead,
+      invisible:finiteNumber(snap.invisible,0,0,30),
       human:true
     });
   }
@@ -440,6 +465,155 @@ function deliverBotDamage(room, attacker, target, amount, cause){
   }
   return false;
 }
+
+function broadcastBotProjectile(room, bot, angle, options){
+  broadcast(room.code,{
+    type:'bot_projectile',
+    botId:bot.id,
+    bot:botSnapshot(bot),
+    angle,
+    options:{...options,visualOnly:true,networkReplay:true},
+    serial:++room.lastShotSerial
+  });
+}
+function broadcastBotAction(room, bot, action, data={}){
+  broadcast(room.code,{
+    type:'bot_action',
+    botId:bot.id,
+    bot:botSnapshot(bot),
+    action,
+    angle:finiteNumber(data.angle,bot.angle,-Math.PI*8,Math.PI*8),
+    range:finiteNumber(data.range,120,0,1800),
+    width:finiteNumber(data.width,20,0,180),
+    color:String(data.color||bot.bodyColor||'#ffffff').slice(0,24),
+    duration:finiteNumber(data.duration,.22,.03,4),
+    label:String(data.label||'').slice(0,30)
+  });
+}
+function botProjectileHitChance(bot,target,shotAngle,base=.28){
+  const trueAngle=Math.atan2(target.y-bot.y,target.x-bot.x);
+  const error=Math.abs(angleDiff(shotAngle,trueAngle));
+  const d=dist(bot,target);
+  const distanceBonus=clamp(1-d/940,.04,.58);
+  return {
+    error,
+    chance:clamp(base+distanceBonus*.42-error*.92,.05,.72)*clamp(bot.confidence||.85,.55,1)
+  };
+}
+function tryBotProjectileDamage(room,bot,target,shotAngle,damage,baseAccuracy,cause='projectile'){
+  const roll=botProjectileHitChance(bot,target,shotAngle,baseAccuracy);
+  if(roll.error<.36 && Math.random()<roll.chance){
+    deliverBotDamage(room,bot,target,damage,cause);
+    return true;
+  }
+  return false;
+}
+function performServerBotClassAttack(room,bot,target,angle,distance){
+  const a=bot.archetype||'starter';
+  const col=bot.bodyColor||'#ff775d';
+  const shoot=(ang,opt,accuracy=.28,cause='projectile')=>{
+    broadcastBotProjectile(room,bot,ang,opt);
+    return tryBotProjectileDamage(room,bot,target,ang,opt.dmg||5,accuracy,cause);
+  };
+
+  if(['swordsman','samurai','ronin','bloodlord'].includes(a)){
+    const range=a==='ronin'?150:a==='bloodlord'?138:126;
+    const dmg=a==='ronin'?8.2:a==='bloodlord'?7.1:6.4;
+    broadcastBotAction(room,bot,'slice',{angle,range,color:a==='bloodlord'?'#d84a4a':'#e9f5ff',label:a==='ronin'?'RONIN SLASH':a==='bloodlord'?'BLOOD CUT':'SWORD CUT'});
+    if(distance<range+18){
+      const hit=deliverBotDamage(room,bot,target,dmg,'class_melee');
+      if(hit && a==='bloodlord') bot.hp=Math.min(bot.maxHp,bot.hp+dmg*.32);
+    }
+    return rand(.88,1.24);
+  }
+
+  if(a==='world_eater'){
+    broadcastBotAction(room,bot,'aura',{range:185,color:'#8f6cff',duration:.4,label:'DEVOUR'});
+    if(distance<190) deliverBotDamage(room,bot,target,6.4,'devour_aura');
+    return rand(1.0,1.35);
+  }
+
+  if(a==='solar_lance'){
+    broadcastBotAction(room,bot,'beam',{angle,range:820,width:34,color:'#fff06a',duration:.38,label:'SOLAR LANCE'});
+    const roll=botProjectileHitChance(bot,target,angle,.42);
+    if(distance<820 && roll.error<.085 && Math.random()<Math.min(.78,roll.chance+.16)){
+      deliverBotDamage(room,bot,target,10.2,'solar_lance');
+    }
+    return rand(1.35,1.75);
+  }
+
+  if(a==='azure'){
+    shoot(angle,{
+      kind:'fireball',speed:6.4,life:86,dmg:6.1,color:'#45d8ff',size:8,
+      aoeRadius:72,burnDuration:1.1,burnDmg:1.2,burnColor:'#45d8ff',azure:true,
+      noPool:true,proxRadius:52
+    },.27,'azure_fire');
+    return rand(.88,1.15);
+  }
+
+  if(a==='hakka'){
+    shoot(angle,{kind:'hive',speed:8.2,life:98,dmg:5.2,color:'#66d98b',size:5,homing:true,split:true,splitAt:40},.31,'hakka_round');
+    broadcastBotProjectile(room,bot,angle+.15,{kind:'basic',speed:7.8,life:78,dmg:2.8,color:'#a6ffb9',size:3});
+    broadcastBotProjectile(room,bot,angle-.15,{kind:'basic',speed:7.8,life:78,dmg:2.8,color:'#a6ffb9',size:3});
+    return rand(.82,1.08);
+  }
+
+  if(a==='deadeye' || a==='sniper'){
+    const crit=a==='deadeye' && Math.random()<.26;
+    shoot(angle+rand(-.035,.035),{
+      kind:'basic',speed:11.2,life:155,dmg:crit?11.5:8.6,color:crit?'#ffcf58':'#15191f',size:crit?6:4,crit
+    },.42,'precision_round');
+    return rand(1.18,1.62);
+  }
+
+  if(a==='hydra'){
+    const spread=[-.24,-.12,0,.12,.24];
+    for(const offset of spread){
+      broadcastBotProjectile(room,bot,angle+offset,{kind:'basic',speed:7.6,life:84,dmg:2.5,color:'#263547',size:4});
+    }
+    tryBotProjectileDamage(room,bot,target,angle,6.8,.25,'hydra_volley');
+    return rand(1.02,1.34);
+  }
+
+  if(a==='rocketeer'){
+    shoot(angle,{
+      kind:'rocket',speed:5.4,life:165,dmg:8.4,color:'#ff775d',size:9,guided:true,homing:true,explode:true,explodeRadius:82
+    },.29,'rocket');
+    return rand(1.2,1.58);
+  }
+
+  if(a==='black_star' || a==='gravity_mage'){
+    shoot(angle,{
+      kind:'gravity',speed:6.6,life:135,dmg:a==='black_star'?8.4:6.7,color:a==='black_star'?'#17131f':'#9d80ff',
+      size:a==='black_star'?10:7,homing:true,gravityPower:a==='black_star'?18:12,gravityRadius:a==='black_star'?155:110,
+      createWell:false,blackStar:a==='black_star'
+    },.31,'gravity_orb');
+    return rand(1.12,1.48);
+  }
+
+  if(a==='stormcaller'){
+    broadcastBotAction(room,bot,'lightning',{angle,range:250,color:'#8ae4ff',duration:.28,label:'CHAIN LIGHTNING'});
+    shoot(angle,{
+      kind:'basic',speed:10.1,life:90,dmg:6.8,color:'#8ae4ff',size:6,jumps:2,chainRange:190,staticStacks:1
+    },.34,'lightning');
+    return rand(.98,1.28);
+  }
+
+  if(['bullet_storm','machine','minigunner'].includes(a)){
+    const storm=a==='bullet_storm';
+    shoot(angle+rand(storm?-.12:-.07,storm?.12:.07),{
+      kind:'basic',speed:8.6,life:72,dmg:storm?3.8:4.4,color:'#262d37',size:4
+    },storm?.18:.23,'automatic_fire');
+    if(storm && Math.random()<.34){
+      broadcastBotProjectile(room,bot,angle+rand(-.18,.18),{kind:'basic',speed:8.3,life:68,dmg:2.4,color:'#596574',size:3});
+    }
+    return storm?rand(.32,.48):rand(.48,.68);
+  }
+
+  shoot(angle+rand(-.09,.09),{kind:'basic',speed:7.7,life:94,dmg:5.4,color:col,size:5},.27,'basic');
+  return rand(.78,1.08);
+}
+
 function updateServerBots(room, dt){
   if(!room.matchStarted || !room.bots.length) return;
   const now=Date.now();
@@ -517,30 +691,8 @@ function updateServerBots(room, dt){
           deliverBotDamage(room,bot,t,bot.archetype==='ronin'?7.5:6,'melee');
         }
 
-        if(bot.fireCd<=0 && target.d<720){
-          const rapid=['bullet_storm','machine','minigunner'].includes(bot.archetype);
-          const long=['deadeye','solar_lance','sniper'].includes(bot.archetype);
-          bot.fireCd=rapid?rand(.52,.78):long?rand(1.05,1.5):rand(.78,1.15);
-
-          const spread=long?rand(-.055,.055):rapid?rand(-.14,.14):rand(-.10,.10);
-          const shotAngle=ang+spread+bot.aimError*.35;
-          const shot={
-            kind:'basic',
-            speed:long?8.7:7.6,
-            life:long?112:96,
-            dmg:long?9:rapid?4.2:6.2,
-            color:bot.bodyColor,
-            size:rapid?4:5,
-            visualOnly:true,
-            networkReplay:true
-          };
-          broadcast(room.code,{type:'bot_projectile',botId:bot.id,bot:botSnapshot(bot),angle:shotAngle,options:shot,serial:++room.lastShotSerial});
-
-          const trueAngle=Math.atan2(t.y-bot.y,t.x-bot.x);
-          const error=Math.abs(angleDiff(shotAngle,trueAngle));
-          const distanceAccuracy=clamp(1-target.d/900,.08,.72);
-          const hitChance=clamp((long?.34:rapid?.22:.28)+distanceAccuracy*.38-error*.92,.08,.68)*bot.confidence;
-          if(error<.30 && Math.random()<hitChance) deliverBotDamage(room,bot,t,shot.dmg,'projectile');
+        if(bot.fireCd<=0 && target.d<860){
+          bot.fireCd=performServerBotClassAttack(room,bot,t,ang,target.d);
         }
       }
     }else{
@@ -917,6 +1069,7 @@ function chooseHomingTargetRef(room, sourceClient){
   let best='',bestD=Infinity;
   for(const target of room.clients){
     if(target===sourceClient || !target.snapshot || target.snapshot.dead || clientIsInvincible(target)) continue;
+    if(finiteNumber(target.snapshot.invisible,0,0,30)>0.03) continue;
     if(sameCombatTeam(sourceClient.serverTeam,target.serverTeam)) continue;
     const d=Math.hypot((target.snapshot.x||0)-(owner.x||0),(target.snapshot.y||0)-(owner.y||0));
     if(d<bestD){bestD=d;best='player:'+target.id;}
@@ -1019,6 +1172,7 @@ function handleMessage(client, msg){
     broadcast(room.code,{
       type:'projectile',
       ownerId:client.id,
+      originEntityId:safeToken(msg.originEntityId||'',64),
       angle:finiteNumber(msg.angle,client.snapshot?.angle||0,-Math.PI*8,Math.PI*8),
       options
     },client);

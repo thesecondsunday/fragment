@@ -4503,8 +4503,67 @@ function netSnapshot(ent){
     classPlate:classPlateText(ent)||'', sidegradeLabel:sidegradeDisplayName(ent)||primaryName(ent.archetype||'starter'),
     team:ent.team||'neutral', bodyColor:ent.bodyColor||'#5d8cff', skinKind:ent.skin?.kind==='custom'?'circle':(ent.skin?.kind||'circle'), cosmetics:netSerializableCosmetics(ent),
     spawnInvincible:ent.spawnInvincible||0, reflect:ent.reflect||0, bulletEater:ent.bulletEater||0, invisible:ent.invisible||0,
-    abilities:(ent.abilities||[]).slice(0,5).map(a=>a||null)
+    abilities:(ent.abilities||[]).slice(0,5).map(a=>a||null),
+    clones:(ent.clones||[]).filter(c=>c&&!c.dead).slice(0,3).map(c=>({
+      cloneId:c.cloneId||c.id||'',
+      name:c.name||`${ent.name} Clone`,
+      x:Math.round((c.x||0)*10)/10,y:Math.round((c.y||0)*10)/10,
+      vx:Math.round((c.vx||0)*100)/100,vy:Math.round((c.vy||0)*100)/100,
+      r:c.r||15,angle:c.angle||0,hp:Math.max(0,c.hp||0),maxHp:c.maxHp||1,
+      dead:!!c.dead,archetype:c.archetype||ent.archetype||'cloner',
+      bodyColor:c.bodyColor||'#66d98b',skinKind:c.skin?.kind||'circle',invisible:c.invisible||0
+    }))
   };
+}
+
+function netSyncRemoteClones(owner,list){
+  owner.remoteCloneById=owner.remoteCloneById||new Map();
+  const seen=new Set();
+  for(const snap of (Array.isArray(list)?list:[])){
+    if(!snap || !snap.cloneId) continue;
+    seen.add(snap.cloneId);
+    let clone=owner.remoteCloneById.get(snap.cloneId);
+    if(!clone){
+      clone=createEntity(snap.name||`${owner.name} Clone`,false);
+      clone.id='netclone_'+owner.netClientId+'_'+snap.cloneId;
+      clone.cloneId=snap.cloneId;
+      clone.isClone=true;
+      clone.networkRemoteClone=true;
+      clone.networkRemote=true;
+      clone.cloneOwner=owner;
+      clone.netClientId=owner.netClientId;
+      clone.human=false;
+      clone.ally=owner.ally;
+      clone.team=owner.team;
+      clone.cosmetics={trail:'none',aura:'none',hat:'none'};
+      clone.x=snap.x||owner.x;
+      clone.y=snap.y||owner.y;
+      clone.tx=clone.x;
+      clone.ty=clone.y;
+      owner.remoteCloneById.set(snap.cloneId,clone);
+    }
+    clone.lastNet=performance.now();
+    clone.name=snap.name||clone.name;
+    clone.tx=snap.x??clone.x;
+    clone.ty=snap.y??clone.y;
+    clone.vx=snap.vx||0;
+    clone.vy=snap.vy||0;
+    clone.r=snap.r||15;
+    clone.angle=snap.angle||0;
+    clone.maxHp=snap.maxHp||clone.maxHp;
+    clone.hp=snap.hp??clone.hp;
+    clone.dead=!!snap.dead;
+    clone.archetype=snap.archetype||owner.archetype||'cloner';
+    clone.bodyColor=snap.bodyColor||'#66d98b';
+    clone.skin={kind:snap.skinKind||'circle',image:null};
+    clone.invisible=snap.invisible||0;
+    clone.team=owner.team;
+    clone.ally=owner.ally;
+  }
+  for(const [id,clone] of owner.remoteCloneById){
+    if(!seen.has(id)) owner.remoteCloneById.delete(id);
+  }
+  owner.remoteClones=[...owner.remoteCloneById.values()];
 }
 function netApplySnapshot(snap){
   if(!snap || !snap.id || snap.id===multiplayer.clientId) return;
@@ -4546,6 +4605,7 @@ function netApplySnapshot(snap){
   ent.bodyColor=snap.bodyColor||'#5d8cff'; ent.skin={kind:snap.skinKind||'circle', image:null}; ent.cosmetics=snap.cosmetics||{trail:'none',aura:'none',hat:'none'};
   ent.spawnInvincible=snap.spawnInvincible||0; ent.reflect=snap.reflect||0; ent.bulletEater=snap.bulletEater||0; ent.invisible=snap.invisible||0;
   ent.abilities=Array.isArray(snap.abilities)?snap.abilities.slice(0,5):ent.abilities;
+  netSyncRemoteClones(ent,snap.clones);
 }
 
 function netModeLabel(mode){
@@ -4960,6 +5020,45 @@ function netSpawnBotProjectile(msg){
   const opt={...(msg.options||{}), networkReplay:true, visualOnly:true, serverBotShot:true};
   spawnProjectile(bot, msg.angle||bot.angle||0, opt);
 }
+
+function netReplayBotAction(msg){
+  if(msg.bot) netApplyBotSnapshots([msg.bot],true);
+  const bot=multiplayer.botById.get(msg.botId);
+  if(!bot || bot.dead) return;
+  const action=String(msg.action||'');
+  const angle=Number.isFinite(Number(msg.angle))?Number(msg.angle):bot.angle||0;
+  const range=Number(msg.range)||120;
+  const color=msg.color||bot.bodyColor||'#ffffff';
+
+  if(action==='slice'){
+    bot.slashAnim=.18;
+    bot.slashAngle=angle;
+    bot.slashRange=range;
+    ring(bot.x+Math.cos(angle)*range*.45,bot.y+Math.sin(angle)*range*.45,color,Math.min(120,range*.72));
+    return;
+  }
+  if(action==='beam'){
+    lasers.push({
+      x:bot.x,y:bot.y,angle,owner:bot,warn:.14,life:Number(msg.duration)||.38,
+      beam:true,color,width:Number(msg.width)||30,range,damage:0,visualOnly:true
+    });
+    return;
+  }
+  if(action==='aura'){
+    ring(bot.x,bot.y,color,range);
+    for(let i=0;i<12;i++){
+      const a=i/12*Math.PI*2;
+      particles.push({x:bot.x+Math.cos(a)*range*.45,y:bot.y+Math.sin(a)*range*.45,vx:Math.cos(a)*1.2,vy:Math.sin(a)*1.2,dot:true,size:4,color,life:20});
+    }
+    return;
+  }
+  if(action==='lightning'){
+    ring(bot.x+Math.cos(angle)*70,bot.y+Math.sin(angle)*70,color,90);
+    for(let i=0;i<10;i++){
+      particles.push({x:bot.x+Math.cos(angle)*rand(10,range),y:bot.y+Math.sin(angle)*rand(10,range),vx:rand(-1,1),vy:rand(-1,1),dot:true,size:rand(2,5),color,life:16});
+    }
+  }
+}
 function netApplyBotHit(msg){
   if(!player || player.dead || state.screen!=='play') return;
   const amount=Number(msg.amount)||0;
@@ -4996,6 +5095,13 @@ function updateRemotePlayers(dt){
     ent.reflect=Math.max(0,(ent.reflect||0)-dt/1000);
     ent.bulletEater=Math.max(0,(ent.bulletEater||0)-dt/1000);
     updateCosmeticTrail(ent, dt);
+    for(const clone of (ent.remoteClones||[])){
+      clone.x=lerp(clone.x,clone.tx??clone.x,.34);
+      clone.y=lerp(clone.y,clone.ty??clone.y,.34);
+      clone.invisible=Math.max(0,(clone.invisible||0)-dt/1000);
+      clone.team=ent.team;
+      clone.ally=ent.ally;
+    }
   }
   remotePlayers=[...multiplayer.remoteById.values()];
 }
@@ -5044,11 +5150,15 @@ function netBroadcastProjectile(owner, ang, opt){
   if(options.homing || options.guided || ['rocket','homing','hive','gravity','poison'].includes(options.kind)){
     options.networkTargetRef=netEntityTargetRef(netPreferredHomingTarget(owner));
   }
-  netSend({type:'projectile', ownerId, angle:ang, options});
+  netSend({type:'projectile', ownerId, originEntityId:owner.cloneId||owner.id||'', angle:ang, options});
 }
 function netSpawnProjectile(msg){
-  const owner=multiplayer.remoteById.get(msg.ownerId);
-  if(!owner || owner.dead) return;
+  const parent=multiplayer.remoteById.get(msg.ownerId);
+  if(!parent || parent.dead) return;
+  let owner=parent;
+  if(msg.originEntityId && parent.remoteCloneById?.has(msg.originEntityId)){
+    owner=parent.remoteCloneById.get(msg.originEntityId);
+  }
   const opt={...(msg.options||{}), networkReplay:true};
   spawnProjectile(owner, msg.angle||owner.angle||0, opt);
 }
@@ -5178,6 +5288,7 @@ function netConnectAndJoin(){
     else if(msg.type==='boss_award') netApplyBossAward(msg);
     else if(msg.type==='boss_event') netApplyBossEvent(msg);
     else if(msg.type==='bot_projectile') netSpawnBotProjectile(msg);
+    else if(msg.type==='bot_action') netReplayBotAction(msg);
     else if(msg.type==='bot_hit') netApplyBotHit(msg);
     else if(msg.type==='bot_award') netApplyBotAward(msg);
     else if(msg.type==='bot_killed') addChat('SERVER', (msg.killerName||'Player')+' eliminated '+(msg.botName||'a bot')+'.');
@@ -7630,7 +7741,7 @@ function useAbility(slotIndex){
   const id = player.abilities[slotIndex]; if(!id) return;
   if(id==='copycat' && lastAbilityUsed && lastAbilityUsed!=='copycat'){
     player.abilities[slotIndex] = lastAbilityUsed;
-    notify('Copycat', 'Copied ' + abilities[lastAbilityUsed].name);
+    notify('Copycat', 'Copied ' + (abilities[lastAbilityUsed]?.name||lastAbilityUsed||'Ability'));
     useAbility(slotIndex);
     return;
   }
@@ -7896,7 +8007,7 @@ function updateCloneSystem(dt){
 
 function isHiddenFromAI(target, observer=null){
   if(!target || target.dead || target.boss) return false;
-  if((target.invisible||0) <= 0) return false;
+  if((target.invisible||0) <= 0.03) return false;
   if(observer && observer.human) return false;
   return true;
 }
@@ -8124,7 +8235,7 @@ function tryCollect(ent){
         const added = addAbilityToInventory(ent, f.ability);
         if(ent.isClone && added){ floatText(ent.x, ent.y-28, 'CLONE ABILITY', '#66d98b'); }
         if(!added && ent.human){ giveXP(ent, 12); ent.score += 20; notify('Ability inventory unchanged', 'Already owned or no empty slot'); }
-        if(added && ent.human){ notify('Ability Fragment: ' + abilities[f.ability].name, 'Added to an empty slot'); progressQuest('ability',1); }
+        if(added && ent.human){ notify('Ability Fragment: ' + (abilities[f.ability]?.name||f.ability||'Ability'), 'Added to an empty slot'); progressQuest('ability',1); }
       } else if(f.kind==='evo'){
         const added = addCoreFragment(ent, f.core);
         const def = coreFragmentDefs[f.core];
@@ -10898,12 +11009,14 @@ function updateAbilitySystems(dt){
     const l=lasers[i]; l.warn-=dt/1000; l.life-=dt/1000;
     if(l.warn<=0 && !l.fired){
       l.fired=true; ring(l.x,l.y,'#ff4d5e',96);
-      const targets=allTargets(l.owner);
-      for(const t of targets){
-        const dx=t.x-l.x, dy=t.y-l.y;
-        const forward=dx*Math.cos(l.angle)+dy*Math.sin(l.angle);
-        const side=Math.abs(-dx*Math.sin(l.angle)+dy*Math.cos(l.angle));
-        if(forward>0 && forward<l.range && side<l.width) hitEntity(t,l.damage,l.owner);
+      if(!l.visualOnly){
+        const targets=allTargets(l.owner);
+        for(const t of targets){
+          const dx=t.x-l.x, dy=t.y-l.y;
+          const forward=dx*Math.cos(l.angle)+dy*Math.sin(l.angle);
+          const side=Math.abs(-dx*Math.sin(l.angle)+dy*Math.cos(l.angle));
+          if(forward>0 && forward<l.range && side<l.width) hitEntity(t,l.damage,l.owner);
+        }
       }
       for(let k=0;k<18;k++) particles.push({x:l.x+Math.cos(l.angle)*rand(20,l.range*.22),y:l.y+Math.sin(l.angle)*rand(20,l.range*.22),vx:rand(-1.2,1.2),vy:rand(-1.2,1.2),dot:true,size:rand(2,4),color:'#ffb4ba',life:18});
       if(!l.beam) tone(90,0.18,'sawtooth',0.06);
@@ -11400,11 +11513,13 @@ const cloneMax=maxClonesFor(player); ui.cloneControls.style.display=(!selfburnOn
   for(let i=0;i<5;i++){
     const slot = document.createElement('div'); slot.className = 'slot' + (i===0?' locked':'');
     const val = player.abilities[i];
-    const name = i===0 ? sidegradeDisplayName(player) : (val ? abilities[val].name : 'Empty');
+    const abilityDef = val && abilities[val] ? abilities[val] : null;
+    if(i>0 && val && !abilityDef) player.abilities[i]=null;
+    const name = i===0 ? sidegradeDisplayName(player) : (abilityDef ? abilityDef.name : 'Empty');
     const abilityActions=['ability1','ability2','ability3','ability4'];
     const bind = i===0 ? displayBind('primary') : displayBind(abilityActions[i-1]);
-    const icon = i===0 ? iconSpan(evoIcon(player.archetype),'evoIcon') : (val ? iconSpan(abilityIcon(val),'abilityIcon') : iconSpan(bind,'abilityIcon'));
-    const hint = i===0 ? (player.archetype==='selfburn' ? 'Hold '+bind+' to charge matter, release to fire' : (sidegradeMajor(player)?'Primary weapon · '+sidegradeDisplayName(player):'Primary weapon')) : (val ? abilities[val].desc : bind + ' slot');
+    const icon = i===0 ? iconSpan(evoIcon(player.archetype),'evoIcon') : (abilityDef ? iconSpan(abilityIcon(val),'abilityIcon') : iconSpan(bind,'abilityIcon'));
+    const hint = i===0 ? (player.archetype==='selfburn' ? 'Hold '+bind+' to charge matter, release to fire' : (sidegradeMajor(player)?'Primary weapon · '+sidegradeDisplayName(player):'Primary weapon')) : (abilityDef ? abilityDef.desc : bind + ' slot');
     slot.innerHTML = `<div class="num">${bind}</div><div class="name">${icon}${name}</div><div class="hint">${hint}</div>`;
     ui.slots.appendChild(slot);
   }
@@ -12765,6 +12880,13 @@ function drawMiniMap(){
     mctx.fillStyle=teammate?'#7cf7ff':'#ff7d88';
     mctx.beginPath(); mctx.arc(x,y,teammate?3.0:2.4,0,Math.PI*2); mctx.fill();
     mctx.strokeStyle=teammate?'#ffffff':'#17212d'; mctx.lineWidth=teammate?1.4:1; mctx.stroke();
+    for(const c of (r.remoteClones||[])){
+      if(c.dead) continue;
+      mctx.fillStyle='#66d98b';
+      mctx.beginPath();
+      mctx.arc((c.x+HALF_W)*sx,(c.y+HALF_H)*sy,1.7,0,Math.PI*2);
+      mctx.fill();
+    }
   }
   for(const b of bosses){
     if(b.dead) continue;
@@ -12981,7 +13103,10 @@ function draw(){
     drawAbilityObjects(cam.x,cam.y);
     drawProjectiles(cam.x,cam.y);
     for(const c of (player.clones||[])) drawEntity(c,cam.x,cam.y);
-    for(const r of remotePlayers) drawEntity(r,cam.x,cam.y);
+    for(const r of remotePlayers){
+      for(const c of (r.remoteClones||[])) drawEntity(c,cam.x,cam.y);
+      drawEntity(r,cam.x,cam.y);
+    }
     for(const b of bots) drawEntity(b,cam.x,cam.y);
     for(const b of bosses) drawEntity(b,cam.x,cam.y);
     drawEntity(player,cam.x,cam.y);
