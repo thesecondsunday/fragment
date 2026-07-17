@@ -43,6 +43,13 @@ function cleanMode(v){
 }
 function modeRules(mode){ return MODE_RULES[cleanMode(mode)] || MODE_RULES.normal; }
 function roomCapacity(room){ return modeRules(room?.mode).capacity; }
+function roomJoinWindowOpen(room){
+  if(!room || !room.matchStarted) return false;
+  const rules=modeRules(room.mode);
+  if(!rules.joinMid || room.mode==='br' || room.mode==='test') return false;
+  if(room.mode==='bossrush') return !!room.bossRushJoinOpen;
+  return true;
+}
 function cleanUserId(v){ return String(v||'').trim().toLowerCase().replace(/[^a-f0-9-]/g,'').slice(0,36); }
 function partyCode(){ return 'P-'+crypto.randomBytes(4).toString('hex').toUpperCase(); }
 function matchCode(){ return 'M-'+crypto.randomBytes(5).toString('hex').toUpperCase(); }
@@ -195,9 +202,13 @@ function makeRoom(code){
     lastErrorAt:0,
     lastSquadLimitNotice:0,
     createdAt:Date.now(),
+    startedAt:0,
+    lastBackfillAt:0,
     emptySince:0,
     fillBots:true,
-    matchmaking:false
+    matchmaking:false,
+    bossRushJoinOpen:false,
+    bossRushPhase:'closed'
   };
 }
 function getRoom(code){
@@ -367,6 +378,10 @@ function startMatch(room){
   room.matchId++;
   assignRoomTeams(room);
   const now=Date.now();
+  room.startedAt=now;
+  room.lastBackfillAt=now;
+  room.bossRushJoinOpen=room.mode==='bossrush';
+  room.bossRushPhase=room.mode==='bossrush'?'preparation':'closed';
   for(const c of room.clients){
     c.inMatch = true;
     c.spawnProtectedUntil = now + 2600;
@@ -1188,7 +1203,9 @@ function sanitizeProjectileOptions(room, client, raw){
 }
 
 function joinClientToRoom(client, room, options={}){
+  const requestedMatchTeam=options.matchTeam==='blue'||options.matchTeam==='red'?options.matchTeam:null;
   removeFromRoom(client,{keepSnapshot:false});
+  if(requestedMatchTeam) client.matchTeam=requestedMatchTeam;
   client.room=room.code;
   client.role='player';
   client.name=safeName(options.name||client.profile?.username||client.name||'Player');
@@ -1209,7 +1226,7 @@ function joinClientToRoom(client, room, options={}){
   if(room.matchStarted){
     client.inMatch=true;
     const near=options.spawnNearClient?.snapshot ? {x:options.spawnNearClient.snapshot.x||0,y:options.spawnNearClient.snapshot.y||0} : null;
-    send(client,{type:'match_start',mode:room.mode,matchId:room.matchId,startedAt:Date.now(),lateJoin:true,spawnNear:near});
+    send(client,{type:'match_start',mode:room.mode,matchId:room.matchId,startedAt:room.startedAt||Date.now(),lateJoin:true,quickPlayBackfill:!!options.quickPlayBackfill,spawnNear:near});
     send(client,{type:'bots_state',mode:room.mode,bots:room.bots.map(botSnapshot)});
     sendSharedState(client,room,true);
     if(room.mode!=='br') reconcileServerBots(room);
@@ -1289,7 +1306,7 @@ function presenceFor(viewer,target){
   if(!privacyAllows(settings.show_status||'friends',isFriend,isParty)) return {status:'online'};
   const room=target.room?rooms.get(target.room):null;
   const allowSpectate=room && modeRules(room.mode).spectate && privacyAllows(settings.allow_spectate||'friends',isFriend,isParty);
-  const allowJoin=room && target.inMatch && modeRules(room.mode).joinMid && room.clients.size<roomCapacity(room) && privacyAllows(settings.allow_join||'friends',isFriend,isParty);
+  const allowJoin=room && target.inMatch && roomJoinWindowOpen(room) && room.clients.size<roomCapacity(room) && privacyAllows(settings.allow_join||'friends',isFriend,isParty);
   return {
     status,
     mode:room?.mode||party?.mode||null,
@@ -1371,6 +1388,7 @@ function queueEntry(client,mode,asParty=true,fillBots=true){
     for(let i=list.length-1;i>=0;i--) if(list[i].userIds.some(id=>userIds.includes(id))) list.splice(i,1);
   }
   const entry={id:'Q-'+id(4),partyId,userIds,mode,fillBots:fillBots!==false,queuedAt:Date.now()};
+  if(tryBackfillQueueEntry(entry)) return;
   if(!matchQueues.has(mode)) matchQueues.set(mode,[]);
   matchQueues.get(mode).push(entry);
   for(const uid of userIds) for(const c of allOnlineClientsForUser(uid)){ c.queueId=entry.id; send(c,{type:'queue_state',active:true,mode,players:userIds.length,target:targetPopulationForMode(mode,userIds.length),startIn:Math.ceil(rules.waitMs/1000)}); }
@@ -1394,6 +1412,81 @@ function assignTeamsForEntries(room,entries){
     if(team==='blue') blue+=entry.userIds.length; else red+=entry.userIds.length;
   }
 }
+
+function chooseBackfillTeam(room,groupSize){
+  if(room.mode!=='teams') return null;
+  const perTeam=Math.floor(roomCapacity(room)/2);
+  let blue=0,red=0;
+  for(const c of room.clients){
+    const team=c.serverTeam||c.matchTeam;
+    if(team==='blue') blue++;
+    else if(team==='red') red++;
+  }
+  const choices=[];
+  if(blue+groupSize<=perTeam) choices.push({team:'blue',count:blue});
+  if(red+groupSize<=perTeam) choices.push({team:'red',count:red});
+  choices.sort((a,b)=>a.count-b.count || (a.team==='blue'?-1:1));
+  return choices[0]?.team||null;
+}
+function findOngoingBackfillRoom(mode,groupSize){
+  mode=cleanMode(mode);
+  if(mode==='br'||mode==='test') return null;
+  const candidates=[];
+  for(const room of rooms.values()){
+    if(!room.matchmaking || !room.matchStarted || room.mode!==mode) continue;
+    if(!roomJoinWindowOpen(room) || room.clients.size<=0) continue;
+    if(room.clients.size+groupSize>roomCapacity(room)) continue;
+    const team=chooseBackfillTeam(room,groupSize);
+    if(mode==='teams'&&!team) continue;
+    candidates.push({room,team});
+  }
+  candidates.sort((a,b)=>{
+    const playerDiff=a.room.clients.size-b.room.clients.size;
+    if(playerDiff) return playerDiff;
+    const ageA=Date.now()-(a.room.startedAt||a.room.createdAt||0);
+    const ageB=Date.now()-(b.room.startedAt||b.room.createdAt||0);
+    if(ageA!==ageB) return ageA-ageB;
+    return (a.room.lastBackfillAt||0)-(b.room.lastBackfillAt||0);
+  });
+  return candidates[0]||null;
+}
+function finishQueuedPartyEntry(entry){
+  if(!entry.partyId) return;
+  const party=parties.get(entry.partyId);
+  if(!party) return;
+  party.queued=false;
+  party.queueId=null;
+  for(const uid of party.members) party.ready.set(uid,false);
+  broadcastParty(party);
+}
+function tryBackfillQueueEntry(entry){
+  const members=queueMembersForEntry(entry);
+  if(members.length!==entry.userIds.length) return false;
+  const candidate=findOngoingBackfillRoom(entry.mode,members.length);
+  if(!candidate) return false;
+  const {room,team}=candidate;
+  const existingPlayers=room.clients.size;
+  const replacedBots=Math.min(members.length,room.bots.filter(bot=>!bot.dead).length);
+  const projectedPlayers=existingPlayers+members.length;
+  const elapsed=Math.max(0,Math.floor((Date.now()-(room.startedAt||Date.now()))/1000));
+
+  for(const client of members){
+    client.queueId=null;
+    if(team) client.matchTeam=team;
+    send(client,{type:'queue_state',active:false});
+    send(client,{
+      type:'match_found',mode:room.mode,players:projectedPlayers,capacity:roomCapacity(room),
+      ongoing:true,backfill:true,replacedBots,elapsed
+    });
+  }
+  for(const client of members){
+    joinClientToRoom(client,room,{mode:room.mode,name:client.name,quickPlayBackfill:true,matchTeam:team});
+  }
+  room.lastBackfillAt=Date.now();
+  finishQueuedPartyEntry(entry);
+  for(const uid of entry.userIds) broadcastPresenceForUser(uid);
+  return true;
+}
 function startQueuedMatch(mode,entries){
   const room=getRoom(matchCode());
   room.mode=mode; room.matchmaking=true; room.fillBots=entries.some(e=>e.fillBots!==false); room.matchStarted=false;
@@ -1403,7 +1496,7 @@ function startQueuedMatch(mode,entries){
       const c=onlineClientForUser(uid);
       if(!c) continue;
       c.queueId=null;
-      joinClientToRoom(c,room,{mode,name:c.name});
+      joinClientToRoom(c,room,{mode,name:c.name,matchTeam:c.matchTeam});
       send(c,{type:'match_found',mode,players:entries.reduce((n,e)=>n+e.userIds.length,0),capacity:roomCapacity(room)});
     }
     if(entry.partyId){ const p=parties.get(entry.partyId); if(p){p.queued=false;p.queueId=null;for(const uid of p.members)p.ready.set(uid,false);broadcastParty(p);} }
@@ -1414,7 +1507,12 @@ function startQueuedMatch(mode,entries){
 function processMatchQueues(){
   const now=Date.now();
   for(const [mode,list] of matchQueues){
-    const valid=list.filter(entry=>queueMembersForEntry(entry).length===entry.userIds.length);
+    let valid=list.filter(entry=>queueMembersForEntry(entry).length===entry.userIds.length);
+    const remaining=[];
+    for(const entry of valid.sort((a,b)=>a.queuedAt-b.queuedAt)){
+      if(!tryBackfillQueueEntry(entry)) remaining.push(entry);
+    }
+    valid=remaining;
     matchQueues.set(mode,valid);
     if(!valid.length) continue;
     const rules=modeRules(mode);
@@ -1464,7 +1562,7 @@ function spectateFriend(client,targetUserId){
   if(!modeRules(room.mode).spectate || !privacyAllows(settings.allow_spectate||'friends',true,samePartyUsers(client,target))) return send(client,{type:'social_error',message:'Spectating is disabled for this match.'});
   removeFromRoom(client);
   client.room=room.code; client.role='spectator'; client.inMatch=false; room.spectators.add(client); room.emptySince=0;
-  const canJoin=modeRules(room.mode).joinMid && room.mode!=='br' && room.clients.size<roomCapacity(room) && privacyAllows(settings.allow_join||'friends',true,samePartyUsers(client,target));
+  const canJoin=roomJoinWindowOpen(room) && room.clients.size<roomCapacity(room) && privacyAllows(settings.allow_join||'friends',true,samePartyUsers(client,target));
   send(client,{type:'spectator_start',mode:room.mode,matchId:room.matchId,targetUserId,targetClientId:target.id,targetName:target.name,joinable:!!canJoin});
   const peers=peersFor(client); if(peers.length) send(client,{type:'peers',peers});
   send(client,{type:'bots_state',mode:room.mode,bots:room.bots.map(botSnapshot)}); sendSharedState(client,room,true);
@@ -1476,10 +1574,10 @@ function joinFriend(client,targetUserId){
   const target=onlineClientForUser(targetUserId); const room=target?.room?rooms.get(target.room):null;
   if(!target || !room || !target.inMatch) return send(client,{type:'join_denied',message:'That friend is no longer in a match.'});
   const rules=modeRules(room.mode),settings=target.profile?.profile_settings||{};
-  if(!rules.joinMid || room.mode==='br') return send(client,{type:'join_denied',message:'Joining is closed for Battle Royale and locked matches.'});
+  if(!roomJoinWindowOpen(room)) return send(client,{type:'join_denied',message:room.mode==='bossrush'?'Boss Rush can only be joined between boss phases.':'Joining is closed for Battle Royale and locked matches.'});
   if(room.clients.size>=rules.capacity) return send(client,{type:'join_denied',message:'That match is full.'});
   if(!privacyAllows(settings.allow_join||'friends',true,samePartyUsers(client,target))) return send(client,{type:'join_denied',message:'That friend does not allow joining.'});
-  joinClientToRoom(client,room,{mode:room.mode,name:client.name,spawnNearClient:target});
+  joinClientToRoom(client,room,{mode:room.mode,name:client.name,spawnNearClient:target,matchTeam:room.mode==='teams'?target.serverTeam:null});
   send(client,{type:'social_notice',message:'Joined '+target.name+'\'s match.'});
 }
 function handleMessage(client, msg){
@@ -1544,6 +1642,11 @@ function handleMessage(client, msg){
     }
     broadcastLobby(room);
     maybeStartMatch(room);
+  }else if(msg.type === 'bossrush_join_window'){
+    if(room.mode!=='bossrush' || client.id!==room.leaderId) return;
+    room.bossRushJoinOpen=!!msg.open;
+    room.bossRushPhase=safeToken(msg.phase||'phase',32)||'phase';
+    for(const c of room.clients) broadcastPresenceForUser(c.userId);
   }else if(msg.type === 'state'){
     client.snapshot=sanitizeSnapshot(client,room,msg.snapshot);
     broadcast(room.code,{type:'peer_state',clientId:client.id,snapshot:client.snapshot},client);

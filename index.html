@@ -3705,7 +3705,17 @@ body.guestAccount .menuModal[data-modal="gacha"] .rollBtn,body.guestAccount .men
       </div>
     </div>
 
-    <div id="mythicPullOverlay"><div class="mythicShard s1"></div><div class="mythicShard s2"></div><div class="mythicShard s3"></div><div class="mythicShard s4"></div><div class="mythicCutin"><div class="mythicBadge">MYTHIC</div><div id="mythicCutinName">MYTHIC</div><div id="mythicCutinSub">LIMITED COSMETIC</div></div></div>
+    <div id="mythicPullOverlay" aria-hidden="true">
+      <div class="mythicNoise"></div><div class="mythicFlash"></div>
+      <div class="mythicShard s1"></div><div class="mythicShard s2"></div><div class="mythicShard s3"></div><div class="mythicShard s4"></div><div class="mythicShard s5"></div><div class="mythicShard s6"></div>
+      <div class="mythicCutin">
+        <div class="mythicBadge">MYTHIC ACQUIRED</div>
+        <div class="mythicPreviewFrame"><canvas id="mythicCutinPreview" width="240" height="240"></canvas><div class="mythicPreviewRing"></div></div>
+        <div id="mythicCutinName">MYTHIC</div>
+        <div id="mythicCutinSub">LIMITED COSMETIC</div>
+        <div id="mythicCutinHint">CLICK TO CONTINUE</div>
+      </div>
+    </div>
 
     <div class="menuModal" data-modal="shop">
       <div class="modalCard compactWindow smallWindow">
@@ -4475,6 +4485,13 @@ let bountyTarget=null, currentQuest=null, questTick=0, bountyTick=0, announcemen
 let gameMode='normal', partyMembers=[], friends=[];
 let remotePlayers=[];
 let bossRush={active:false,wave:0,spawnDelay:0,complete:false,arenaR:720,sequence:[],selectedBoss:'elevator_authority',countdown:0,started:false};
+let bossRushJoinWindowState='';
+function setBossRushJoinWindow(open,phase){
+  const next=(open?'1':'0')+':'+String(phase||'phase');
+  if(next===bossRushJoinWindowState) return;
+  bossRushJoinWindowState=next;
+  if(multiplayer.connected&&multiplayer.matchStarted&&gameMode==='bossrush') netSend({type:'bossrush_join_window',open:!!open,phase:String(phase||'phase')});
+}
 let br={active:false, spawnPhase:false, selected:null, timer:0, centerX:0, centerY:0, radius:HALF_W, stormActive:false, stormAppear:60, nextShrink:90, warned:false, stormPulse:0, phase:0, damageTick:0, victory:false, dropped:false};
 
 const multiplayer={
@@ -4786,7 +4803,7 @@ function startOnlineMatchFromServer(mode,msg={}){
   if(ui.modeSel && gameMode!=='bossrush') ui.modeSel.value = gameMode;
   multiplayer.matchStarted=true;
   multiplayer.startingFromServer=true;
-  notify('Match found', 'Starting '+netModeLabel(gameMode));
+  notify(msg.quickPlayBackfill?'Joining ongoing match':'Match found', (msg.quickPlayBackfill?'Backfilling ':'Starting ')+netModeLabel(gameMode));
   clearInterval(showLoadingThenStart._timer);
   showLoadingThenStart._directOnline = true;
   showLoadingThenStart();
@@ -5353,7 +5370,14 @@ function handleFragmentNetworkMessage(msg){
   if(msg.type==='queue_state'){socialState.queue=msg.active?msg:null;renderQueueState();return;}
   if(msg.type==='queue_error'||msg.type==='social_error'||msg.type==='join_denied'){notify('Social',msg.message||'Request rejected.');return;}
   if(msg.type==='social_notice'){notify('Social',msg.message||'Done.');return;}
-  if(msg.type==='match_found'){socialState.queue=null;renderQueueState();notify('Match found',netModeLabel(msg.mode)+' · '+msg.players+' real player'+(msg.players===1?'':'s'));return;}
+  if(msg.type==='match_found'){
+    socialState.queue=null;renderQueueState();
+    if(msg.ongoing){
+      const botText=msg.replacedBots?` · replacing ${msg.replacedBots} bot${msg.replacedBots===1?'':'s'}`:'';
+      notify('Ongoing match found',netModeLabel(msg.mode)+' · '+msg.players+'/'+msg.capacity+' players'+botText);
+    }else notify('Match found',netModeLabel(msg.mode)+' · '+msg.players+' real player'+(msg.players===1?'':'s'));
+    return;
+  }
   if(msg.type==='spectator_start'){beginSpectating(msg);return;}
   if(msg.type==='left_match'){socialState.queue=null;renderQueueState();socialState.spectating=false;socialState.pendingSpectator=false;socialState.currentMatch=null;return;}
   if(msg.type==='welcome'){multiplayer.clientId=msg.clientId;multiplayer.room=msg.room||multiplayer.room;multiplayer.joinedRoom=multiplayer.room;netBroadcastState(true);return;}
@@ -5363,7 +5387,7 @@ function handleFragmentNetworkMessage(msg){
     socialState.spectating=false;
     socialState.pendingSpectator=false;
     socialState.pendingSpawn=msg.spawnNear||null;
-    if(msg.lateJoin) recordPersistentEvent('join_friend');
+    if(msg.lateJoin && !msg.quickPlayBackfill) recordPersistentEvent('join_friend');
     startOnlineMatchFromServer(msg.mode,msg);
     return;
   }
@@ -6714,7 +6738,33 @@ function rollOneResult(key){ const rarity=chooseRarityWithPity(key); const item=
 function rarityRank(r){ return ({common:0,rare:1,epic:2,legendary:3,mythic:4})[r]||0; }
 function highestResult(results){ return results.slice().sort((a,b)=>rarityRank(b.item.rarity)-rarityRank(a.item.rarity))[0]; }
 function playRollSfx(rarity='common', ten=false){ const map={common:[260],rare:[360,520],epic:[420,620,780],legendary:[520,760,980,1240],mythic:[180,240,480,720,960,1280,1600]}; (map[rarity]||map.common).forEach((f,i)=>setTimeout(()=>tone(f,ten?0.048:0.065,i%2?'triangle':'square',rarity==='mythic'?0.042:0.028),i*(ten?48:75))); }
-function showMythicCutin(item, bannerName){ const overlay=$('mythicPullOverlay'), name=$('mythicCutinName'), sub=$('mythicCutinSub'); if(!overlay) return 0; if(name) name.textContent=item.name; if(sub) sub.textContent=(item.limited?'LIMITED · ':'')+bannerName+' · '+typeLabel(item.type); overlay.classList.remove('show'); void overlay.offsetWidth; overlay.classList.add('show'); [120,180,260,520,780,1040,1440,1760].forEach((f,i)=>setTimeout(()=>tone(f,0.08,i%2?'sawtooth':'square',0.05),i*85)); setTimeout(()=>overlay.classList.remove('show'),1700); return 1750; }
+function drawMythicCutinPreview(item){
+  const canvas=$('mythicCutinPreview');if(!canvas)return;
+  const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);ctx.save();
+  const cx=canvas.width/2,cy=canvas.height/2;
+  try{
+    if(item.type==='shape') drawPreviewCore(ctx,cx,cy,item.value||'circle','#ff4df3');
+    else if(item.type==='hat'){drawPreviewCore(ctx,cx,cy+10,'circle','#5d8cff');drawHatShape(ctx,cx,cy+10,item.value||'none');}
+    else if(item.type==='aura'){drawPreviewCore(ctx,cx,cy,'circle','#5d8cff');drawAuraEffect(ctx,cx,cy,item.value||'none',62,true);}
+    else{
+      drawPreviewCore(ctx,cx,cy,'diamond','#ff4df3');ctx.fillStyle='#fff';ctx.font='1000 32px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(item.type==='title'?'T':'◆',cx,cy);
+    }
+  }catch(_error){drawPreviewCore(ctx,cx,cy,'diamond','#ff4df3');}
+  ctx.restore();
+}
+function closeMythicCutin(){
+  const overlay=$('mythicPullOverlay');if(!overlay)return;
+  clearTimeout(showMythicCutin._timer);overlay.classList.remove('show');overlay.setAttribute('aria-hidden','true');
+}
+function showMythicCutin(item, bannerName){
+  const overlay=$('mythicPullOverlay'),name=$('mythicCutinName'),sub=$('mythicCutinSub');if(!overlay)return 0;
+  if(overlay.parentElement!==document.body)document.body.appendChild(overlay);
+  if(name)name.textContent=item.name;if(sub)sub.textContent=(item.limited?'LIMITED · ':'')+bannerName+' · '+typeLabel(item.type);
+  drawMythicCutinPreview(item);clearTimeout(showMythicCutin._timer);overlay.classList.remove('show');overlay.setAttribute('aria-hidden','false');void overlay.offsetWidth;overlay.classList.add('show');
+  if(!overlay.dataset.closeBound){overlay.dataset.closeBound='1';overlay.addEventListener('pointerdown',()=>{if(overlay.classList.contains('show'))closeMythicCutin();});}
+  [90,130,180,260,390,520,780,1040,1440,1760].forEach((f,i)=>setTimeout(()=>tone(f,0.085,i%3===0?'sawtooth':i%2?'triangle':'square',0.052),i*88));
+  showMythicCutin._timer=setTimeout(closeMythicCutin,3350);return 3400;
+}
 function closeRollResults(){
   clearInterval(showRollStage._tick);
   clearTimeout(showRollStage._revealTimer);
@@ -9851,6 +9901,8 @@ function setupBossRushPlayer(){
   player.abilities[4]='reflect_shield';
   player.x=0; player.y=500; player.team='blue'; player.ally=true;
   bossRush={active:true,wave:0,spawnDelay:5.0,complete:false,arenaR:720,sequence:[selected],selectedBoss:selected,countdown:5.0,started:false};
+  bossRushJoinWindowState='';
+  setBossRushJoinWindow(true,'preparation');
   for(const name of partyMembers.slice(0,5)){
     const mate=makeBot(name,'blue',true, player.x+rand(-90,90), player.y+rand(35,95));
     mate.partyMember=true;
@@ -9878,6 +9930,7 @@ function advanceBossRush(defeated=null){
   if(gameMode!=='bossrush' || !bossRush.active || bossRush.complete) return;
   hotZone=null; hotZoneTick=0;
   bossRush.spawnDelay = defeated ? 1.4 : Math.max(bossRush.spawnDelay||0, .5);
+  setBossRushJoinWindow(true,defeated?'between_bosses':'preparation');
   if(defeated){
     bossRush.lastDefeatedBoss=defeated;
     bossRush.wave++;
@@ -10161,10 +10214,11 @@ function updateBossRush(dt){
   bossRush.spawnDelay=Math.max(0,(bossRush.spawnDelay||0)-dt/1000);
   bossRush.countdown=Math.max(0,(bossRush.countdown||0)-dt/1000);
   for(const ent of [player,...bots]) constrainBossRushActor(ent);
-  if(bosses.some(b=>!b.dead)) return;
-  if(bossRush.spawnDelay>0) return;
+  if(bosses.some(b=>!b.dead)){setBossRushJoinWindow(false,'combat');return;}
+  if(bossRush.spawnDelay>0){setBossRushJoinWindow(true,bossRush.started?'between_bosses':'preparation');return;}
   if(bossRush.wave >= bossRush.sequence.length){
     bossRush.complete=true;
+    setBossRushJoinWindow(false,'complete');
     announce('BOSS RUSH CLEARED');
     notify('Boss Rush Cleared', bossDefById(bossRush.selectedBoss).name + ' defeated.');
     addRemnant(bossRush.selectedBoss==='seventh_administrator'?240:155,'Boss Rush clear');
@@ -10173,6 +10227,7 @@ function updateBossRush(dt){
     return;
   }
   bossRush.started=true;
+  setBossRushJoinWindow(false,'combat');
   spawnUniqueBoss(bossRush.sequence[bossRush.wave], true);
   bossRush.spawnDelay=999;
 }
@@ -15829,6 +15884,48 @@ body.bossRushMinimal #leaveGameBtn{
   requestAnimationFrame(fitActiveMenuModals);
 })();
 </script>
+
+
+<style id="fragment-v1-mythic-animation-hotfix">
+#mythicPullOverlay{
+  position:fixed!important;inset:0!important;z-index:12000!important;display:none!important;
+  align-items:center!important;justify-content:center!important;background:#020306!important;color:#fff!important;
+  overflow:hidden!important;pointer-events:none!important;isolation:isolate!important;opacity:0;
+}
+#mythicPullOverlay.show{display:flex!important;pointer-events:auto!important;opacity:1!important;animation:mythicScreenSequence 3.35s linear both!important}
+#mythicPullOverlay .mythicNoise{position:absolute;inset:-40%;background-image:linear-gradient(#ffffff12 2px,transparent 2px),linear-gradient(90deg,#ffffff12 2px,transparent 2px);background-size:38px 38px;animation:mythicGridStorm .28s linear infinite;transform:rotate(-7deg);opacity:.7}
+#mythicPullOverlay .mythicFlash{position:absolute;inset:0;background:#fff;opacity:0;animation:mythicFlashSequence 3.35s steps(1,end) both}
+#mythicPullOverlay:before,#mythicPullOverlay:after{content:"";position:absolute;left:-20vw;width:140vw;height:20vh;background:#fff;box-shadow:0 0 70px #ff4df3,0 0 140px #60dfff;transform:rotate(-15deg) scaleX(0)}
+#mythicPullOverlay:before{top:22%;animation:mythicSlashA 3.35s cubic-bezier(.12,.9,.16,1) both}
+#mythicPullOverlay:after{bottom:20%;transform:rotate(17deg) scaleX(0);animation:mythicSlashB 3.35s cubic-bezier(.12,.9,.16,1) both}
+#mythicPullOverlay .mythicCutin{position:relative!important;z-index:5!important;width:min(780px,92vw)!important;text-align:center!important;padding:22px 24px 26px!important;border:5px solid #fff!important;border-radius:9px!important;background:#11121d!important;box-shadow:10px 10px 0 #000,0 0 0 8px #ff4df344,0 0 70px #ff4df366!important;opacity:0;transform:scale(.65) rotate(-2deg);animation:mythicCutinSequence 3.35s cubic-bezier(.16,1.2,.3,1) both!important}
+#mythicPullOverlay .mythicBadge{display:inline-block!important;border:3px solid #fff!important;border-radius:999px!important;background:#ff4df3!important;color:#101820!important;font-size:12px!important;font-weight:1000!important;letter-spacing:.18em!important;padding:7px 13px!important;margin-bottom:10px!important;box-shadow:0 0 22px #ff4df3!important}
+#mythicPullOverlay .mythicPreviewFrame{position:relative;width:190px;height:190px;margin:0 auto 8px;display:grid;place-items:center}
+#mythicPullOverlay #mythicCutinPreview{width:170px;height:170px;position:relative;z-index:2;filter:drop-shadow(0 0 18px #8ae4ff) drop-shadow(0 0 28px #ff4df3);animation:mythicPreviewPop 3.35s cubic-bezier(.16,1.35,.25,1) both}
+#mythicPullOverlay .mythicPreviewRing{position:absolute;inset:5px;border:5px solid #fff;border-radius:50%;box-shadow:0 0 24px #8ae4ff,inset 0 0 22px #ff4df3;animation:mythicRingSpin 1.15s linear infinite}
+#mythicPullOverlay #mythicCutinName{font-size:clamp(38px,7vw,74px)!important;line-height:.88!important;font-weight:1000!important;letter-spacing:-3px!important;text-transform:uppercase!important;color:#fff!important;text-shadow:0 0 20px #ff4df3,0 0 44px #60dfff!important;margin:0 0 9px!important;overflow-wrap:anywhere}
+#mythicPullOverlay #mythicCutinSub{font-size:13px!important;line-height:1.25!important;letter-spacing:.14em!important;font-weight:1000!important;text-transform:uppercase!important;color:#dce6ff!important}
+#mythicPullOverlay #mythicCutinHint{font-size:10px;font-weight:1000;letter-spacing:.18em;margin-top:15px;opacity:0;animation:mythicHintIn 3.35s ease both}
+#mythicPullOverlay .mythicShard{position:absolute!important;width:28px!important;height:28px!important;border:3px solid #fff!important;background:#ff4df3!important;box-shadow:0 0 18px currentColor!important;animation:mythicShardBurst 3.35s ease-out both!important}
+#mythicPullOverlay .mythicShard.s1{left:10%;top:18%}.mythicPullOverlay .x{display:none}
+#mythicPullOverlay .mythicShard.s2{left:82%;top:15%;background:#60dfff!important;animation-delay:.04s!important}
+#mythicPullOverlay .mythicShard.s3{left:18%;top:76%;background:#ffcf58!important;animation-delay:.08s!important}
+#mythicPullOverlay .mythicShard.s4{left:76%;top:78%;animation-delay:.12s!important}
+#mythicPullOverlay .mythicShard.s5{left:45%;top:8%;background:#60dfff!important;animation-delay:.16s!important}
+#mythicPullOverlay .mythicShard.s6{left:48%;top:87%;background:#ffcf58!important;animation-delay:.2s!important}
+@keyframes mythicScreenSequence{0%{opacity:0}4%,92%{opacity:1}100%{opacity:0}}
+@keyframes mythicGridStorm{to{background-position:76px 38px}}
+@keyframes mythicFlashSequence{0%,9%,18%,100%{opacity:0}5%,13%{opacity:1}}
+@keyframes mythicSlashA{0%,2%{transform:rotate(-15deg) scaleX(0);opacity:0}7%{transform:rotate(-15deg) scaleX(1.3);opacity:1}18%,100%{transform:rotate(-15deg) scaleX(0);opacity:0}}
+@keyframes mythicSlashB{0%,9%{transform:rotate(17deg) scaleX(0);opacity:0}15%{transform:rotate(17deg) scaleX(1.25);opacity:1}25%,100%{transform:rotate(17deg) scaleX(0);opacity:0}}
+@keyframes mythicCutinSequence{0%,14%{opacity:0;transform:scale(.65) rotate(-2deg)}23%{opacity:1;transform:scale(1.06) rotate(1deg)}32%,88%{opacity:1;transform:scale(1) rotate(0)}100%{opacity:0;transform:scale(1.04)}}
+@keyframes mythicPreviewPop{0%,18%{opacity:0;transform:scale(.35) rotate(-25deg)}30%{opacity:1;transform:scale(1.18) rotate(8deg)}42%,100%{opacity:1;transform:scale(1) rotate(0)}}
+@keyframes mythicRingSpin{to{transform:rotate(360deg)}}
+@keyframes mythicHintIn{0%,55%{opacity:0}68%,100%{opacity:.9}}
+@keyframes mythicShardBurst{0%,10%{opacity:0;transform:translate(0,0) rotate(0) scale(.4)}24%{opacity:1;transform:translate(0,0) rotate(30deg) scale(1)}100%{opacity:0;transform:translate(70px,-110px) rotate(430deg) scale(.5)}}
+@media(max-width:620px){#mythicPullOverlay .mythicCutin{padding:18px 14px 22px!important}#mythicPullOverlay .mythicPreviewFrame{width:150px;height:150px}#mythicPullOverlay #mythicCutinPreview{width:135px;height:135px}#mythicPullOverlay #mythicCutinName{letter-spacing:-1.5px!important}}
+@media(prefers-reduced-motion:reduce){#mythicPullOverlay.show,#mythicPullOverlay *{animation-duration:.01ms!important;animation-iteration-count:1!important}}
+</style>
 
 </body>
 </html>
