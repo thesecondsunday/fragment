@@ -3417,7 +3417,7 @@ body.guestAccount .menuModal[data-modal="gacha"] .rollBtn,body.guestAccount .men
           <span>SISCON BUILD</span>
         </div>
       </div>
-      <div class="tinyStatus releaseStatus"><span>v1.0 RELEASE</span></div>
+      <div class="tinyStatus releaseStatus"><span>v1.0 RELEASE · ISLAND</span></div>
     </header>
 
     <main class="v3Home">
@@ -14859,6 +14859,986 @@ installSocialHub();
 /* ===== END SOCIAL, PROFILE, MATCHMAKING & PROGRESSION PATCH ===== */
 
 
+
+
+/* ===== IRREGULAR ISLAND MAP RUNTIME PATCH ===== */
+(() => {
+  'use strict';
+
+  const ISLAND_BIOME_DEFS = [
+    {id:'glacial',name:'Glacial Relay',effect:'Reduced acceleration',desc:'Frozen relay fields make sudden movement harder.',color:'#5d87a5',detail:'#769db8',accent:'#d8f3ff',cx:0,cy:-2100,sx:2500,sy:1200,bias:-.05,labelX:0,labelY:-2460,x:-3150,y:-3150,w:6300,h:2550},
+    {id:'verdant',name:'Verdant Divide',effect:'Gentle regeneration',desc:'Living ground slowly restores damaged cores.',color:'#2f5d45',detail:'#417a58',accent:'#92d96d',cx:-2600,cy:-850,sx:2100,sy:1800,bias:0,labelX:-2750,labelY:-1350,x:-4600,y:-2600,w:3900,h:3600},
+    {id:'furnace',name:'The Furnace',effect:'Fragments grant bonus XP',desc:'Heat vents energize every fragment collected inside the basin.',color:'#6f3c32',detail:'#9d5140',accent:'#ff8a54',cx:-3000,cy:1200,sx:1900,sy:1700,bias:0,labelX:-3050,labelY:1280,x:-4650,y:-250,w:3550,h:3000},
+    {id:'sharddunes',name:'Shard Dunes',effect:'Fragment score increased',desc:'Crystal deposits amplify the value of collected fragments.',color:'#a89268',detail:'#c3ad7d',accent:'#fff0a6',cx:-450,cy:2050,sx:2500,sy:1350,bias:.03,labelX:-450,labelY:2280,x:-2850,y:900,w:5100,h:2200},
+    {id:'stormbreak',name:'Stormbreak Coast',effect:'Dash recharge increased',desc:'Coastal static rapidly restores mobility systems.',color:'#3e596d',detail:'#52778c',accent:'#b9d4ff',cx:3200,cy:-1250,sx:1500,sy:1150,bias:-.04,labelX:3190,labelY:-1450,x:1950,y:-2600,w:2350,h:2350},
+    {id:'skyglass',name:'Skyglass Expanse',effect:'Movement speed increased',desc:'Low resistance lets fighters cross the open flats quickly.',color:'#66818d',detail:'#86a0aa',accent:'#f3fbff',cx:2900,cy:350,sx:1700,sy:1700,bias:0,labelX:3150,labelY:350,x:1450,y:-900,w:2900,h:2950},
+    {id:'terminus',name:'Elevator Terminus',effect:'Boss activity increased',desc:'Administrative signals draw bosses and Floor 7 anomalies.',color:'#51395f',detail:'#725080',accent:'#cb80ff',cx:2450,cy:2100,sx:1450,sy:1150,bias:-.02,labelX:2530,labelY:2250,x:1200,y:1050,w:3000,h:2050},
+    {id:'hub',name:'Shattered Hub',effect:'High-conflict neutral ground',desc:'Broken roads connect every region around the abandoned facility.',color:'#505a62',detail:'#68747d',accent:'#d7e0e8',cx:-150,cy:-250,sx:1050,sy:780,bias:-.16,labelX:-300,labelY:-420,x:-1500,y:-1250,w:2800,h:2050},
+    {id:'nullgarden',name:'Null Garden',effect:'Natural fragments heal more',desc:'Unstable growth converts natural fragments into stronger recovery.',color:'#24483e',detail:'#35695a',accent:'#80c75a',cx:850,cy:450,sx:850,sy:720,bias:-.18,labelX:850,labelY:570,x:-50,y:-300,w:1850,h:1650}
+  ];
+
+  const ISLAND_LANDMARKS = [
+    {name:'Relay Ridge',x:-650,y:-2570,type:'ridge'},
+    {name:'Broken Causeway',x:3720,y:-1980,type:'causeway'},
+    {name:'Ashfall Pier',x:-3820,y:2050,type:'pier'},
+    {name:'Dune Arch',x:250,y:2780,type:'arch'},
+    {name:'Sunken Garden',x:1330,y:920,type:'garden'},
+    {name:'Terminal Steps',x:3150,y:2660,type:'steps'},
+    {name:'Administrator’s Scar',x:-500,y:-80,type:'hub'}
+  ];
+
+  const ISLAND_ROUTES = [
+    {kind:'outer',points:[[-3650,-900],[-3050,-1850],[-1250,-2500],[900,-2500],[2600,-2000],[3700,-850],[3500,850],[2900,2350],[900,2750],[-1200,2680],[-3000,1900],[-3800,650],[-3650,-900]]},
+    {kind:'conflict',points:[[-2800,-900],[-1450,-600],[-450,-250],[700,150],[2050,200],[3100,550]]},
+    {kind:'conflict',points:[[0,-2300],[-250,-1250],[-350,-350],[-350,950],[-450,2200]]},
+    {kind:'conflict',points:[[-3150,1300],[-1900,700],[-450,-250],[1050,500],[2450,2050]]}
+  ];
+
+  biomes.splice(0, biomes.length, ...ISLAND_BIOME_DEFS);
+
+  function islandGauss(nx,ny,cx,cy,sx,sy){
+    const dx=(nx-cx)/sx,dy=(ny-cy)/sy;
+    return Math.exp(-(dx*dx+dy*dy));
+  }
+
+  function islandField(x,y){
+    const nx=x/HALF_W, ny=y/HALF_H;
+    let value=1-Math.pow(Math.abs(nx)/.87,2.55)-Math.pow(Math.abs(ny)/.86,2.45);
+    value+=.34*islandGauss(nx,ny,-.72,-.28,.34,.38);
+    value+=.20*islandGauss(nx,ny,-.48,.68,.38,.30);
+    value+=.26*islandGauss(nx,ny,.62,.60,.31,.33);
+    value+=.18*islandGauss(nx,ny,.73,-.55,.28,.25);
+    value+=.11*Math.sin(nx*8.4+ny*3.1)*Math.sin(ny*6.2-nx*2.2);
+    value-=.54*islandGauss(nx,ny,.84,-.05,.22,.26);
+    value-=.34*islandGauss(nx,ny,-.88,.20,.18,.30);
+    value-=.45*islandGauss(nx,ny,-.02,.94,.26,.16);
+    value-=.24*islandGauss(nx,ny,.10,-.92,.22,.14);
+    return value;
+  }
+
+  function islandMarginThreshold(margin=0){
+    return Math.max(0,Number(margin)||0)/Math.min(HALF_W,HALF_H)*1.12;
+  }
+
+  function isInsideIsland(x,y,margin=0){
+    if(!Number.isFinite(x)||!Number.isFinite(y)) return false;
+    if(Math.abs(x)>HALF_W-5||Math.abs(y)>HALF_H-5) return false;
+    return islandField(x,y)>islandMarginThreshold(margin);
+  }
+
+  function nearestIslandPoint(x,y,margin=0){
+    x=clamp(Number(x)||0,-HALF_W+10,HALF_W-10);
+    y=clamp(Number(y)||0,-HALF_H+10,HALF_H-10);
+    if(isInsideIsland(x,y,margin)) return {x,y};
+    let lo=0,hi=1;
+    for(let i=0;i<34;i++){
+      const mid=(lo+hi)/2;
+      if(isInsideIsland(x*mid,y*mid,margin)) lo=mid;
+      else hi=mid;
+    }
+    let px=x*lo,py=y*lo;
+    const len=Math.hypot(px,py)||1;
+    const inward=Math.max(10,margin*.18);
+    px-=px/len*inward;
+    py-=py/len*inward;
+    if(!isInsideIsland(px,py,margin)){
+      px=0;py=0;
+    }
+    return {x:px,y:py};
+  }
+
+  function constrainIslandEntity(ent,oldX=null,oldY=null,extraMargin=0){
+    if(!ent||gameMode==='bossrush') return false;
+    const margin=(Number(ent.r)||18)+10+extraMargin;
+    if(isInsideIsland(ent.x,ent.y,margin)) return false;
+    const ox=Number.isFinite(oldX)?oldX:0, oy=Number.isFinite(oldY)?oldY:0;
+    let p;
+    if(isInsideIsland(ox,oy,margin)){
+      let lo=0,hi=1;
+      for(let i=0;i<28;i++){
+        const mid=(lo+hi)/2;
+        const tx=ox+(ent.x-ox)*mid,ty=oy+(ent.y-oy)*mid;
+        if(isInsideIsland(tx,ty,margin)) lo=mid; else hi=mid;
+      }
+      p={x:ox+(ent.x-ox)*lo,y:oy+(ent.y-oy)*lo};
+    }else{
+      p=nearestIslandPoint(ent.x,ent.y,margin);
+    }
+    ent.x=p.x;ent.y=p.y;
+    ent.vx=(ent.vx||0)*.24;ent.vy=(ent.vy||0)*.24;
+    return true;
+  }
+
+  function biomeScore(b,x,y,index){
+    const dx=(x-b.cx)/b.sx,dy=(y-b.cy)/b.sy;
+    const warp=.09*Math.sin(x/690+index*1.7)*Math.cos(y/610-index*.9);
+    return dx*dx+dy*dy+(b.bias||0)+warp;
+  }
+
+  function islandBiomeAt(x,y){
+    if(!isInsideIsland(x,y,0)){
+      const p=nearestIslandPoint(x,y,0);
+      x=p.x;y=p.y;
+    }
+    let best=biomes[0],score=Infinity;
+    for(let i=0;i<biomes.length;i++){
+      const s=biomeScore(biomes[i],x,y,i);
+      if(s<score){score=s;best=biomes[i];}
+    }
+    return best;
+  }
+
+  getBiomeAt = islandBiomeAt;
+
+  function randomIslandPoint(margin=160,biomeId=null,minRadius=0){
+    const desired=biomeId ? biomes.find(b=>b.id===biomeId) : null;
+    for(let tries=0;tries<180;tries++){
+      let x,y;
+      if(desired){
+        x=rand(desired.x+20,desired.x+desired.w-20);
+        y=rand(desired.y+20,desired.y+desired.h-20);
+      }else{
+        x=rand(-HALF_W+80,HALF_W-80);
+        y=rand(-HALF_H+80,HALF_H-80);
+      }
+      if(Math.hypot(x,y)<minRadius) continue;
+      if(!isInsideIsland(x,y,margin)) continue;
+      if(desired&&islandBiomeAt(x,y).id!==desired.id) continue;
+      return {x,y};
+    }
+    const fallback=desired?nearestIslandPoint(desired.cx,desired.cy,margin):nearestIslandPoint(Math.max(minRadius,0),0,margin);
+    return fallback;
+  }
+
+  function randomPointInBiome(b,margin=100){
+    const id=typeof b==='string'?b:b?.id;
+    return randomIslandPoint(margin,id,0);
+  }
+
+  window.fragmentIsland = {isInsideIsland,nearestIslandPoint,randomIslandPoint,getBiomeAt:islandBiomeAt,field:islandField};
+
+  let islandTerrainCanvas=null;
+  const islandHotMasks=new Map();
+  let islandOutlineCache=null;
+
+  function parseHexColor(hex){
+    let value=String(hex||'#56616a').replace('#','');
+    if(value.length===3)value=value.split('').map(c=>c+c).join('');
+    const n=parseInt(value.slice(0,6),16);
+    return Number.isFinite(n)?[(n>>16)&255,(n>>8)&255,n&255]:[86,97,106];
+  }
+
+  function mixRgb(a,b,t){
+    t=clamp(t,0,1);
+    return [
+      Math.round(a[0]*(1-t)+b[0]*t),
+      Math.round(a[1]*(1-t)+b[1]*t),
+      Math.round(a[2]*(1-t)+b[2]*t)
+    ];
+  }
+
+  function islandOutlinePoints(){
+    if(islandOutlineCache) return islandOutlineCache;
+    const points=[];
+    for(let i=0;i<300;i++){
+      const angle=i/300*Math.PI*2;
+      let lo=0,hi=Math.hypot(HALF_W,HALF_H);
+      for(let k=0;k<30;k++){
+        const mid=(lo+hi)/2;
+        const x=Math.cos(angle)*mid,y=Math.sin(angle)*mid;
+        if(isInsideIsland(x,y,0)) lo=mid; else hi=mid;
+      }
+      points.push({x:Math.cos(angle)*lo,y:Math.sin(angle)*lo});
+    }
+    islandOutlineCache=points;
+    return points;
+  }
+
+  function worldToTexture(canvasEl,x,y){
+    return {
+      x:(x+HALF_W)/WORLD_W*canvasEl.width,
+      y:(y+HALF_H)/WORLD_H*canvasEl.height
+    };
+  }
+
+  function drawTextureRoute(c,route){
+    if(!route.points.length)return;
+    c.save();
+    c.strokeStyle=route.kind==='outer'?'rgba(255,207,88,.42)':'rgba(238,243,247,.34)';
+    c.lineWidth=route.kind==='outer'?2.2:1.7;
+    c.setLineDash(route.kind==='outer'?[9,7]:[5,6]);
+    c.beginPath();
+    route.points.forEach((p,index)=>{
+      const q=worldToTexture(c.canvas,p[0],p[1]);
+      if(index)c.lineTo(q.x,q.y);else c.moveTo(q.x,q.y);
+    });
+    c.stroke();
+    c.setLineDash([]);
+    c.restore();
+  }
+
+  function drawTextureLandmark(c,lm){
+    const p=worldToTexture(c.canvas,lm.x,lm.y);
+    c.save();
+    c.translate(p.x,p.y);
+    c.strokeStyle='rgba(16,24,32,.88)';
+    c.fillStyle='rgba(238,243,247,.60)';
+    c.lineWidth=1.4;
+    if(lm.type==='pier'||lm.type==='causeway'){
+      c.fillRect(-2,-2,22,4);c.strokeRect(-2,-2,22,4);
+      for(let i=2;i<20;i+=5){c.beginPath();c.moveTo(i,2);c.lineTo(i,7);c.stroke();}
+    }else if(lm.type==='steps'){
+      for(let i=0;i<4;i++){c.fillRect(-8+i*3,-7+i*4,17-i*4,3);}
+    }else if(lm.type==='arch'){
+      c.beginPath();c.arc(0,3,8,Math.PI,Math.PI*2);c.stroke();c.fillRect(-9,3,4,7);c.fillRect(5,3,4,7);
+    }else if(lm.type==='garden'){
+      c.beginPath();c.arc(0,0,8,0,Math.PI*2);c.fill();c.stroke();
+      c.beginPath();c.arc(0,0,3,0,Math.PI*2);c.stroke();
+    }else if(lm.type==='hub'){
+      c.rotate(Math.PI/4);c.fillRect(-7,-7,14,14);c.strokeRect(-7,-7,14,14);
+    }else{
+      c.beginPath();c.moveTo(-9,6);c.lineTo(0,-8);c.lineTo(9,6);c.closePath();c.fill();c.stroke();
+    }
+    c.restore();
+  }
+
+  
+  function ensureIslandTerrain(){
+    if(islandTerrainCanvas)return islandTerrainCanvas;
+    const tw=2048,th=1366;
+    const c=document.createElement('canvas');
+    c.width=tw;c.height=th;
+    const cctx=c.getContext('2d',{alpha:false});
+    cctx.imageSmoothingEnabled=true;
+    const image=cctx.createImageData(tw,th);
+    const data=image.data;
+    const biomeBase={
+      glacial:[[115,148,168],[180,212,226]],
+      verdant:[[63,101,73],[111,151,92]],
+      furnace:[[86,70,66],[128,96,82]],
+      sharddunes:[[189,178,140],[226,210,167]],
+      stormbreak:[[104,122,120],[167,178,163]],
+      skyglass:[[111,142,166],[182,208,220]],
+      terminus:[[86,72,110],[137,108,170]],
+      hub:[[112,132,145],[161,184,196]],
+      nullgarden:[[53,91,80],[97,143,116]]
+    };
+    const oceanA=[17,44,58],oceanB=[28,72,89],foam=[219,235,234],coast=[149,152,137];
+
+    function clamp01(v){return Math.max(0,Math.min(1,v));}
+    function smooth(a,b,v){
+      const t=clamp01((v-a)/(b-a));
+      return t*t*(3-2*t);
+    }
+    function blend(a,b,t){
+      t=clamp01(t);
+      return [
+        Math.round(a[0]*(1-t)+b[0]*t),
+        Math.round(a[1]*(1-t)+b[1]*t),
+        Math.round(a[2]*(1-t)+b[2]*t)
+      ];
+    }
+    function blendMany(samples){
+      let total=0,r=0,g=0,b=0;
+      for(const s of samples){
+        total+=s.w;
+        r+=s.rgb[0]*s.w;
+        g+=s.rgb[1]*s.w;
+        b+=s.rgb[2]*s.w;
+      }
+      total=Math.max(.0001,total);
+      return [Math.round(r/total),Math.round(g/total),Math.round(b/total)];
+    }
+    function noise(x,y){
+      const n1=Math.sin(x*.0021+y*.0017);
+      const n2=.55*Math.sin(-x*.0043+y*.0036+1.7);
+      const n3=.28*Math.cos(x*.0091-y*.0072-.8);
+      const n4=.16*Math.sin((x+y)*.0137);
+      return (n1+n2+n3+n4)/1.99;
+    }
+    function ridge(x,y){
+      return 1-Math.abs(noise(x,y));
+    }
+    function biomeTint(id,x,y){
+      const pair=biomeBase[id]||[[120,130,140],[170,180,190]];
+      const n=noise(x,y)*.5+.5;
+      let rgb=blend(pair[0],pair[1],.22+n*.48);
+      if(id==='glacial'){
+        const veins=smooth(.58,.86,ridge(x*1.1,y*.9));
+        rgb=blend(rgb,[221,242,249],.18+veins*.26);
+        const blue=smooth(.60,.88,ridge(x*.55-180,y*.75+90));
+        rgb=blend(rgb,[148,182,205],blue*.18);
+      }else if(id==='verdant'){
+        const meadow=smooth(.46,.82,noise(x*.86+120,y*.93-80)*.5+.5);
+        rgb=blend(rgb,[130,171,98],meadow*.24);
+        const grove=smooth(.63,.90,ridge(x*1.2+55,y*.8-20));
+        rgb=blend(rgb,[55,86,59],grove*.20);
+      }else if(id==='furnace'){
+        rgb=blend(rgb,[58,51,48],.38);
+        const ash=smooth(.42,.78,noise(x*.82-60,y*1.15+90)*.5+.5);
+        rgb=blend(rgb,[114,102,94],ash*.26);
+        const lavaA=smooth(.77,.94,ridge(x*.95+130,y*1.22-30));
+        const lavaB=smooth(.74,.93,ridge(x*1.32-210,y*.88+160));
+        const lava=Math.max(lavaA*.8,lavaB*.65);
+        if(lava>.02)rgb=blend(rgb,[255,125,65],lava*.58);
+        const basalt=smooth(.57,.9,ridge(x*.5+40,y*.58-110));
+        rgb=blend(rgb,[44,39,40],basalt*.18);
+      }else if(id==='sharddunes'){
+        const dunes=smooth(.35,.8,Math.sin((x+y)*.0063)+Math.sin((x-y)*.0041));
+        rgb=blend(rgb,[234,221,181],.18+clamp01((dunes+1)/2)*.18);
+        const shadow=smooth(.6,.9,ridge(x*.68+80,y*.4-60));
+        rgb=blend(rgb,[174,152,111],shadow*.16);
+      }else if(id==='stormbreak'){
+        const tide=smooth(.45,.88,Math.sin(x*.0048+y*.0074)*.5+.5);
+        rgb=blend(rgb,[188,194,181],tide*.14);
+        const streak=smooth(.65,.9,ridge(x*.85-120,y*1.1+210));
+        rgb=blend(rgb,[228,235,226],streak*.12);
+      }else if(id==='skyglass'){
+        const glass=smooth(.54,.88,ridge(x*1.15+90,y*.92-40));
+        rgb=blend(rgb,[212,230,236],.18+glass*.16);
+        const seam=smooth(.68,.92,ridge(x*.64-180,y*.75+70));
+        rgb=blend(rgb,[132,164,185],seam*.18);
+      }else if(id==='terminus'){
+        const lines=Math.max(
+          smooth(.0,.03,1-Math.abs(Math.round(x/138)-x/138)),
+          smooth(.0,.03,1-Math.abs(Math.round(y/138)-y/138))
+        );
+        rgb=blend(rgb,[108,87,145],.18);
+        rgb=blend(rgb,[180,142,220],lines*.22);
+        const staticNoise=smooth(.6,.9,ridge(x*1.3-40,y*.9+110));
+        rgb=blend(rgb,[72,54,97],staticNoise*.18);
+      }else if(id==='hub'){
+        rgb=blend(rgb,[123,146,160],.22);
+        const majorRoad=Math.min(
+          Math.min(Math.abs(y+260),Math.abs(x+160)),
+          Math.abs((x+y)-240)/1.4
+        );
+        const roadMask=1-smooth(58,118,majorRoad);
+        const lane=(1-smooth(4,12,Math.min(Math.abs((x+y-240)%170),Math.abs((x+y-240)%170-170))));
+        rgb=blend(rgb,[208,223,230],roadMask*.26);
+        rgb=blend(rgb,[245,247,240],roadMask*lane*.13);
+        const panel=Math.max(
+          smooth(.0,.05,1-Math.abs(Math.round(x/340)-x/340)),
+          smooth(.0,.05,1-Math.abs(Math.round(y/340)-y/340))
+        );
+        rgb=blend(rgb,[95,112,124],panel*.1);
+      }else if(id==='nullgarden'){
+        const moss=smooth(.46,.84,noise(x*.7-170,y*.88+40)*.5+.5);
+        rgb=blend(rgb,[122,174,110],moss*.18);
+        const pool=smooth(.62,.90,ridge(x*.92+140,y*.58-150));
+        rgb=blend(rgb,[26,49,46],pool*.22);
+      }
+      return rgb;
+    }
+    function blendedBiomeColor(x,y){
+      const scored=biomes.map((b,index)=>({b,s:biomeScore(b,x,y,index)})).sort((a,b)=>a.s-b.s).slice(0,3);
+      const minScore=scored[0].s;
+      const samples=scored.map(item=>{
+        const weight=Math.exp(-(item.s-minScore)*4.4);
+        return {w:weight,rgb:biomeTint(item.b.id,x,y)};
+      });
+      return blendMany(samples);
+    }
+
+    for(let py=0;py<th;py++){
+      const y=-HALF_H+(py+.5)/th*WORLD_H;
+      for(let px=0;px<tw;px++){
+        const x=-HALF_W+(px+.5)/tw*WORLD_W;
+        const field=islandField(x,y);
+        let rgb;
+        if(field<=0){
+          const n=noise(x*.62,y*.62)*.5+.5;
+          rgb=blend(oceanA,oceanB,.25+n*.45);
+          const surf=smooth(-.045,.01,field);
+          if(surf>0){
+            const foamNoise=smooth(.52,.88,ridge(x*.8,y*.8));
+            rgb=blend(rgb,foam,surf*(.22+foamNoise*.28));
+          }
+        }else{
+          rgb=blendedBiomeColor(x,y);
+          const shore=smooth(.0,.07,field);
+          rgb=blend(coast,rgb,shore);
+          const light=clamp01(.55+noise(x*.45-130,y*.45+170)*.18);
+          rgb=blend([0,0,0],rgb,.84+.16*light);
+          if(field<.024){
+            const surf=smooth(.0,.024,field);
+            rgb=blend(foam,rgb,.45+.55*surf);
+          }
+        }
+        const o=(py*tw+px)*4;
+        data[o]=rgb[0];
+        data[o+1]=rgb[1];
+        data[o+2]=rgb[2];
+        data[o+3]=255;
+      }
+    }
+    cctx.putImageData(image,0,0);
+
+    cctx.save();
+    const outline=islandOutlinePoints();
+    cctx.beginPath();
+    outline.forEach((point,index)=>{
+      const p=worldToTexture(c,point.x,point.y);
+      if(index)cctx.lineTo(p.x,p.y);else cctx.moveTo(p.x,p.y);
+    });
+    cctx.closePath();
+    cctx.strokeStyle='rgba(228,240,233,.78)';
+    cctx.lineWidth=2.6;
+    cctx.shadowColor='rgba(255,255,255,.18)';
+    cctx.shadowBlur=4;
+    cctx.stroke();
+    cctx.shadowBlur=0;
+    cctx.strokeStyle='rgba(10,21,29,.78)';
+    cctx.lineWidth=1.1;
+    cctx.stroke();
+    cctx.restore();
+
+    // Subtle hub infrastructure only, not large route lines across the whole playfield.
+    cctx.save();
+    cctx.translate(tw/2,th/2);
+    cctx.strokeStyle='rgba(231,240,242,.16)';
+    cctx.lineWidth=6;
+    cctx.setLineDash([20,16]);
+    const hubLines=[[-440,130,420,-210],[-30,-410,-30,390],[-470,-250,360,170]];
+    for(const line of hubLines){
+      const p1=worldToTexture(c,line[0],line[1]);
+      const p2=worldToTexture(c,line[2],line[3]);
+      cctx.beginPath();cctx.moveTo(p1.x,p1.y);cctx.lineTo(p2.x,p2.y);cctx.stroke();
+    }
+    cctx.setLineDash([]);
+    cctx.restore();
+
+    // Broken offshore causeway/islet.
+    cctx.save();
+    cctx.fillStyle='rgba(84,102,90,.92)';
+    cctx.strokeStyle='rgba(215,224,216,.78)';
+    cctx.lineWidth=1.6;
+    cctx.beginPath();
+    const islet=[[4100,-2420],[4550,-2250],[4680,-1750],[4400,-1480],[3970,-1700]];
+    islet.forEach((point,index)=>{
+      const p=worldToTexture(c,point[0],point[1]);
+      if(index)cctx.lineTo(p.x,p.y);else cctx.moveTo(p.x,p.y);
+    });
+    cctx.closePath();cctx.fill();cctx.stroke();
+    cctx.restore();
+
+    islandTerrainCanvas=c;
+    return c;
+  }
+
+
+  
+  function getIslandHotMask(biome){
+    if(!biome)return null;
+    const id=biome.id||String(biome.name||'');
+    if(islandHotMasks.has(id))return islandHotMasks.get(id);
+    const c=document.createElement('canvas');
+    c.width=1024;c.height=683;
+    const cx=c.getContext('2d'),img=cx.createImageData(c.width,c.height);
+    function alphaFor(x,y){
+      if(!isInsideIsland(x,y,0)||islandBiomeAt(x,y).id!==id)return 0;
+      let nearOther=false;
+      const step=32;
+      for(const pair of [[step,0],[-step,0],[0,step],[0,-step]]){
+        const tx=x+pair[0],ty=y+pair[1];
+        if(!isInsideIsland(tx,ty,0)||islandBiomeAt(tx,ty).id!==id){nearOther=true;break;}
+      }
+      return nearOther?74:98;
+    }
+    for(let py=0;py<c.height;py++){
+      const y=-HALF_H+(py+.5)/c.height*WORLD_H;
+      for(let px=0;px<c.width;px++){
+        const x=-HALF_W+(px+.5)/c.width*WORLD_W;
+        if(isInsideIsland(x,y,0)&&islandBiomeAt(x,y).id===id){
+          const o=(py*c.width+px)*4;
+          let alpha=98;
+          const step=38;
+          for(const pair of [[step,0],[-step,0],[0,step],[0,-step]]){
+            const tx=x+pair[0],ty=y+pair[1];
+            if(!isInsideIsland(tx,ty,0)||islandBiomeAt(tx,ty).id!==id){alpha=74;break;}
+          }
+          img.data[o]=255;img.data[o+1]=207;img.data[o+2]=88;img.data[o+3]=alpha;
+        }
+      }
+    }
+    cx.putImageData(img,0,0);
+    islandHotMasks.set(id,c);
+    return c;
+  }
+
+
+  
+  function drawIslandTextureViewport(targetCtx,camX,camY,viewW,viewH){
+    const terrain=ensureIslandTerrain();
+    targetCtx.imageSmoothingEnabled=true;
+    targetCtx.fillStyle='#102b39';
+    targetCtx.fillRect(0,0,viewW,viewH);
+    let sx=(camX+HALF_W)/WORLD_W*terrain.width;
+    let sy=(camY+HALF_H)/WORLD_H*terrain.height;
+    let sw=viewW/WORLD_W*terrain.width;
+    let sh=viewH/WORLD_H*terrain.height;
+    let dx=0,dy=0,dw=viewW,dh=viewH;
+    if(sx<0){const cut=-sx;dx=cut/sw*viewW;dw-=dx;sw-=cut;sx=0;}
+    if(sy<0){const cut=-sy;dy=cut/sh*viewH;dh-=dy;sh-=cut;sy=0;}
+    if(sx+sw>terrain.width){const cut=sx+sw-terrain.width;dw-=cut/sw*viewW;sw-=cut;}
+    if(sy+sh>terrain.height){const cut=sy+sh-terrain.height;dh-=cut/sh*viewH;sh-=cut;}
+    if(sw>0&&sh>0&&dw>0&&dh>0){
+      targetCtx.drawImage(terrain,sx,sy,sw,sh,dx,dy,dw,dh);
+    }
+  }
+
+
+  const previousDrawBackground=drawBackground;
+  drawBackground=function(camX,camY,viewW,viewH){
+    if(gameMode==='bossrush')return previousDrawBackground(camX,camY,viewW,viewH);
+    drawIslandTextureViewport(ctx,camX,camY,viewW,viewH);
+    if(world.mode){
+      ctx.fillStyle=({blood:'#6a2a2a55',frozen:'#8fc8ef55',storm:'#586a8644',overgrowth:'#3f8f4f55',zero:'#8f85c44d',eclipse:'#11182a77',meteor:'#bd6b4355',corruption:'#7446a066',golden:'#d6a84a4d'})[world.mode.key]||'#0000';
+      ctx.fillRect(0,0,viewW,viewH);
+    }
+    const vg=ctx.createRadialGradient(viewW/2,viewH/2,Math.min(viewW,viewH)*.28,viewW/2,viewH/2,Math.max(viewW,viewH)*.76);
+    vg.addColorStop(0,'rgba(255,255,255,.025)');vg.addColorStop(1,'rgba(0,0,0,.23)');
+    ctx.fillStyle=vg;ctx.fillRect(0,0,viewW,viewH);
+  };
+
+  drawAreaLabels=function(camX,camY){
+    ctx.save();ctx.textAlign='center';
+    for(const b of biomes){
+      const sx=b.labelX-camX,sy=b.labelY-camY;
+      if(sx<-360||sx>canvas.width+360||sy<-120||sy>canvas.height+120)continue;
+      ctx.globalAlpha=b.id==='hub'||b.id==='nullgarden'?.31:.23;
+      ctx.fillStyle='#fff';ctx.strokeStyle='rgba(16,24,32,.70)';ctx.lineWidth=5;
+      ctx.font=b.id==='hub'?'1000 25px Arial':'900 21px Arial';
+      ctx.strokeText(b.name.toUpperCase(),sx,sy);ctx.fillText(b.name.toUpperCase(),sx,sy);
+      ctx.font='900 10px Arial';ctx.lineWidth=3;
+      ctx.strokeText(b.effect.toUpperCase(),sx,sy+17);ctx.fillText(b.effect.toUpperCase(),sx,sy+17);
+    }
+    ctx.restore();
+  };
+
+  function normalizeHotZoneBiome(){
+    if(hotZone?.biome?.id){
+      const local=biomes.find(b=>b.id===hotZone.biome.id);
+      if(local)hotZone.biome=local;
+    }
+  }
+
+  function drawIslandHotZoneWorld(camX,camY,viewW,viewH){
+    normalizeHotZoneBiome();
+    if(!hotZone?.biome)return;
+    const mask=getIslandHotMask(hotZone.biome);
+    if(!mask)return;
+    const alpha=.64+.16*Math.sin(performance.now()/220);
+    ctx.save();ctx.globalAlpha=alpha;
+    let sx=(camX+HALF_W)/WORLD_W*mask.width,sy=(camY+HALF_H)/WORLD_H*mask.height;
+    let sw=viewW/WORLD_W*mask.width,sh=viewH/WORLD_H*mask.height;
+    if(sx<0||sy<0||sx+sw>mask.width||sy+sh>mask.height){
+      const tmp=document.createElement('canvas');tmp.width=viewW;tmp.height=viewH;
+      // Fall through to a clipped world-space label; the normal camera rarely exceeds bounds.
+    }else ctx.drawImage(mask,sx,sy,sw,sh,0,0,viewW,viewH);
+    const b=hotZone.biome;
+    const lx=b.labelX-camX,ly=b.labelY-camY;
+    ctx.globalAlpha=1;ctx.fillStyle='#ffcf58';ctx.strokeStyle='#101820';ctx.lineWidth=5;
+    ctx.font='1000 24px Arial';ctx.textAlign='center';
+    ctx.strokeText('HOT ZONE',lx,ly-38);ctx.fillText('HOT ZONE',lx,ly-38);
+    ctx.restore();
+  }
+
+  const previousDrawMapSystems=drawMapSystems;
+  drawMapSystems=function(camX,camY,viewW,viewH){
+    normalizeHotZoneBiome();
+    const saved=hotZone;
+    if(saved)hotZone=null;
+    const result=previousDrawMapSystems(camX,camY,viewW,viewH);
+    hotZone=saved;
+    if(saved)drawIslandHotZoneWorld(camX,camY,viewW,viewH);
+    return result;
+  };
+
+  const previousSpawnFragment=spawnFragment;
+  spawnFragment=function(kind='xp',x=null,y=null,extra=null){
+    if(gameMode==='bossrush')return previousSpawnFragment(kind,x,y,extra);
+    let p;
+    if(x==null||y==null)p=randomIslandPoint(38);
+    else p=isInsideIsland(x,y,30)?{x,y}:nearestIslandPoint(x,y,30);
+    return previousSpawnFragment(kind,p.x,p.y,extra);
+  };
+
+  const previousSpawnTerrainFeature=spawnTerrainFeature;
+  spawnTerrainFeature=function(type=null,x=null,y=null){
+    if(gameMode==='bossrush')return previousSpawnTerrainFeature(type,x,y);
+    if(x==null||y==null){
+      const px=player?.x||0,py=player?.y||0;
+      let found=null;
+      for(let i=0;i<45;i++){
+        const tx=px+rand(-850,850),ty=py+rand(-620,620);
+        if(isInsideIsland(tx,ty,180)){found={x:tx,y:ty};break;}
+      }
+      found=found||randomIslandPoint(180);
+      x=found.x;y=found.y;
+    }else{
+      const p=nearestIslandPoint(x,y,180);x=p.x;y=p.y;
+    }
+    return previousSpawnTerrainFeature(type,x,y);
+  };
+
+  const previousCreateEntity=createEntity;
+  createEntity=function(name,human=false){
+    const ent=previousCreateEntity(name,human);
+    if(gameMode!=='bossrush'){
+      const p=randomIslandPoint(230,null,human?0:450);
+      ent.x=p.x;ent.y=p.y;
+    }
+    return ent;
+  };
+
+  const previousSpawnInitial=spawnInitial;
+  spawnInitial=function(){
+    const result=previousSpawnInitial();
+    if(gameMode!=='bossrush'){
+      if(player&&!isInsideIsland(player.x,player.y,(player.r||18)+40)){
+        const p=gameMode==='test'?{x:0,y:0}:randomIslandPoint(260);
+        player.x=p.x;player.y=p.y;
+      }
+      for(const ent of bots){
+        if(!isInsideIsland(ent.x,ent.y,(ent.r||18)+25)){
+          const p=randomIslandPoint(220,null,gameMode==='test'?0:500);ent.x=p.x;ent.y=p.y;
+        }
+        if(ent.ai){
+          const roam=randomIslandPoint(180);ent.ai.roamX=roam.x;ent.ai.roamY=roam.y;
+        }
+      }
+      for(const ent of bosses){
+        if(!isInsideIsland(ent.x,ent.y,(ent.r||48)+70)){const p=randomIslandPoint(360);ent.x=p.x;ent.y=p.y;}
+      }
+      for(const f of fragments){
+        if(!isInsideIsland(f.x,f.y,(f.r||8)+10)){const p=randomIslandPoint(30);f.x=p.x;f.y=p.y;}
+      }
+    }
+    return result;
+  };
+
+  const previousRespawnBot=respawnBot;
+  respawnBot=function(bot){
+    if(netUsesServerWorld())return previousRespawnBot(bot);
+    setTimeout(()=>{
+      const idx=bots.indexOf(bot);if(idx>=0)bots.splice(idx,1);
+      const nb=createEntity(bot.name,false),p=randomIslandPoint(240,null,500);
+      nb.x=p.x;nb.y=p.y;
+      markTeam(nb,bot.team||'red',!!bot.ally);nb.duoId=bot.duoId||null;nb.partyMember=!!bot.partyMember;
+      if(Math.random()<.7)giveBotArchetype(nb,Object.keys(evoTree)[irand(0,Object.keys(evoTree).length)]);
+      bots.push(nb);
+    },0);
+  };
+
+  const previousSpawnUniqueBoss=spawnUniqueBoss;
+  spawnUniqueBoss=function(id=null,rush=false){
+    const b=previousSpawnUniqueBoss(id,rush);
+    if(b&&!rush&&gameMode!=='bossrush'){
+      const p=randomIslandPoint(430,null,600);b.x=p.x;b.y=p.y;
+      const arena=bossArenaFor(b);if(arena){arena.x=b.x;arena.y=b.y;}
+    }
+    return b;
+  };
+
+  const previousSpawnOfflineDeathFragments=spawnOfflineDeathFragments;
+  spawnOfflineDeathFragments=function(target,count){
+    const start=fragments.length;
+    const result=previousSpawnOfflineDeathFragments(target,count);
+    for(let i=start;i<fragments.length;i++){
+      const f=fragments[i],p=nearestIslandPoint(f.x,f.y,(f.r||8)+6);f.x=p.x;f.y=p.y;
+    }
+    return result;
+  };
+
+  const previousUpdatePlayer=updatePlayer;
+  updatePlayer=function(dt){
+    const actor=controlledEntity(),ox=actor?.x,oy=actor?.y;
+    const result=previousUpdatePlayer(dt);
+    if(actor&&gameMode!=='bossrush'&&!socialState.spectating)constrainIslandEntity(actor,ox,oy);
+    for(const clone of player?.clones||[])constrainIslandEntity(clone,null,null,3);
+    return result;
+  };
+
+  const previousUpdateBots=updateBots;
+  updateBots=function(dt){
+    const old=new Map(bots.map(b=>[b,{x:b.x,y:b.y}]));
+    const result=previousUpdateBots(dt);
+    for(const b of bots){
+      const p=old.get(b);
+      if(constrainIslandEntity(b,p?.x,p?.y)&&b.ai){
+        const roam=randomIslandPoint(170);b.ai.roamX=roam.x;b.ai.roamY=roam.y;
+      }
+    }
+    return result;
+  };
+
+  const previousUpdateBosses=updateBosses;
+  updateBosses=function(dt){
+    const old=new Map(bosses.map(b=>[b,{x:b.x,y:b.y}]));
+    const result=previousUpdateBosses(dt);
+    if(gameMode!=='bossrush')for(const b of bosses){const p=old.get(b);constrainIslandEntity(b,p?.x,p?.y,50);}
+    return result;
+  };
+
+  const previousUpdateFragments=updateFragments;
+  updateFragments=function(dt){
+    const result=previousUpdateFragments(dt);
+    if(gameMode!=='bossrush')for(const f of fragments){
+      if(!isInsideIsland(f.x,f.y,(f.r||8)+4)){
+        const p=nearestIslandPoint(f.x,f.y,(f.r||8)+4);f.x=p.x;f.y=p.y;f.vx=(f.vx||0)*-.15;f.vy=(f.vy||0)*-.15;
+      }
+    }
+    return result;
+  };
+
+  updateMapSystems=function(dt){
+    normalizeHotZoneBiome();
+    if(netUsesServerWorld()){
+      if(hotZone){
+        hotZone.timer-=dt/1000;hotZone.pulse=(hotZone.pulse||0)+dt/1000;
+        if(hotZone.timer<=0)hotZone=null;
+      }
+      for(let i=terrainFeatures.length-1;i>=0;i--){
+        const f=terrainFeatures[i];f.life-=dt/1000;f.spawn=Math.max(0,(f.spawn||0)-dt/1000);
+        f.x=lerp(f.x,f.tx??f.x,.18);f.y=lerp(f.y,f.ty??f.y,.18);
+        const p=nearestIslandPoint(f.x,f.y,(f.r||100)*.35);f.x=p.x;f.y=p.y;
+        if(f.life<=0)terrainFeatures.splice(i,1);
+      }
+      for(let i=bossArenas.length-1;i>=0;i--){
+        const a=bossArenas[i];
+        if(!a.boss||a.boss.dead){bossArenas.splice(i,1);continue;}
+        a.x=a.boss.x;a.y=a.boss.y;a.pulse+=dt/1000;a.spawn=Math.max(0,(a.spawn||0)-dt/1000);
+      }
+      return;
+    }
+    hotZoneTick+=dt;terrainTick+=dt;
+    if(!hotZone||hotZone.timer<=0||hotZoneTick>95000){hotZoneTick=0;setHotZone();normalizeHotZoneBiome();}
+    if(hotZone){
+      hotZone.timer-=dt/1000;hotZone.pulse+=dt/1000;
+      if(hotZone.timer<=0){addChat('SERVER','Hot Zone stabilized: '+hotZone.biome.name+'.');hotZone=null;}
+      else if(Math.random()<.025){
+        const p=randomPointInBiome(hotZone.biome,45);
+        spawnFragment(Math.random()<.78?'xp':Math.random()<.65?'natural':'ability',p.x,p.y);
+      }
+    }
+    if(terrainTick>9000){terrainTick=0;if(Math.random()<.8)spawnTerrainFeature();}
+    for(let i=terrainFeatures.length-1;i>=0;i--){
+      const f=terrainFeatures[i];f.life-=dt/1000;f.spawn=Math.max(0,(f.spawn||0)-dt/1000);
+      if(f.life<=0)terrainFeatures.splice(i,1);
+    }
+    for(let i=bossArenas.length-1;i>=0;i--){
+      const a=bossArenas[i];
+      if(!a.boss||a.boss.dead){bossArenas.splice(i,1);continue;}
+      a.x=a.boss.x;a.y=a.boss.y;a.pulse+=dt/1000;a.spawn=Math.max(0,(a.spawn||0)-dt/1000);
+      if(Math.random()<.006){
+        const ang=rand(0,Math.PI*2),rr=rand(a.r*.72,a.r);
+        const p=nearestIslandPoint(a.x+Math.cos(ang)*rr,a.y+Math.sin(ang)*rr,25);
+        spawnFragment(Math.random()<.8?'xp':'natural',p.x,p.y);
+      }
+    }
+  };
+
+  const previousUpdate=update;
+  update=function(dt){
+    const result=previousUpdate(dt);
+    if(gameMode!=='bossrush'){
+      normalizeHotZoneBiome();
+      for(const f of terrainFeatures){
+        const p=nearestIslandPoint(f.x,f.y,(f.r||80)*.25);f.x=p.x;f.y=p.y;
+      }
+      for(const z of worldZones){
+        const p=nearestIslandPoint(z.x,z.y,Math.min(160,(z.r||100)*.25));z.x=p.x;z.y=p.y;
+      }
+    }
+    return result;
+  };
+
+  const previousFinalizeBRSpawn=finalizeBRSpawn;
+  finalizeBRSpawn=function(chosen=true){
+    if(gameMode==='br'){
+      const selected=br.selected||randomIslandPoint(260);
+      br.selected=nearestIslandPoint(selected.x,selected.y,220);
+    }
+    const result=previousFinalizeBRSpawn(chosen);
+    if(player&&gameMode==='br')constrainIslandEntity(player,null,null,120);
+    return result;
+  };
+
+  const previousBeginBRStormShrink=beginBRStormShrink;
+  beginBRStormShrink=function(){
+    const result=previousBeginBRStormShrink();
+    if(gameMode==='br'){
+      const p=nearestIslandPoint(br.centerX,br.centerY,Math.min(240,Math.max(40,br.radius*.08)));
+      br.centerX=p.x;br.centerY=p.y;
+    }
+    return result;
+  };
+
+  if(brSpawnCanvas){
+    brSpawnCanvas.addEventListener('click',()=>{
+      if(!br.selected)return;
+      const wasLand=isInsideIsland(br.selected.x,br.selected.y,180);
+      br.selected=nearestIslandPoint(br.selected.x,br.selected.y,180);
+      if(!wasLand)notify('Drop moved to shoreline','Ocean drops are not valid. The nearest safe island position was selected.');
+      drawBRSpawnMap();
+    });
+  }
+
+  
+  function drawMapBase(targetCtx,canvasEl){
+    const cw=canvasEl.width,ch=canvasEl.height;
+    const scale=Math.min(cw/WORLD_W,ch/WORLD_H);
+    const mapW=WORLD_W*scale,mapH=WORLD_H*scale;
+    const ox=(cw-mapW)/2,oy=(ch-mapH)/2;
+    targetCtx.imageSmoothingEnabled=true;
+    targetCtx.fillStyle='#101820';targetCtx.fillRect(0,0,cw,ch);
+    targetCtx.drawImage(ensureIslandTerrain(),ox,oy,mapW,mapH);
+    return {cw,ch,scale,mapW,mapH,ox,oy,mapX:x=>ox+(x+HALF_W)*scale,mapY:y=>oy+(y+HALF_H)*scale};
+  }
+
+
+  function drawMapHotZone(targetCtx,geom){
+    normalizeHotZoneBiome();
+    if(!hotZone?.biome)return;
+    const mask=getIslandHotMask(hotZone.biome);
+    targetCtx.save();targetCtx.globalAlpha=.72+.14*Math.sin(performance.now()/220);
+    targetCtx.drawImage(mask,geom.ox,geom.oy,geom.mapW,geom.mapH);
+    targetCtx.restore();
+  }
+
+  function drawIslandMapLabels(targetCtx,geom,includeLandmarks=false){
+    targetCtx.save();targetCtx.textAlign='center';
+    for(const b of biomes){
+      const x=geom.mapX(b.labelX),y=geom.mapY(b.labelY);
+      targetCtx.font='1000 11px Arial';targetCtx.lineWidth=3;targetCtx.strokeStyle='rgba(16,24,32,.85)';targetCtx.fillStyle='#eef3f7';
+      targetCtx.strokeText(b.name.toUpperCase(),x,y);targetCtx.fillText(b.name.toUpperCase(),x,y);
+    }
+    if(includeLandmarks){
+      targetCtx.textAlign='left';targetCtx.font='900 9px Arial';
+      for(const lm of ISLAND_LANDMARKS){
+        const x=geom.mapX(lm.x),y=geom.mapY(lm.y);
+        targetCtx.fillStyle='#ffcf58';targetCtx.beginPath();targetCtx.arc(x,y,3.5,0,Math.PI*2);targetCtx.fill();
+        targetCtx.strokeStyle='#101820';targetCtx.lineWidth=2;targetCtx.stroke();
+        targetCtx.fillStyle='#eef3f7';targetCtx.strokeStyle='#101820';targetCtx.lineWidth=3;
+        targetCtx.strokeText(lm.name.toUpperCase(),x+7,y-5);targetCtx.fillText(lm.name.toUpperCase(),x+7,y-5);
+      }
+    }
+    targetCtx.restore();
+  }
+
+  drawMiniMap=function(){
+    const g=drawMapBase(mctx,miniCanvas);
+    drawMapHotZone(mctx,g);
+    for(const f of fragments){
+      if(f.kind==='world'||(player?.lootRadar>0&&((f.rarity&&f.rarity.xp>=28)||f.kind==='cursed'||f.kind==='natural'||f.kind==='ability'))){
+        mctx.fillStyle=f.kind==='world'?f.color:f.kind==='ability'?'#fff06a':f.kind==='evo'?'#8ae4ff':f.kind==='cursed'?'#d686ff':'#84d66e';
+        const rr=f.kind==='ability'?2.8:2;mctx.fillRect(g.mapX(f.x)-rr,g.mapY(f.y)-rr,rr*2,rr*2);
+      }
+    }
+    for(const b of bots){
+      if(b.dead)continue;const x=g.mapX(b.x),y=g.mapY(b.y);
+      mctx.fillStyle=isAlly(b)?(b.partyMember?'#7cf7ff':'#59a8ff'):'#ff5d67';
+      if(isAlly(b)){mctx.beginPath();mctx.arc(x,y,b.partyMember?2.2:1.9,0,Math.PI*2);mctx.fill();mctx.strokeStyle='#fff';mctx.lineWidth=1;mctx.stroke();}
+      else mctx.fillRect(x-1.5,y-1.5,3,3);
+    }
+    for(const r of remotePlayers){
+      if(r.dead)continue;const teammate=sameTeam(r,player);
+      mctx.fillStyle=teammate?'#7cf7ff':'#ff7d88';mctx.beginPath();mctx.arc(g.mapX(r.x),g.mapY(r.y),teammate?3:2.4,0,Math.PI*2);mctx.fill();
+      mctx.strokeStyle=teammate?'#fff':'#17212d';mctx.lineWidth=teammate?1.4:1;mctx.stroke();
+      for(const c of r.remoteClones||[]){if(c.dead)continue;mctx.fillStyle='#66d98b';mctx.beginPath();mctx.arc(g.mapX(c.x),g.mapY(c.y),1.7,0,Math.PI*2);mctx.fill();}
+    }
+    for(const b of bosses){if(b.dead)continue;mctx.fillStyle='#ffcf58';mctx.fillRect(g.mapX(b.x)-3,g.mapY(b.y)-3,6,6);}
+    for(const c of player?.clones||[]){if(c.dead)continue;mctx.fillStyle='#66d98b';mctx.beginPath();mctx.arc(g.mapX(c.x),g.mapY(c.y),1.8,0,Math.PI*2);mctx.fill();}
+    const focus=controlledEntity();
+    if(focus){mctx.fillStyle=focus===player?'#fff':'#66d98b';mctx.fillRect(g.mapX(focus.x)-2,g.mapY(focus.y)-2,4,4);}
+    mctx.strokeStyle='#101820';mctx.lineWidth=3;mctx.strokeRect(g.ox,g.oy,g.mapW,g.mapH);
+    if(typeof drawPartyPingsOnMap==='function')drawPartyPingsOnMap(miniCanvas);
+  };
+
+  drawBigMap=function(){
+    const g=drawMapBase(bctx,bigMapCanvas);
+    drawMapHotZone(bctx,g);
+    drawIslandMapLabels(bctx,g,true);
+    for(const tf of terrainFeatures){
+      bctx.fillStyle=tf.type==='void'?'#b582ff':tf.type==='ice'?'#bcecff':tf.type==='road'?'#ffcf58':tf.type==='vine'?'#62b46b':'#6d5546';
+      bctx.beginPath();bctx.arc(g.mapX(tf.x),g.mapY(tf.y),Math.max(2,tf.r*g.scale),0,Math.PI*2);bctx.fill();
+    }
+    if(gameMode==='br'&&br.active&&br.stormActive){
+      bctx.strokeStyle='#b582ff';bctx.lineWidth=3;bctx.setLineDash([10,6]);bctx.beginPath();bctx.arc(g.mapX(br.centerX),g.mapY(br.centerY),br.radius*g.scale,0,Math.PI*2);bctx.stroke();bctx.setLineDash([]);
+    }
+    for(const a of bossArenas){bctx.strokeStyle='#ff4d5e';bctx.lineWidth=2;bctx.beginPath();bctx.arc(g.mapX(a.x),g.mapY(a.y),a.r*g.scale,0,Math.PI*2);bctx.stroke();}
+    for(const f of fragments){
+      if(f.kind==='world'||f.kind==='ability'||f.kind==='evo'||(player&&player.lootRadar>0&&(f.kind==='cursed'||f.kind==='natural'))){
+        bctx.fillStyle=f.kind==='world'?f.color:f.kind==='ability'?'#fff06a':f.kind==='evo'?'#8ae4ff':f.kind==='cursed'?'#d686ff':'#84d66e';
+        bctx.beginPath();bctx.arc(g.mapX(f.x),g.mapY(f.y),f.kind==='world'?4:2.4,0,Math.PI*2);bctx.fill();
+      }
+    }
+    for(const b of bots){
+      if(b.dead)continue;const x=g.mapX(b.x),y=g.mapY(b.y);
+      bctx.fillStyle=isAlly(b)?(b.partyMember?'#7cf7ff':'#59a8ff'):(b===bountyTarget?'#ff4d5e':'#ff5d67');
+      if(isAlly(b)){bctx.beginPath();bctx.arc(x,y,b.partyMember?5:4,0,Math.PI*2);bctx.fill();bctx.strokeStyle='#fff';bctx.lineWidth=1.5;bctx.stroke();}
+      else bctx.fillRect(x-2,y-2,4,4);
+    }
+    for(const r of remotePlayers){
+      if(r.dead)continue;const teammate=sameTeam(r,player);
+      bctx.fillStyle=teammate?'#7cf7ff':'#ff7d88';bctx.beginPath();bctx.arc(g.mapX(r.x),g.mapY(r.y),teammate?5:4,0,Math.PI*2);bctx.fill();
+      bctx.strokeStyle='#fff';bctx.lineWidth=1.2;bctx.stroke();
+    }
+    for(const b of bosses){if(b.dead)continue;bctx.fillStyle='#ffcf58';bctx.fillRect(g.mapX(b.x)-5,g.mapY(b.y)-5,10,10);}
+    for(const c of player?.clones||[]){if(c.dead)continue;bctx.fillStyle='#66d98b';bctx.beginPath();bctx.arc(g.mapX(c.x),g.mapY(c.y),3.5,0,Math.PI*2);bctx.fill();}
+    if(player){
+      bctx.fillStyle='#fff';bctx.beginPath();bctx.arc(g.mapX(player.x),g.mapY(player.y),5,0,Math.PI*2);bctx.fill();bctx.strokeStyle='#101820';bctx.lineWidth=2;bctx.stroke();
+    }
+    bctx.strokeStyle='#eef3f7';bctx.lineWidth=3;bctx.strokeRect(g.ox,g.oy,g.mapW,g.mapH);
+    if(typeof drawPartyPingsOnMap==='function')drawPartyPingsOnMap(bigMapCanvas);
+  };
+
+  drawBRSpawnMap=function(){
+    if(!brctx||!player)return;
+    const g=drawMapBase(brctx,brSpawnCanvas);
+    drawIslandMapLabels(brctx,g,false);
+    for(const bot of bots){
+      if(bot.dead)continue;const px=g.mapX(bot.x),py=g.mapY(bot.y);
+      brctx.fillStyle='#ff5d67';brctx.fillRect(px-2,py-2,4,4);brctx.strokeStyle='#101820';brctx.lineWidth=1;brctx.strokeRect(px-2.5,py-2.5,5,5);
+    }
+    brctx.save();brctx.fillStyle='rgba(16,24,32,.92)';brctx.fillRect(g.ox,g.oy,g.mapW,42);
+    brctx.fillStyle='#eef3f7';brctx.font='1000 20px Arial';brctx.textAlign='left';brctx.fillText('SELECT ISLAND DROP ZONE',g.ox+16,g.oy+27);
+    brctx.fillStyle='#ffcf58';brctx.fillRect(g.ox+g.mapW-122,g.oy+8,106,26);brctx.strokeStyle='#eef3f7';brctx.lineWidth=2;brctx.strokeRect(g.ox+g.mapW-122,g.oy+8,106,26);
+    brctx.fillStyle='#101820';brctx.font='1000 14px Arial';brctx.textAlign='center';brctx.fillText('DROP '+Math.ceil(br.timer||20)+'s',g.ox+g.mapW-69,g.oy+26);brctx.restore();
+    if(br.selected){
+      const safe=nearestIslandPoint(br.selected.x,br.selected.y,180);br.selected=safe;
+      const sx=g.mapX(safe.x),sy=g.mapY(safe.y),pulse=1+Math.sin(performance.now()/120)*.12;
+      brctx.save();brctx.strokeStyle='#101820';brctx.lineWidth=4;brctx.beginPath();brctx.arc(sx,sy,22*pulse,0,Math.PI*2);brctx.stroke();
+      brctx.fillStyle='#ffcf58';brctx.beginPath();brctx.arc(sx,sy,10*pulse,0,Math.PI*2);brctx.fill();brctx.strokeStyle='#eef3f7';brctx.lineWidth=2;brctx.stroke();
+      brctx.fillStyle='#101820';brctx.fillRect(sx+16,sy-26,112,24);brctx.fillStyle='#eef3f7';brctx.font='1000 12px Arial';brctx.textAlign='left';brctx.fillText('DROP LOCKED',sx+23,sy-10);brctx.restore();
+    }else{
+      brctx.save();const w=260,h=32,x=g.cw/2-w/2,y=g.ch-48;brctx.fillStyle='#eef3f7';brctx.fillRect(x,y,w,h);brctx.strokeStyle='#101820';brctx.lineWidth=3;brctx.strokeRect(x,y,w,h);
+      brctx.fillStyle='#101820';brctx.font='1000 14px Arial';brctx.textAlign='center';brctx.fillText('CLICK LAND TO LOCK DROP',g.cw/2,y+21);brctx.restore();
+    }
+    brctx.strokeStyle='#101820';brctx.lineWidth=4;brctx.strokeRect(g.ox+2,g.oy+2,g.mapW-4,g.mapH-4);
+  };
+
+  // Keep incoming server terrain/hot-zone objects aligned with local island definitions.
+  const previousNetApplyHotZone=typeof netApplyHotZone==='function'?netApplyHotZone:null;
+  if(previousNetApplyHotZone){
+    netApplyHotZone=function(msg){
+      const result=previousNetApplyHotZone(msg);
+      normalizeHotZoneBiome();
+      return result;
+    };
+  }
+
+  document.documentElement.dataset.fragmentMap = 'island-v1';
+  console.log('[Fragment.io] Irregular island map renderer enabled.');
+
+  setTimeout(()=>{
+    ensureIslandTerrain();
+    if(state.screen==='menu'&&typeof draw==='function')draw();
+  },0);
+})();
+/* ===== END IRREGULAR ISLAND MAP RUNTIME PATCH ===== */
+
 })();
 </script>
 
@@ -16077,827 +17057,6 @@ body.bossRushMinimal #leaveGameBtn{
 .areaWorldLabel{pointer-events:none}.partyWorldPing{pointer-events:none}
 @media(max-width:760px){.cosmeticPresetGrid,.weeklyChallengeHeader,.weeklyChallengeGrid,.deathRecapGrid{grid-template-columns:1fr}.inGameProfileStats{grid-template-columns:repeat(2,1fr)}.inGameProfileShowcase{grid-template-columns:repeat(2,1fr)}#partyInGameHud{top:auto!important;bottom:190px!important;width:190px!important}.matchPlayerCardsGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.matchPlayerCard{min-height:190px}.matchPlayerCard:nth-child(n+5){display:none}}
 </style>
-
-
-<script id="fragment-io-island-map-update">
-(() => {
-  'use strict';
-
-  const ISLAND_BIOME_DEFS = [
-    {id:'glacial',name:'Glacial Relay',effect:'Reduced acceleration',desc:'Frozen relay fields make sudden movement harder.',color:'#5d87a5',detail:'#769db8',accent:'#d8f3ff',cx:0,cy:-2100,sx:2500,sy:1200,bias:-.05,labelX:0,labelY:-2460,x:-3150,y:-3150,w:6300,h:2550},
-    {id:'verdant',name:'Verdant Divide',effect:'Gentle regeneration',desc:'Living ground slowly restores damaged cores.',color:'#2f5d45',detail:'#417a58',accent:'#92d96d',cx:-2600,cy:-850,sx:2100,sy:1800,bias:0,labelX:-2750,labelY:-1350,x:-4600,y:-2600,w:3900,h:3600},
-    {id:'furnace',name:'The Furnace',effect:'Fragments grant bonus XP',desc:'Heat vents energize every fragment collected inside the basin.',color:'#6f3c32',detail:'#9d5140',accent:'#ff8a54',cx:-3000,cy:1200,sx:1900,sy:1700,bias:0,labelX:-3050,labelY:1280,x:-4650,y:-250,w:3550,h:3000},
-    {id:'sharddunes',name:'Shard Dunes',effect:'Fragment score increased',desc:'Crystal deposits amplify the value of collected fragments.',color:'#a89268',detail:'#c3ad7d',accent:'#fff0a6',cx:-450,cy:2050,sx:2500,sy:1350,bias:.03,labelX:-450,labelY:2280,x:-2850,y:900,w:5100,h:2200},
-    {id:'stormbreak',name:'Stormbreak Coast',effect:'Dash recharge increased',desc:'Coastal static rapidly restores mobility systems.',color:'#3e596d',detail:'#52778c',accent:'#b9d4ff',cx:3200,cy:-1250,sx:1500,sy:1150,bias:-.04,labelX:3190,labelY:-1450,x:1950,y:-2600,w:2350,h:2350},
-    {id:'skyglass',name:'Skyglass Expanse',effect:'Movement speed increased',desc:'Low resistance lets fighters cross the open flats quickly.',color:'#66818d',detail:'#86a0aa',accent:'#f3fbff',cx:2900,cy:350,sx:1700,sy:1700,bias:0,labelX:3150,labelY:350,x:1450,y:-900,w:2900,h:2950},
-    {id:'terminus',name:'Elevator Terminus',effect:'Boss activity increased',desc:'Administrative signals draw bosses and Floor 7 anomalies.',color:'#51395f',detail:'#725080',accent:'#cb80ff',cx:2450,cy:2100,sx:1450,sy:1150,bias:-.02,labelX:2530,labelY:2250,x:1200,y:1050,w:3000,h:2050},
-    {id:'hub',name:'Shattered Hub',effect:'High-conflict neutral ground',desc:'Broken roads connect every region around the abandoned facility.',color:'#505a62',detail:'#68747d',accent:'#d7e0e8',cx:-150,cy:-250,sx:1050,sy:780,bias:-.16,labelX:-300,labelY:-420,x:-1500,y:-1250,w:2800,h:2050},
-    {id:'nullgarden',name:'Null Garden',effect:'Natural fragments heal more',desc:'Unstable growth converts natural fragments into stronger recovery.',color:'#24483e',detail:'#35695a',accent:'#80c75a',cx:850,cy:450,sx:850,sy:720,bias:-.18,labelX:850,labelY:570,x:-50,y:-300,w:1850,h:1650}
-  ];
-
-  const ISLAND_LANDMARKS = [
-    {name:'Relay Ridge',x:-650,y:-2570,type:'ridge'},
-    {name:'Broken Causeway',x:3720,y:-1980,type:'causeway'},
-    {name:'Ashfall Pier',x:-3820,y:2050,type:'pier'},
-    {name:'Dune Arch',x:250,y:2780,type:'arch'},
-    {name:'Sunken Garden',x:1330,y:920,type:'garden'},
-    {name:'Terminal Steps',x:3150,y:2660,type:'steps'},
-    {name:'Administrator’s Scar',x:-500,y:-80,type:'hub'}
-  ];
-
-  const ISLAND_ROUTES = [
-    {kind:'outer',points:[[-3650,-900],[-3050,-1850],[-1250,-2500],[900,-2500],[2600,-2000],[3700,-850],[3500,850],[2900,2350],[900,2750],[-1200,2680],[-3000,1900],[-3800,650],[-3650,-900]]},
-    {kind:'conflict',points:[[-2800,-900],[-1450,-600],[-450,-250],[700,150],[2050,200],[3100,550]]},
-    {kind:'conflict',points:[[0,-2300],[-250,-1250],[-350,-350],[-350,950],[-450,2200]]},
-    {kind:'conflict',points:[[-3150,1300],[-1900,700],[-450,-250],[1050,500],[2450,2050]]}
-  ];
-
-  biomes.splice(0, biomes.length, ...ISLAND_BIOME_DEFS);
-
-  function islandGauss(nx,ny,cx,cy,sx,sy){
-    const dx=(nx-cx)/sx,dy=(ny-cy)/sy;
-    return Math.exp(-(dx*dx+dy*dy));
-  }
-
-  function islandField(x,y){
-    const nx=x/HALF_W, ny=y/HALF_H;
-    let value=1-Math.pow(Math.abs(nx)/.87,2.55)-Math.pow(Math.abs(ny)/.86,2.45);
-    value+=.34*islandGauss(nx,ny,-.72,-.28,.34,.38);
-    value+=.20*islandGauss(nx,ny,-.48,.68,.38,.30);
-    value+=.26*islandGauss(nx,ny,.62,.60,.31,.33);
-    value+=.18*islandGauss(nx,ny,.73,-.55,.28,.25);
-    value+=.11*Math.sin(nx*8.4+ny*3.1)*Math.sin(ny*6.2-nx*2.2);
-    value-=.54*islandGauss(nx,ny,.84,-.05,.22,.26);
-    value-=.34*islandGauss(nx,ny,-.88,.20,.18,.30);
-    value-=.45*islandGauss(nx,ny,-.02,.94,.26,.16);
-    value-=.24*islandGauss(nx,ny,.10,-.92,.22,.14);
-    return value;
-  }
-
-  function islandMarginThreshold(margin=0){
-    return Math.max(0,Number(margin)||0)/Math.min(HALF_W,HALF_H)*1.12;
-  }
-
-  function isInsideIsland(x,y,margin=0){
-    if(!Number.isFinite(x)||!Number.isFinite(y)) return false;
-    if(Math.abs(x)>HALF_W-5||Math.abs(y)>HALF_H-5) return false;
-    return islandField(x,y)>islandMarginThreshold(margin);
-  }
-
-  function nearestIslandPoint(x,y,margin=0){
-    x=clamp(Number(x)||0,-HALF_W+10,HALF_W-10);
-    y=clamp(Number(y)||0,-HALF_H+10,HALF_H-10);
-    if(isInsideIsland(x,y,margin)) return {x,y};
-    let lo=0,hi=1;
-    for(let i=0;i<34;i++){
-      const mid=(lo+hi)/2;
-      if(isInsideIsland(x*mid,y*mid,margin)) lo=mid;
-      else hi=mid;
-    }
-    let px=x*lo,py=y*lo;
-    const len=Math.hypot(px,py)||1;
-    const inward=Math.max(10,margin*.18);
-    px-=px/len*inward;
-    py-=py/len*inward;
-    if(!isInsideIsland(px,py,margin)){
-      px=0;py=0;
-    }
-    return {x:px,y:py};
-  }
-
-  function constrainIslandEntity(ent,oldX=null,oldY=null,extraMargin=0){
-    if(!ent||gameMode==='bossrush') return false;
-    const margin=(Number(ent.r)||18)+10+extraMargin;
-    if(isInsideIsland(ent.x,ent.y,margin)) return false;
-    const ox=Number.isFinite(oldX)?oldX:0, oy=Number.isFinite(oldY)?oldY:0;
-    let p;
-    if(isInsideIsland(ox,oy,margin)){
-      let lo=0,hi=1;
-      for(let i=0;i<28;i++){
-        const mid=(lo+hi)/2;
-        const tx=ox+(ent.x-ox)*mid,ty=oy+(ent.y-oy)*mid;
-        if(isInsideIsland(tx,ty,margin)) lo=mid; else hi=mid;
-      }
-      p={x:ox+(ent.x-ox)*lo,y:oy+(ent.y-oy)*lo};
-    }else{
-      p=nearestIslandPoint(ent.x,ent.y,margin);
-    }
-    ent.x=p.x;ent.y=p.y;
-    ent.vx=(ent.vx||0)*.24;ent.vy=(ent.vy||0)*.24;
-    return true;
-  }
-
-  function biomeScore(b,x,y,index){
-    const dx=(x-b.cx)/b.sx,dy=(y-b.cy)/b.sy;
-    const warp=.09*Math.sin(x/690+index*1.7)*Math.cos(y/610-index*.9);
-    return dx*dx+dy*dy+(b.bias||0)+warp;
-  }
-
-  function islandBiomeAt(x,y){
-    if(!isInsideIsland(x,y,0)){
-      const p=nearestIslandPoint(x,y,0);
-      x=p.x;y=p.y;
-    }
-    let best=biomes[0],score=Infinity;
-    for(let i=0;i<biomes.length;i++){
-      const s=biomeScore(biomes[i],x,y,i);
-      if(s<score){score=s;best=biomes[i];}
-    }
-    return best;
-  }
-
-  getBiomeAt = islandBiomeAt;
-
-  function randomIslandPoint(margin=160,biomeId=null,minRadius=0){
-    const desired=biomeId ? biomes.find(b=>b.id===biomeId) : null;
-    for(let tries=0;tries<180;tries++){
-      let x,y;
-      if(desired){
-        x=rand(desired.x+20,desired.x+desired.w-20);
-        y=rand(desired.y+20,desired.y+desired.h-20);
-      }else{
-        x=rand(-HALF_W+80,HALF_W-80);
-        y=rand(-HALF_H+80,HALF_H-80);
-      }
-      if(Math.hypot(x,y)<minRadius) continue;
-      if(!isInsideIsland(x,y,margin)) continue;
-      if(desired&&islandBiomeAt(x,y).id!==desired.id) continue;
-      return {x,y};
-    }
-    const fallback=desired?nearestIslandPoint(desired.cx,desired.cy,margin):nearestIslandPoint(Math.max(minRadius,0),0,margin);
-    return fallback;
-  }
-
-  function randomPointInBiome(b,margin=100){
-    const id=typeof b==='string'?b:b?.id;
-    return randomIslandPoint(margin,id,0);
-  }
-
-  window.fragmentIsland = {isInsideIsland,nearestIslandPoint,randomIslandPoint,getBiomeAt:islandBiomeAt,field:islandField};
-
-  let islandTerrainCanvas=null;
-  const islandHotMasks=new Map();
-  let islandOutlineCache=null;
-
-  function parseHexColor(hex){
-    let value=String(hex||'#56616a').replace('#','');
-    if(value.length===3)value=value.split('').map(c=>c+c).join('');
-    const n=parseInt(value.slice(0,6),16);
-    return Number.isFinite(n)?[(n>>16)&255,(n>>8)&255,n&255]:[86,97,106];
-  }
-
-  function mixRgb(a,b,t){
-    t=clamp(t,0,1);
-    return [
-      Math.round(a[0]*(1-t)+b[0]*t),
-      Math.round(a[1]*(1-t)+b[1]*t),
-      Math.round(a[2]*(1-t)+b[2]*t)
-    ];
-  }
-
-  function islandOutlinePoints(){
-    if(islandOutlineCache) return islandOutlineCache;
-    const points=[];
-    for(let i=0;i<300;i++){
-      const angle=i/300*Math.PI*2;
-      let lo=0,hi=Math.hypot(HALF_W,HALF_H);
-      for(let k=0;k<30;k++){
-        const mid=(lo+hi)/2;
-        const x=Math.cos(angle)*mid,y=Math.sin(angle)*mid;
-        if(isInsideIsland(x,y,0)) lo=mid; else hi=mid;
-      }
-      points.push({x:Math.cos(angle)*lo,y:Math.sin(angle)*lo});
-    }
-    islandOutlineCache=points;
-    return points;
-  }
-
-  function worldToTexture(canvasEl,x,y){
-    return {
-      x:(x+HALF_W)/WORLD_W*canvasEl.width,
-      y:(y+HALF_H)/WORLD_H*canvasEl.height
-    };
-  }
-
-  function drawTextureRoute(c,route){
-    if(!route.points.length)return;
-    c.save();
-    c.strokeStyle=route.kind==='outer'?'rgba(255,207,88,.42)':'rgba(238,243,247,.34)';
-    c.lineWidth=route.kind==='outer'?2.2:1.7;
-    c.setLineDash(route.kind==='outer'?[9,7]:[5,6]);
-    c.beginPath();
-    route.points.forEach((p,index)=>{
-      const q=worldToTexture(c.canvas,p[0],p[1]);
-      if(index)c.lineTo(q.x,q.y);else c.moveTo(q.x,q.y);
-    });
-    c.stroke();
-    c.setLineDash([]);
-    c.restore();
-  }
-
-  function drawTextureLandmark(c,lm){
-    const p=worldToTexture(c.canvas,lm.x,lm.y);
-    c.save();
-    c.translate(p.x,p.y);
-    c.strokeStyle='rgba(16,24,32,.88)';
-    c.fillStyle='rgba(238,243,247,.60)';
-    c.lineWidth=1.4;
-    if(lm.type==='pier'||lm.type==='causeway'){
-      c.fillRect(-2,-2,22,4);c.strokeRect(-2,-2,22,4);
-      for(let i=2;i<20;i+=5){c.beginPath();c.moveTo(i,2);c.lineTo(i,7);c.stroke();}
-    }else if(lm.type==='steps'){
-      for(let i=0;i<4;i++){c.fillRect(-8+i*3,-7+i*4,17-i*4,3);}
-    }else if(lm.type==='arch'){
-      c.beginPath();c.arc(0,3,8,Math.PI,Math.PI*2);c.stroke();c.fillRect(-9,3,4,7);c.fillRect(5,3,4,7);
-    }else if(lm.type==='garden'){
-      c.beginPath();c.arc(0,0,8,0,Math.PI*2);c.fill();c.stroke();
-      c.beginPath();c.arc(0,0,3,0,Math.PI*2);c.stroke();
-    }else if(lm.type==='hub'){
-      c.rotate(Math.PI/4);c.fillRect(-7,-7,14,14);c.strokeRect(-7,-7,14,14);
-    }else{
-      c.beginPath();c.moveTo(-9,6);c.lineTo(0,-8);c.lineTo(9,6);c.closePath();c.fill();c.stroke();
-    }
-    c.restore();
-  }
-
-  function ensureIslandTerrain(){
-    if(islandTerrainCanvas)return islandTerrainCanvas;
-    const tw=960,th=640;
-    const c=document.createElement('canvas');
-    c.width=tw;c.height=th;
-    const cctx=c.getContext('2d');
-    const image=cctx.createImageData(tw,th);
-    const data=image.data;
-    const biomeColors=biomes.map(b=>parseHexColor(b.color));
-    const biomeDetails=biomes.map(b=>parseHexColor(b.detail));
-    const oceanA=[18,43,57],oceanB=[25,59,74],foam=[207,231,226],coast=[126,133,116];
-
-    for(let py=0;py<th;py++){
-      const y=-HALF_H+(py+.5)/th*WORLD_H;
-      for(let px=0;px<tw;px++){
-        const x=-HALF_W+(px+.5)/tw*WORLD_W;
-        const field=islandField(x,y);
-        let rgb;
-        if(field<=0){
-          const wave=(Math.sin(px*.12+py*.045)+Math.cos(py*.085-px*.025)+2)/4;
-          rgb=mixRgb(oceanA,oceanB,.22+wave*.38);
-          if(field>-.025&&Math.sin(px*.42+py*.31)>.15)rgb=mixRgb(rgb,foam,.32);
-        }else{
-          const b=islandBiomeAt(x,y);
-          const index=biomes.indexOf(b);
-          const base=biomeColors[index],detail=biomeDetails[index];
-          const n=(Math.sin(x/91+y/147)+Math.cos(x/173-y/77)+Math.sin((x-y)/231)+3)/6;
-          rgb=mixRgb(base,detail,.16+n*.32);
-
-          if(b.id==='furnace'){
-            const crack=Math.abs(Math.sin(x/58)+Math.cos(y/71));
-            if(crack>1.72)rgb=mixRgb(rgb,[255,103,45],.72);
-            else if(n<.20)rgb=mixRgb(rgb,[25,27,29],.35);
-          }else if(b.id==='glacial'){
-            if(Math.abs(Math.sin(x/88-y/123))>.91)rgb=mixRgb(rgb,[225,248,255],.55);
-          }else if(b.id==='verdant'){
-            if(n>.76)rgb=mixRgb(rgb,[50,99,62],.5);
-          }else if(b.id==='sharddunes'){
-            const dune=(Math.sin((x+y)/125)+1)/2;
-            rgb=mixRgb(rgb,[226,202,145],dune*.22);
-          }else if(b.id==='skyglass'||b.id==='stormbreak'){
-            if(Math.abs(Math.sin(x/115+y/83))>.94)rgb=mixRgb(rgb,[224,248,255],.52);
-          }else if(b.id==='terminus'){
-            if((Math.abs(Math.round(x/120)-x/120)<.035)||(Math.abs(Math.round(y/120)-y/120)<.035))rgb=mixRgb(rgb,[192,109,255],.38);
-          }else if(b.id==='hub'){
-            if((Math.abs(Math.round(x/155)-x/155)<.025)||(Math.abs(Math.round(y/155)-y/155)<.025))rgb=mixRgb(rgb,[29,37,44],.28);
-          }else if(b.id==='nullgarden'){
-            if(n>.68)rgb=mixRgb(rgb,[105,196,111],.32);
-            if(n<.18)rgb=mixRgb(rgb,[20,32,39],.34);
-          }
-
-          const shore=clamp(field/.085,0,1);
-          if(shore<1){
-            rgb=mixRgb(coast,rgb,shore);
-            if(field<.020)rgb=mixRgb(rgb,foam,.38);
-          }
-        }
-        const o=(py*tw+px)*4;
-        data[o]=rgb[0];data[o+1]=rgb[1];data[o+2]=rgb[2];data[o+3]=255;
-      }
-    }
-    cctx.putImageData(image,0,0);
-
-    cctx.save();
-    const outline=islandOutlinePoints();
-    cctx.beginPath();
-    outline.forEach((point,index)=>{
-      const p=worldToTexture(c,point.x,point.y);
-      if(index)cctx.lineTo(p.x,p.y);else cctx.moveTo(p.x,p.y);
-    });
-    cctx.closePath();
-    cctx.strokeStyle='rgba(225,239,232,.72)';
-    cctx.lineWidth=2.2;
-    cctx.stroke();
-    cctx.strokeStyle='rgba(10,21,29,.72)';
-    cctx.lineWidth=1;
-    cctx.stroke();
-    cctx.restore();
-
-    for(const route of ISLAND_ROUTES)drawTextureRoute(cctx,route);
-    for(const landmark of ISLAND_LANDMARKS)drawTextureLandmark(cctx,landmark);
-
-    // Broken offshore causeway/islet, visible but intentionally outside the playable land mask.
-    cctx.save();
-    cctx.fillStyle='#536457';cctx.strokeStyle='#d7e0d8';cctx.lineWidth=1.5;
-    cctx.beginPath();
-    const islet=[ [4100,-2420],[4550,-2250],[4680,-1750],[4400,-1480],[3970,-1700] ];
-    islet.forEach((point,index)=>{const p=worldToTexture(c,point[0],point[1]);if(index)cctx.lineTo(p.x,p.y);else cctx.moveTo(p.x,p.y);});
-    cctx.closePath();cctx.fill();cctx.stroke();
-    const a=worldToTexture(c,3500,-2000),d=worldToTexture(c,4140,-2050);
-    cctx.strokeStyle='rgba(220,230,224,.55)';cctx.lineWidth=3;cctx.setLineDash([8,6]);
-    cctx.beginPath();cctx.moveTo(a.x,a.y);cctx.lineTo(d.x,d.y);cctx.stroke();cctx.setLineDash([]);
-    cctx.restore();
-
-    islandTerrainCanvas=c;
-    return c;
-  }
-
-  function getIslandHotMask(biome){
-    if(!biome)return null;
-    const id=biome.id||String(biome.name||'');
-    if(islandHotMasks.has(id))return islandHotMasks.get(id);
-    const c=document.createElement('canvas');c.width=480;c.height=320;
-    const cx=c.getContext('2d'),img=cx.createImageData(c.width,c.height);
-    for(let py=0;py<c.height;py++){
-      const y=-HALF_H+(py+.5)/c.height*WORLD_H;
-      for(let px=0;px<c.width;px++){
-        const x=-HALF_W+(px+.5)/c.width*WORLD_W;
-        if(isInsideIsland(x,y,0)&&islandBiomeAt(x,y).id===id){
-          const o=(py*c.width+px)*4;
-          img.data[o]=255;img.data[o+1]=207;img.data[o+2]=88;img.data[o+3]=92;
-        }
-      }
-    }
-    cx.putImageData(img,0,0);
-    islandHotMasks.set(id,c);
-    return c;
-  }
-
-  function drawIslandTextureViewport(targetCtx,camX,camY,viewW,viewH){
-    const terrain=ensureIslandTerrain();
-    targetCtx.fillStyle='#102b39';targetCtx.fillRect(0,0,viewW,viewH);
-    let sx=(camX+HALF_W)/WORLD_W*terrain.width;
-    let sy=(camY+HALF_H)/WORLD_H*terrain.height;
-    let sw=viewW/WORLD_W*terrain.width;
-    let sh=viewH/WORLD_H*terrain.height;
-    let dx=0,dy=0,dw=viewW,dh=viewH;
-    if(sx<0){const cut=-sx;dx=cut/sw*viewW;dw-=dx;sw-=cut;sx=0;}
-    if(sy<0){const cut=-sy;dy=cut/sh*viewH;dh-=dy;sh-=cut;sy=0;}
-    if(sx+sw>terrain.width){const cut=sx+sw-terrain.width;dw-=cut/sw*viewW;sw-=cut;}
-    if(sy+sh>terrain.height){const cut=sy+sh-terrain.height;dh-=cut/sh*viewH;sh-=cut;}
-    if(sw>0&&sh>0&&dw>0&&dh>0)targetCtx.drawImage(terrain,sx,sy,sw,sh,dx,dy,dw,dh);
-  }
-
-  const previousDrawBackground=drawBackground;
-  drawBackground=function(camX,camY,viewW,viewH){
-    if(gameMode==='bossrush')return previousDrawBackground(camX,camY,viewW,viewH);
-    drawIslandTextureViewport(ctx,camX,camY,viewW,viewH);
-    if(world.mode){
-      ctx.fillStyle=({blood:'#6a2a2a55',frozen:'#8fc8ef55',storm:'#586a8644',overgrowth:'#3f8f4f55',zero:'#8f85c44d',eclipse:'#11182a77',meteor:'#bd6b4355',corruption:'#7446a066',golden:'#d6a84a4d'})[world.mode.key]||'#0000';
-      ctx.fillRect(0,0,viewW,viewH);
-    }
-    const vg=ctx.createRadialGradient(viewW/2,viewH/2,Math.min(viewW,viewH)*.28,viewW/2,viewH/2,Math.max(viewW,viewH)*.76);
-    vg.addColorStop(0,'rgba(255,255,255,.025)');vg.addColorStop(1,'rgba(0,0,0,.23)');
-    ctx.fillStyle=vg;ctx.fillRect(0,0,viewW,viewH);
-  };
-
-  drawAreaLabels=function(camX,camY){
-    ctx.save();ctx.textAlign='center';
-    for(const b of biomes){
-      const sx=b.labelX-camX,sy=b.labelY-camY;
-      if(sx<-360||sx>canvas.width+360||sy<-120||sy>canvas.height+120)continue;
-      ctx.globalAlpha=b.id==='hub'||b.id==='nullgarden'?.31:.23;
-      ctx.fillStyle='#fff';ctx.strokeStyle='rgba(16,24,32,.70)';ctx.lineWidth=5;
-      ctx.font=b.id==='hub'?'1000 25px Arial':'900 21px Arial';
-      ctx.strokeText(b.name.toUpperCase(),sx,sy);ctx.fillText(b.name.toUpperCase(),sx,sy);
-      ctx.font='900 10px Arial';ctx.lineWidth=3;
-      ctx.strokeText(b.effect.toUpperCase(),sx,sy+17);ctx.fillText(b.effect.toUpperCase(),sx,sy+17);
-    }
-    ctx.restore();
-  };
-
-  function normalizeHotZoneBiome(){
-    if(hotZone?.biome?.id){
-      const local=biomes.find(b=>b.id===hotZone.biome.id);
-      if(local)hotZone.biome=local;
-    }
-  }
-
-  function drawIslandHotZoneWorld(camX,camY,viewW,viewH){
-    normalizeHotZoneBiome();
-    if(!hotZone?.biome)return;
-    const mask=getIslandHotMask(hotZone.biome);
-    if(!mask)return;
-    const alpha=.64+.16*Math.sin(performance.now()/220);
-    ctx.save();ctx.globalAlpha=alpha;
-    let sx=(camX+HALF_W)/WORLD_W*mask.width,sy=(camY+HALF_H)/WORLD_H*mask.height;
-    let sw=viewW/WORLD_W*mask.width,sh=viewH/WORLD_H*mask.height;
-    if(sx<0||sy<0||sx+sw>mask.width||sy+sh>mask.height){
-      const tmp=document.createElement('canvas');tmp.width=viewW;tmp.height=viewH;
-      // Fall through to a clipped world-space label; the normal camera rarely exceeds bounds.
-    }else ctx.drawImage(mask,sx,sy,sw,sh,0,0,viewW,viewH);
-    const b=hotZone.biome;
-    const lx=b.labelX-camX,ly=b.labelY-camY;
-    ctx.globalAlpha=1;ctx.fillStyle='#ffcf58';ctx.strokeStyle='#101820';ctx.lineWidth=5;
-    ctx.font='1000 24px Arial';ctx.textAlign='center';
-    ctx.strokeText('HOT ZONE',lx,ly-38);ctx.fillText('HOT ZONE',lx,ly-38);
-    ctx.restore();
-  }
-
-  const previousDrawMapSystems=drawMapSystems;
-  drawMapSystems=function(camX,camY,viewW,viewH){
-    normalizeHotZoneBiome();
-    const saved=hotZone;
-    if(saved)hotZone=null;
-    const result=previousDrawMapSystems(camX,camY,viewW,viewH);
-    hotZone=saved;
-    if(saved)drawIslandHotZoneWorld(camX,camY,viewW,viewH);
-    return result;
-  };
-
-  const previousSpawnFragment=spawnFragment;
-  spawnFragment=function(kind='xp',x=null,y=null,extra=null){
-    if(gameMode==='bossrush')return previousSpawnFragment(kind,x,y,extra);
-    let p;
-    if(x==null||y==null)p=randomIslandPoint(38);
-    else p=isInsideIsland(x,y,30)?{x,y}:nearestIslandPoint(x,y,30);
-    return previousSpawnFragment(kind,p.x,p.y,extra);
-  };
-
-  const previousSpawnTerrainFeature=spawnTerrainFeature;
-  spawnTerrainFeature=function(type=null,x=null,y=null){
-    if(gameMode==='bossrush')return previousSpawnTerrainFeature(type,x,y);
-    if(x==null||y==null){
-      const px=player?.x||0,py=player?.y||0;
-      let found=null;
-      for(let i=0;i<45;i++){
-        const tx=px+rand(-850,850),ty=py+rand(-620,620);
-        if(isInsideIsland(tx,ty,180)){found={x:tx,y:ty};break;}
-      }
-      found=found||randomIslandPoint(180);
-      x=found.x;y=found.y;
-    }else{
-      const p=nearestIslandPoint(x,y,180);x=p.x;y=p.y;
-    }
-    return previousSpawnTerrainFeature(type,x,y);
-  };
-
-  const previousCreateEntity=createEntity;
-  createEntity=function(name,human=false){
-    const ent=previousCreateEntity(name,human);
-    if(gameMode!=='bossrush'){
-      const p=randomIslandPoint(230,null,human?0:450);
-      ent.x=p.x;ent.y=p.y;
-    }
-    return ent;
-  };
-
-  const previousSpawnInitial=spawnInitial;
-  spawnInitial=function(){
-    const result=previousSpawnInitial();
-    if(gameMode!=='bossrush'){
-      if(player&&!isInsideIsland(player.x,player.y,(player.r||18)+40)){
-        const p=gameMode==='test'?{x:0,y:0}:randomIslandPoint(260);
-        player.x=p.x;player.y=p.y;
-      }
-      for(const ent of bots){
-        if(!isInsideIsland(ent.x,ent.y,(ent.r||18)+25)){
-          const p=randomIslandPoint(220,null,gameMode==='test'?0:500);ent.x=p.x;ent.y=p.y;
-        }
-        if(ent.ai){
-          const roam=randomIslandPoint(180);ent.ai.roamX=roam.x;ent.ai.roamY=roam.y;
-        }
-      }
-      for(const ent of bosses){
-        if(!isInsideIsland(ent.x,ent.y,(ent.r||48)+70)){const p=randomIslandPoint(360);ent.x=p.x;ent.y=p.y;}
-      }
-      for(const f of fragments){
-        if(!isInsideIsland(f.x,f.y,(f.r||8)+10)){const p=randomIslandPoint(30);f.x=p.x;f.y=p.y;}
-      }
-    }
-    return result;
-  };
-
-  const previousRespawnBot=respawnBot;
-  respawnBot=function(bot){
-    if(netUsesServerWorld())return previousRespawnBot(bot);
-    setTimeout(()=>{
-      const idx=bots.indexOf(bot);if(idx>=0)bots.splice(idx,1);
-      const nb=createEntity(bot.name,false),p=randomIslandPoint(240,null,500);
-      nb.x=p.x;nb.y=p.y;
-      markTeam(nb,bot.team||'red',!!bot.ally);nb.duoId=bot.duoId||null;nb.partyMember=!!bot.partyMember;
-      if(Math.random()<.7)giveBotArchetype(nb,Object.keys(evoTree)[irand(0,Object.keys(evoTree).length)]);
-      bots.push(nb);
-    },0);
-  };
-
-  const previousSpawnUniqueBoss=spawnUniqueBoss;
-  spawnUniqueBoss=function(id=null,rush=false){
-    const b=previousSpawnUniqueBoss(id,rush);
-    if(b&&!rush&&gameMode!=='bossrush'){
-      const p=randomIslandPoint(430,null,600);b.x=p.x;b.y=p.y;
-      const arena=bossArenaFor(b);if(arena){arena.x=b.x;arena.y=b.y;}
-    }
-    return b;
-  };
-
-  const previousSpawnOfflineDeathFragments=spawnOfflineDeathFragments;
-  spawnOfflineDeathFragments=function(target,count){
-    const start=fragments.length;
-    const result=previousSpawnOfflineDeathFragments(target,count);
-    for(let i=start;i<fragments.length;i++){
-      const f=fragments[i],p=nearestIslandPoint(f.x,f.y,(f.r||8)+6);f.x=p.x;f.y=p.y;
-    }
-    return result;
-  };
-
-  const previousUpdatePlayer=updatePlayer;
-  updatePlayer=function(dt){
-    const actor=controlledEntity(),ox=actor?.x,oy=actor?.y;
-    const result=previousUpdatePlayer(dt);
-    if(actor&&gameMode!=='bossrush'&&!socialState.spectating)constrainIslandEntity(actor,ox,oy);
-    for(const clone of player?.clones||[])constrainIslandEntity(clone,null,null,3);
-    return result;
-  };
-
-  const previousUpdateBots=updateBots;
-  updateBots=function(dt){
-    const old=new Map(bots.map(b=>[b,{x:b.x,y:b.y}]));
-    const result=previousUpdateBots(dt);
-    for(const b of bots){
-      const p=old.get(b);
-      if(constrainIslandEntity(b,p?.x,p?.y)&&b.ai){
-        const roam=randomIslandPoint(170);b.ai.roamX=roam.x;b.ai.roamY=roam.y;
-      }
-    }
-    return result;
-  };
-
-  const previousUpdateBosses=updateBosses;
-  updateBosses=function(dt){
-    const old=new Map(bosses.map(b=>[b,{x:b.x,y:b.y}]));
-    const result=previousUpdateBosses(dt);
-    if(gameMode!=='bossrush')for(const b of bosses){const p=old.get(b);constrainIslandEntity(b,p?.x,p?.y,50);}
-    return result;
-  };
-
-  const previousUpdateFragments=updateFragments;
-  updateFragments=function(dt){
-    const result=previousUpdateFragments(dt);
-    if(gameMode!=='bossrush')for(const f of fragments){
-      if(!isInsideIsland(f.x,f.y,(f.r||8)+4)){
-        const p=nearestIslandPoint(f.x,f.y,(f.r||8)+4);f.x=p.x;f.y=p.y;f.vx=(f.vx||0)*-.15;f.vy=(f.vy||0)*-.15;
-      }
-    }
-    return result;
-  };
-
-  updateMapSystems=function(dt){
-    normalizeHotZoneBiome();
-    if(netUsesServerWorld()){
-      if(hotZone){
-        hotZone.timer-=dt/1000;hotZone.pulse=(hotZone.pulse||0)+dt/1000;
-        if(hotZone.timer<=0)hotZone=null;
-      }
-      for(let i=terrainFeatures.length-1;i>=0;i--){
-        const f=terrainFeatures[i];f.life-=dt/1000;f.spawn=Math.max(0,(f.spawn||0)-dt/1000);
-        f.x=lerp(f.x,f.tx??f.x,.18);f.y=lerp(f.y,f.ty??f.y,.18);
-        const p=nearestIslandPoint(f.x,f.y,(f.r||100)*.35);f.x=p.x;f.y=p.y;
-        if(f.life<=0)terrainFeatures.splice(i,1);
-      }
-      for(let i=bossArenas.length-1;i>=0;i--){
-        const a=bossArenas[i];
-        if(!a.boss||a.boss.dead){bossArenas.splice(i,1);continue;}
-        a.x=a.boss.x;a.y=a.boss.y;a.pulse+=dt/1000;a.spawn=Math.max(0,(a.spawn||0)-dt/1000);
-      }
-      return;
-    }
-    hotZoneTick+=dt;terrainTick+=dt;
-    if(!hotZone||hotZone.timer<=0||hotZoneTick>95000){hotZoneTick=0;setHotZone();normalizeHotZoneBiome();}
-    if(hotZone){
-      hotZone.timer-=dt/1000;hotZone.pulse+=dt/1000;
-      if(hotZone.timer<=0){addChat('SERVER','Hot Zone stabilized: '+hotZone.biome.name+'.');hotZone=null;}
-      else if(Math.random()<.025){
-        const p=randomPointInBiome(hotZone.biome,45);
-        spawnFragment(Math.random()<.78?'xp':Math.random()<.65?'natural':'ability',p.x,p.y);
-      }
-    }
-    if(terrainTick>9000){terrainTick=0;if(Math.random()<.8)spawnTerrainFeature();}
-    for(let i=terrainFeatures.length-1;i>=0;i--){
-      const f=terrainFeatures[i];f.life-=dt/1000;f.spawn=Math.max(0,(f.spawn||0)-dt/1000);
-      if(f.life<=0)terrainFeatures.splice(i,1);
-    }
-    for(let i=bossArenas.length-1;i>=0;i--){
-      const a=bossArenas[i];
-      if(!a.boss||a.boss.dead){bossArenas.splice(i,1);continue;}
-      a.x=a.boss.x;a.y=a.boss.y;a.pulse+=dt/1000;a.spawn=Math.max(0,(a.spawn||0)-dt/1000);
-      if(Math.random()<.006){
-        const ang=rand(0,Math.PI*2),rr=rand(a.r*.72,a.r);
-        const p=nearestIslandPoint(a.x+Math.cos(ang)*rr,a.y+Math.sin(ang)*rr,25);
-        spawnFragment(Math.random()<.8?'xp':'natural',p.x,p.y);
-      }
-    }
-  };
-
-  const previousUpdate=update;
-  update=function(dt){
-    const result=previousUpdate(dt);
-    if(gameMode!=='bossrush'){
-      normalizeHotZoneBiome();
-      for(const f of terrainFeatures){
-        const p=nearestIslandPoint(f.x,f.y,(f.r||80)*.25);f.x=p.x;f.y=p.y;
-      }
-      for(const z of worldZones){
-        const p=nearestIslandPoint(z.x,z.y,Math.min(160,(z.r||100)*.25));z.x=p.x;z.y=p.y;
-      }
-    }
-    return result;
-  };
-
-  const previousFinalizeBRSpawn=finalizeBRSpawn;
-  finalizeBRSpawn=function(chosen=true){
-    if(gameMode==='br'){
-      const selected=br.selected||randomIslandPoint(260);
-      br.selected=nearestIslandPoint(selected.x,selected.y,220);
-    }
-    const result=previousFinalizeBRSpawn(chosen);
-    if(player&&gameMode==='br')constrainIslandEntity(player,null,null,120);
-    return result;
-  };
-
-  const previousBeginBRStormShrink=beginBRStormShrink;
-  beginBRStormShrink=function(){
-    const result=previousBeginBRStormShrink();
-    if(gameMode==='br'){
-      const p=nearestIslandPoint(br.centerX,br.centerY,Math.min(240,Math.max(40,br.radius*.08)));
-      br.centerX=p.x;br.centerY=p.y;
-    }
-    return result;
-  };
-
-  if(brSpawnCanvas){
-    brSpawnCanvas.addEventListener('click',()=>{
-      if(!br.selected)return;
-      const wasLand=isInsideIsland(br.selected.x,br.selected.y,180);
-      br.selected=nearestIslandPoint(br.selected.x,br.selected.y,180);
-      if(!wasLand)notify('Drop moved to shoreline','Ocean drops are not valid. The nearest safe island position was selected.');
-      drawBRSpawnMap();
-    });
-  }
-
-  function drawMapBase(targetCtx,canvasEl){
-    const cw=canvasEl.width,ch=canvasEl.height;
-    const scale=Math.min(cw/WORLD_W,ch/WORLD_H);
-    const mapW=WORLD_W*scale,mapH=WORLD_H*scale;
-    const ox=(cw-mapW)/2,oy=(ch-mapH)/2;
-    targetCtx.fillStyle='#101820';targetCtx.fillRect(0,0,cw,ch);
-    targetCtx.drawImage(ensureIslandTerrain(),ox,oy,mapW,mapH);
-    return {cw,ch,scale,mapW,mapH,ox,oy,mapX:x=>ox+(x+HALF_W)*scale,mapY:y=>oy+(y+HALF_H)*scale};
-  }
-
-  function drawMapHotZone(targetCtx,geom){
-    normalizeHotZoneBiome();
-    if(!hotZone?.biome)return;
-    const mask=getIslandHotMask(hotZone.biome);
-    targetCtx.save();targetCtx.globalAlpha=.72+.14*Math.sin(performance.now()/220);
-    targetCtx.drawImage(mask,geom.ox,geom.oy,geom.mapW,geom.mapH);
-    targetCtx.restore();
-  }
-
-  function drawIslandMapLabels(targetCtx,geom,includeLandmarks=false){
-    targetCtx.save();targetCtx.textAlign='center';
-    for(const b of biomes){
-      const x=geom.mapX(b.labelX),y=geom.mapY(b.labelY);
-      targetCtx.font='1000 11px Arial';targetCtx.lineWidth=3;targetCtx.strokeStyle='rgba(16,24,32,.85)';targetCtx.fillStyle='#eef3f7';
-      targetCtx.strokeText(b.name.toUpperCase(),x,y);targetCtx.fillText(b.name.toUpperCase(),x,y);
-    }
-    if(includeLandmarks){
-      targetCtx.textAlign='left';targetCtx.font='900 9px Arial';
-      for(const lm of ISLAND_LANDMARKS){
-        const x=geom.mapX(lm.x),y=geom.mapY(lm.y);
-        targetCtx.fillStyle='#ffcf58';targetCtx.beginPath();targetCtx.arc(x,y,3.5,0,Math.PI*2);targetCtx.fill();
-        targetCtx.strokeStyle='#101820';targetCtx.lineWidth=2;targetCtx.stroke();
-        targetCtx.fillStyle='#eef3f7';targetCtx.strokeStyle='#101820';targetCtx.lineWidth=3;
-        targetCtx.strokeText(lm.name.toUpperCase(),x+7,y-5);targetCtx.fillText(lm.name.toUpperCase(),x+7,y-5);
-      }
-    }
-    targetCtx.restore();
-  }
-
-  drawMiniMap=function(){
-    const g=drawMapBase(mctx,miniCanvas);
-    drawMapHotZone(mctx,g);
-    for(const f of fragments){
-      if(f.kind==='world'||(player?.lootRadar>0&&((f.rarity&&f.rarity.xp>=28)||f.kind==='cursed'||f.kind==='natural'||f.kind==='ability'))){
-        mctx.fillStyle=f.kind==='world'?f.color:f.kind==='ability'?'#fff06a':f.kind==='evo'?'#8ae4ff':f.kind==='cursed'?'#d686ff':'#84d66e';
-        const rr=f.kind==='ability'?2.8:2;mctx.fillRect(g.mapX(f.x)-rr,g.mapY(f.y)-rr,rr*2,rr*2);
-      }
-    }
-    for(const b of bots){
-      if(b.dead)continue;const x=g.mapX(b.x),y=g.mapY(b.y);
-      mctx.fillStyle=isAlly(b)?(b.partyMember?'#7cf7ff':'#59a8ff'):'#ff5d67';
-      if(isAlly(b)){mctx.beginPath();mctx.arc(x,y,b.partyMember?2.2:1.9,0,Math.PI*2);mctx.fill();mctx.strokeStyle='#fff';mctx.lineWidth=1;mctx.stroke();}
-      else mctx.fillRect(x-1.5,y-1.5,3,3);
-    }
-    for(const r of remotePlayers){
-      if(r.dead)continue;const teammate=sameTeam(r,player);
-      mctx.fillStyle=teammate?'#7cf7ff':'#ff7d88';mctx.beginPath();mctx.arc(g.mapX(r.x),g.mapY(r.y),teammate?3:2.4,0,Math.PI*2);mctx.fill();
-      mctx.strokeStyle=teammate?'#fff':'#17212d';mctx.lineWidth=teammate?1.4:1;mctx.stroke();
-      for(const c of r.remoteClones||[]){if(c.dead)continue;mctx.fillStyle='#66d98b';mctx.beginPath();mctx.arc(g.mapX(c.x),g.mapY(c.y),1.7,0,Math.PI*2);mctx.fill();}
-    }
-    for(const b of bosses){if(b.dead)continue;mctx.fillStyle='#ffcf58';mctx.fillRect(g.mapX(b.x)-3,g.mapY(b.y)-3,6,6);}
-    for(const c of player?.clones||[]){if(c.dead)continue;mctx.fillStyle='#66d98b';mctx.beginPath();mctx.arc(g.mapX(c.x),g.mapY(c.y),1.8,0,Math.PI*2);mctx.fill();}
-    const focus=controlledEntity();
-    if(focus){mctx.fillStyle=focus===player?'#fff':'#66d98b';mctx.fillRect(g.mapX(focus.x)-2,g.mapY(focus.y)-2,4,4);}
-    mctx.strokeStyle='#101820';mctx.lineWidth=3;mctx.strokeRect(g.ox,g.oy,g.mapW,g.mapH);
-    if(typeof drawPartyPingsOnMap==='function')drawPartyPingsOnMap(miniCanvas);
-  };
-
-  drawBigMap=function(){
-    const g=drawMapBase(bctx,bigMapCanvas);
-    drawMapHotZone(bctx,g);
-    drawIslandMapLabels(bctx,g,true);
-    for(const tf of terrainFeatures){
-      bctx.fillStyle=tf.type==='void'?'#b582ff':tf.type==='ice'?'#bcecff':tf.type==='road'?'#ffcf58':tf.type==='vine'?'#62b46b':'#6d5546';
-      bctx.beginPath();bctx.arc(g.mapX(tf.x),g.mapY(tf.y),Math.max(2,tf.r*g.scale),0,Math.PI*2);bctx.fill();
-    }
-    if(gameMode==='br'&&br.active&&br.stormActive){
-      bctx.strokeStyle='#b582ff';bctx.lineWidth=3;bctx.setLineDash([10,6]);bctx.beginPath();bctx.arc(g.mapX(br.centerX),g.mapY(br.centerY),br.radius*g.scale,0,Math.PI*2);bctx.stroke();bctx.setLineDash([]);
-    }
-    for(const a of bossArenas){bctx.strokeStyle='#ff4d5e';bctx.lineWidth=2;bctx.beginPath();bctx.arc(g.mapX(a.x),g.mapY(a.y),a.r*g.scale,0,Math.PI*2);bctx.stroke();}
-    for(const f of fragments){
-      if(f.kind==='world'||f.kind==='ability'||f.kind==='evo'||(player&&player.lootRadar>0&&(f.kind==='cursed'||f.kind==='natural'))){
-        bctx.fillStyle=f.kind==='world'?f.color:f.kind==='ability'?'#fff06a':f.kind==='evo'?'#8ae4ff':f.kind==='cursed'?'#d686ff':'#84d66e';
-        bctx.beginPath();bctx.arc(g.mapX(f.x),g.mapY(f.y),f.kind==='world'?4:2.4,0,Math.PI*2);bctx.fill();
-      }
-    }
-    for(const b of bots){
-      if(b.dead)continue;const x=g.mapX(b.x),y=g.mapY(b.y);
-      bctx.fillStyle=isAlly(b)?(b.partyMember?'#7cf7ff':'#59a8ff'):(b===bountyTarget?'#ff4d5e':'#ff5d67');
-      if(isAlly(b)){bctx.beginPath();bctx.arc(x,y,b.partyMember?5:4,0,Math.PI*2);bctx.fill();bctx.strokeStyle='#fff';bctx.lineWidth=1.5;bctx.stroke();}
-      else bctx.fillRect(x-2,y-2,4,4);
-    }
-    for(const r of remotePlayers){
-      if(r.dead)continue;const teammate=sameTeam(r,player);
-      bctx.fillStyle=teammate?'#7cf7ff':'#ff7d88';bctx.beginPath();bctx.arc(g.mapX(r.x),g.mapY(r.y),teammate?5:4,0,Math.PI*2);bctx.fill();
-      bctx.strokeStyle='#fff';bctx.lineWidth=1.2;bctx.stroke();
-    }
-    for(const b of bosses){if(b.dead)continue;bctx.fillStyle='#ffcf58';bctx.fillRect(g.mapX(b.x)-5,g.mapY(b.y)-5,10,10);}
-    for(const c of player?.clones||[]){if(c.dead)continue;bctx.fillStyle='#66d98b';bctx.beginPath();bctx.arc(g.mapX(c.x),g.mapY(c.y),3.5,0,Math.PI*2);bctx.fill();}
-    if(player){
-      bctx.fillStyle='#fff';bctx.beginPath();bctx.arc(g.mapX(player.x),g.mapY(player.y),5,0,Math.PI*2);bctx.fill();bctx.strokeStyle='#101820';bctx.lineWidth=2;bctx.stroke();
-    }
-    bctx.strokeStyle='#eef3f7';bctx.lineWidth=3;bctx.strokeRect(g.ox,g.oy,g.mapW,g.mapH);
-    if(typeof drawPartyPingsOnMap==='function')drawPartyPingsOnMap(bigMapCanvas);
-  };
-
-  drawBRSpawnMap=function(){
-    if(!brctx||!player)return;
-    const g=drawMapBase(brctx,brSpawnCanvas);
-    drawIslandMapLabels(brctx,g,false);
-    for(const bot of bots){
-      if(bot.dead)continue;const px=g.mapX(bot.x),py=g.mapY(bot.y);
-      brctx.fillStyle='#ff5d67';brctx.fillRect(px-2,py-2,4,4);brctx.strokeStyle='#101820';brctx.lineWidth=1;brctx.strokeRect(px-2.5,py-2.5,5,5);
-    }
-    brctx.save();brctx.fillStyle='rgba(16,24,32,.92)';brctx.fillRect(g.ox,g.oy,g.mapW,42);
-    brctx.fillStyle='#eef3f7';brctx.font='1000 20px Arial';brctx.textAlign='left';brctx.fillText('SELECT ISLAND DROP ZONE',g.ox+16,g.oy+27);
-    brctx.fillStyle='#ffcf58';brctx.fillRect(g.ox+g.mapW-122,g.oy+8,106,26);brctx.strokeStyle='#eef3f7';brctx.lineWidth=2;brctx.strokeRect(g.ox+g.mapW-122,g.oy+8,106,26);
-    brctx.fillStyle='#101820';brctx.font='1000 14px Arial';brctx.textAlign='center';brctx.fillText('DROP '+Math.ceil(br.timer||20)+'s',g.ox+g.mapW-69,g.oy+26);brctx.restore();
-    if(br.selected){
-      const safe=nearestIslandPoint(br.selected.x,br.selected.y,180);br.selected=safe;
-      const sx=g.mapX(safe.x),sy=g.mapY(safe.y),pulse=1+Math.sin(performance.now()/120)*.12;
-      brctx.save();brctx.strokeStyle='#101820';brctx.lineWidth=4;brctx.beginPath();brctx.arc(sx,sy,22*pulse,0,Math.PI*2);brctx.stroke();
-      brctx.fillStyle='#ffcf58';brctx.beginPath();brctx.arc(sx,sy,10*pulse,0,Math.PI*2);brctx.fill();brctx.strokeStyle='#eef3f7';brctx.lineWidth=2;brctx.stroke();
-      brctx.fillStyle='#101820';brctx.fillRect(sx+16,sy-26,112,24);brctx.fillStyle='#eef3f7';brctx.font='1000 12px Arial';brctx.textAlign='left';brctx.fillText('DROP LOCKED',sx+23,sy-10);brctx.restore();
-    }else{
-      brctx.save();const w=260,h=32,x=g.cw/2-w/2,y=g.ch-48;brctx.fillStyle='#eef3f7';brctx.fillRect(x,y,w,h);brctx.strokeStyle='#101820';brctx.lineWidth=3;brctx.strokeRect(x,y,w,h);
-      brctx.fillStyle='#101820';brctx.font='1000 14px Arial';brctx.textAlign='center';brctx.fillText('CLICK LAND TO LOCK DROP',g.cw/2,y+21);brctx.restore();
-    }
-    brctx.strokeStyle='#101820';brctx.lineWidth=4;brctx.strokeRect(g.ox+2,g.oy+2,g.mapW-4,g.mapH-4);
-  };
-
-  // Keep incoming server terrain/hot-zone objects aligned with local island definitions.
-  const previousNetApplyHotZone=typeof netApplyHotZone==='function'?netApplyHotZone:null;
-  if(previousNetApplyHotZone){
-    netApplyHotZone=function(msg){
-      const result=previousNetApplyHotZone(msg);
-      normalizeHotZoneBiome();
-      return result;
-    };
-  }
-
-  setTimeout(()=>{
-    ensureIslandTerrain();
-    if(state.screen==='menu'&&typeof draw==='function')draw();
-  },0);
-})();
-</script>
 
 </body>
 </html>
