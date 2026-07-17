@@ -1331,6 +1331,21 @@ function serveFile(req, res){
   let pathname;
   try{ pathname=decodeURIComponent(url.parse(req.url).pathname||'/'); }
   catch(e){ res.writeHead(400,{'Content-Type':'text/plain; charset=utf-8'}); res.end('Bad Request'); return; }
+
+  if(pathname==='/supabase-config.js'){
+    const config={
+      url:String(process.env.SUPABASE_URL||'').trim(),
+      key:String(process.env.SUPABASE_PUBLISHABLE_KEY||'').trim()
+    };
+    res.writeHead(200,{
+      'Content-Type':'text/javascript; charset=utf-8',
+      'Cache-Control':'no-store, max-age=0',
+      'X-Content-Type-Options':'nosniff'
+    });
+    res.end('window.FRAGMENT_SUPABASE_CONFIG='+JSON.stringify(config)+';');
+    return;
+  }
+
   if(pathname==='/') pathname='/index.html';
   const filePath=path.resolve(ROOT,'.'+pathname);
   if(filePath!==ROOT && !filePath.startsWith(ROOT+path.sep)){

@@ -3548,6 +3548,9 @@ body.guestAccount .menuModal[data-modal="gacha"] .rollBtn,body.guestAccount .men
         </div>
         <div class="accountSettingsBox" id="accountSettingsBox">
           <h3>Account Settings</h3>
+          <label>Change Username</label><input id="changeUsernameInput" maxlength="18" placeholder="new username" />
+          <button class="accountSecondary" id="changeUsernameBtn" type="button">Change Username</button>
+          <div class="accountDivider"></div>
           <label>Change Email</label><input id="changeEmailInput" type="email" maxlength="80" placeholder="new email" />
           <button class="accountSecondary" id="changeEmailBtn" type="button">Change Email</button>
           <div class="accountDivider"></div>
@@ -3560,7 +3563,7 @@ body.guestAccount .menuModal[data-modal="gacha"] .rollBtn,body.guestAccount .men
           <button id="guestBtn" type="button">Play as Guest</button>
           <button id="logoutBtn" type="button">Logout</button>
         </div>
-        <div class="lockedHint accountHint" id="accountHint">Account data is stored locally in this prototype.</div>
+        <div class="lockedHint accountHint" id="accountHint">Checking cloud account service…</div>
       </div>
     </div>
 
@@ -3867,6 +3870,8 @@ body.guestAccount .menuModal[data-modal="gacha"] .rollBtn,body.guestAccount .men
   <div class="debugResizeHandle sw" data-debug-resize="sw" title="Resize debug window"></div>
   <div class="debugResizeHandle se" data-debug-resize="se" title="Resize debug window"></div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/supabase-config.js"></script>
 <script>
 (() => {
 const canvas = document.getElementById('game');
@@ -5313,11 +5318,11 @@ function loadSocial(){
   renderSocial();
   setTimeout(drawBossPreview,0);
 }
-function saveFriends(){ localStorage.setItem('fragmentio_friends', JSON.stringify(friends.slice(0,40))); }
+function saveFriends(){ if(isGuestAccount()) localStorage.setItem('fragmentio_friends',JSON.stringify(friends.slice(0,40))); }
 function cleanName(v){ return (v||'').trim().replace(/[<>]/g,'').slice(0,16); }
 function cleanFriendCode(v){ return String(v||'').trim().toUpperCase().replace(/[^A-Z0-9-]/g,'').slice(0,16); }
 function escapeHtml(v){ return String(v||'').replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
-function friendNameFromCode(code){ const hit=accountByFriendCode(code); return hit ? accountDisplayName(hit.user) : code; }
+function friendNameFromCode(code){ const clean=cleanFriendCode(code); const profile=cloudFriendProfiles?.get(clean); return profile?.username||clean||'Friend'; }
 function renderSocial(){
   if(!ui.friendList || !ui.partyList) return;
   const size = partyMembers.length + 1;
@@ -5331,43 +5336,60 @@ function renderSocial(){
     : '<span style="font-size:11px;color:#667688;">No friends saved yet. Add someone by friend code.</span>';
   ui.partyList.querySelectorAll('[data-party]').forEach(el=>el.onclick=()=>{ partyMembers.splice(Number(el.dataset.party),1); renderSocial(); });
   ui.friendList.querySelectorAll('[data-friend]').forEach(el=>{ el.onclick=addToPartyFromCode(el.dataset.friend); });
-  ui.friendList.querySelectorAll('[data-remove-friend]').forEach(el=>el.onclick=(e)=>{
+  ui.friendList.querySelectorAll('[data-remove-friend]').forEach(el=>el.onclick=async(e)=>{
     e.preventDefault(); e.stopPropagation();
     const code=cleanFriendCode(el.dataset.removeFriend);
     const label=friendNameFromCode(code);
-    friends=friends.filter(f=>cleanFriendCode(f)!==code);
-    partyMembers=partyMembers.filter(p=>p!==label);
-    saveFriends();
-    renderSocial();
+    try{
+      if(!isGuestAccount()) await removeCloudFriend(code);
+      else{
+        friends=friends.filter(f=>cleanFriendCode(f)!==code);
+        saveFriends();
+      }
+      partyMembers=partyMembers.filter(p=>p!==label);
+      renderSocial();
+    }catch(error){
+      notify('Could not remove friend',error.message||'Cloud request failed.');
+    }
   });
 }
-function addFriendFromInput(){
+async function addFriendFromInput(){
   const code=cleanFriendCode(ui.friendName.value);
-  if(!code) return;
-  if(isGuestAccount && isGuestAccount()){ notify('Account required','Login or register before saving friends.'); openMenuModal('account'); return; }
-  const hit=accountByFriendCode(code);
-  if(!hit){ notify('Invalid friend code','No account found with that friend code.'); return; }
-  if(hit.user===accountState.user){ notify('Invalid friend code','You cannot add your own friend code.'); return; }
-  if(!friends.some(f=>cleanFriendCode(f)===hit.user)) friends.unshift(hit.user);
-  saveFriends(); ui.friendName.value=''; renderSocial();
+  if(!code) return null;
+  if(isGuestAccount()){
+    notify('Account required','Login or register before saving friends.');
+    openMenuModal('account');
+    return null;
+  }
+  try{
+    const friend=await addCloudFriend(code);
+    ui.friendName.value='';
+    renderSocial();
+    notify('Friend added',friend.username+' was added.');
+    return friend;
+  }catch(error){
+    notify('Could not add friend',error.message||'No account found with that code.');
+    return null;
+  }
 }
 function addToPartyFromCode(code){
   return ()=>{
     code=cleanFriendCode(code);
-    const hit=accountByFriendCode(code);
-    if(!hit){ notify('Invalid friend code','No account found with that friend code.'); return; }
-    const label=accountDisplayName(hit.user);
+    const profile=cloudFriendProfiles.get(code);
+    if(!profile){ notify('Friend unavailable','Reload your account or add the friend again.'); return; }
+    const label=profile.username||code;
     if(partyMembers.includes(label)) return;
-    if(partyMembers.length>=5){ notify('Party full', 'Maximum 6 players including you'); return; }
-    partyMembers.push(label); renderSocial();
+    if(partyMembers.length>=5){ notify('Party full','Maximum 6 players including you'); return; }
+    partyMembers.push(label);
+    renderSocial();
   };
 }
-function addPartyFromInput(){
+async function addPartyFromInput(){
   const code=cleanFriendCode(ui.friendName.value);
   if(!code) return;
-  addFriendFromInput();
-  const hit=accountByFriendCode(code);
-  if(hit) addToPartyFromCode(hit.user)();
+  let profile=cloudFriendProfiles.get(code);
+  if(!profile) profile=await addFriendFromInput();
+  if(profile) addToPartyFromCode(profile.friend_code)();
   ui.friendName.value='';
 }
 loadSocial();
@@ -5375,8 +5397,8 @@ showStartupSplash();
 const menuLogoImg=document.getElementById('menuLogoImg');
 const bootLogoImg=document.getElementById('bootLogo');
 if(menuLogoImg && bootLogoImg && bootLogoImg.getAttribute('src')) menuLogoImg.src=bootLogoImg.src;
-ui.addFriendBtn.onclick=addFriendFromInput;
-ui.addPartyBtn.onclick=addPartyFromInput;
+ui.addFriendBtn.onclick=()=>{ addFriendFromInput(); };
+ui.addPartyBtn.onclick=()=>{ addPartyFromInput(); };
 ui.friendName.addEventListener('keydown', e=>{ if(e.key==='Enter'){ addPartyFromInput(); e.stopPropagation(); }});
 ui.modeSel.addEventListener('change', ()=>{ gameMode=ui.modeSel.value||'normal'; if(gameMode!=='bossrush'){ document.querySelectorAll('[data-play-tab]').forEach(btn=>btn.classList.toggle('active', btn.dataset.playTab==='normal')); document.querySelectorAll('[data-play-panel]').forEach(panel=>panel.classList.toggle('hidden', panel.dataset.playPanel!=='normal')); } renderSocial(); });
 
@@ -5517,83 +5539,581 @@ const REMNANT_REFUND_MIN_RARITY = 'rare';
 function remnantText(amount){ return REMNANT_SYMBOL+' '+Math.floor(Number(amount)||0); }
 function duplicateRefundFor(item){ return item && rarityRank(item.rarity) >= rarityRank(REMNANT_REFUND_MIN_RARITY) ? GACHA_COST : 0; }
 
+
 const ACCOUNT_SESSION_KEY='fragmentio_active_account_v1';
 const ACCOUNT_DB_KEY='fragmentio_accounts_v1';
-let accountState = {guest:true, user:''};
-function cleanEmail(v){ return String(v||'').trim().slice(0,80); }
+const SUPABASE_CONFIG=window.FRAGMENT_SUPABASE_CONFIG||{};
+const fragmentSupabase=(
+  window.supabase &&
+  typeof window.supabase.createClient==='function' &&
+  SUPABASE_CONFIG.url &&
+  SUPABASE_CONFIG.key
+) ? window.supabase.createClient(
+  SUPABASE_CONFIG.url,
+  SUPABASE_CONFIG.key,
+  {
+    auth:{
+      persistSession:true,
+      autoRefreshToken:true,
+      detectSessionInUrl:true,
+      storageKey:'fragmentio-supabase-auth'
+    }
+  }
+) : null;
+
+let accountState={guest:true,user:''};
+let cloudUser=null;
+let cloudProfile=null;
+let cloudGameDataLoaded=false;
+let cloudSaveTimer=null;
+let cloudAccountLoading=false;
+const cloudFriendProfiles=new Map();
+
+function cleanEmail(v){ return String(v||'').trim().slice(0,160); }
 function validEmail(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail(v)); }
-function makeFriendCode(db){ let code=''; do{ code='F7-'+Math.random().toString(36).slice(2,6).toUpperCase()+'-'+Math.random().toString(36).slice(2,6).toUpperCase(); }while(Object.keys(db||{}).includes(code) || Object.values(db||{}).some(a=>a && a.friendCode===code)); return code; }
-function accountByFriendCode(code){ const db=getAccountDb(); const clean=String(code||'').trim().toUpperCase(); for(const [user,data] of Object.entries(db)){ if((String(user).toUpperCase()===clean) || (data && String(data.friendCode||'').toUpperCase()===clean)) return {user,data}; } return null; }
 function cleanAccountName(name){ return String(name||'').trim().replace(/[<>]/g,'').slice(0,18); }
-function getAccountDb(){ try{return JSON.parse(localStorage.getItem(ACCOUNT_DB_KEY)||'{}')||{};}catch(e){return{};} }
-function setAccountDb(db){ localStorage.setItem(ACCOUNT_DB_KEY, JSON.stringify(db||{})); }
-function accountRecord(id){ const db=getAccountDb(); return db[id] || null; }
-function accountDisplayName(id){ const rec=accountRecord(id); return (rec && (rec.username || rec.name)) || id || 'Player'; }
-function findAccountForLogin(email, pass){ const db=getAccountDb(); const wanted=cleanEmail(email).toLowerCase(); for(const [id,data] of Object.entries(db)){ const mail=cleanEmail(data && data.email).toLowerCase(); if(mail && mail===wanted && data && data.pass===pass) return {id,data}; } return null; }
-function emailAlreadyRegistered(email, ignoreId=''){ const db=getAccountDb(); const wanted=cleanEmail(email).toLowerCase(); return Object.entries(db).some(([id,data])=>id!==ignoreId && cleanEmail(data && data.email).toLowerCase()===wanted); }
-function saveAccountSession(){ localStorage.setItem(ACCOUNT_SESSION_KEY, JSON.stringify(accountState)); }
-function isGuestAccount(){ return !accountState || accountState.guest || !accountState.user; }
-function accountHint(msg, bad=false){ const el=$('accountHint'); if(el){ el.textContent=msg; el.style.background=bad?'#ffd9df':'#eef3f7'; } }
+function makeFriendCode(){ return ''; }
+function getAccountDb(){ return {}; }
+function setAccountDb(){}
+function saveAccountSession(){}
+function findAccountForLogin(){ return null; }
+function emailAlreadyRegistered(){ return false; }
+function isGuestAccount(){ return !cloudUser || !accountState || accountState.guest; }
+function accountRecord(id){
+  if(cloudProfile && (id===cloudProfile.id || id===cloudProfile.friend_code || id===cloudUser?.id)) return cloudProfile;
+  return cloudFriendProfiles.get(String(id||'')) || null;
+}
+function accountByFriendCode(code){
+  const clean=cleanFriendCode(code);
+  const profile=cloudFriendProfiles.get(clean);
+  return profile ? {user:profile.friend_code,data:profile} : null;
+}
+function accountDisplayName(id){
+  const raw=String(id||'');
+  if(cloudProfile && (raw===cloudProfile.id || raw===cloudProfile.friend_code || raw===cloudUser?.id)) return cloudProfile.username||'Player';
+  const profile=cloudFriendProfiles.get(cleanFriendCode(raw)) || cloudFriendProfiles.get(raw);
+  return profile?.username || raw || 'Player';
+}
+function accountHint(msg,bad=false){
+  const el=$('accountHint');
+  if(el){
+    el.textContent=msg;
+    el.style.background=bad?'#ffd9df':'#eef3f7';
+  }
+}
+function setAccountBusy(button,busy,label='Working…'){
+  if(!button) return;
+  if(busy){
+    button.dataset.oldText=button.textContent;
+    button.textContent=label;
+    button.disabled=true;
+  }else{
+    button.textContent=button.dataset.oldText||button.textContent;
+    button.disabled=false;
+    delete button.dataset.oldText;
+  }
+}
+function supabaseAvailable(){ return !!fragmentSupabase; }
+function cloudEquippedPayload(){
+  return {
+    shape:ui.skinSel?.value||'circle',
+    trail:ui.trailSel?.value||'none',
+    aura:ui.auraSel?.value||'none',
+    hat:ui.hatSel?.value||'none',
+    title:ui.titleSel?.value||''
+  };
+}
 function renderAccountStatus(){
   const guest=isGuestAccount();
-  document.body.classList.toggle('guestAccount', guest);
-  const displayName = guest ? 'Guest' : accountDisplayName(accountState.user);
-  const dock=$('accountDockStatus'); if(dock) dock.textContent = guest ? 'Guest' : displayName;
-  const name=$('accountStatusName'), sub=$('accountStatusSub');
-  if(name) name.textContent = guest ? 'Playing as Guest' : 'Logged in as '+displayName;
-  if(sub) sub.textContent = guest ? 'You can deploy normally, but shop and cosmetic pulls are locked because cosmetics must be saved to an account.' : 'Shop, cosmetic pulls, owned items, pity, and Remnant are saved to this account locally.';
-  const codeBox=$('accountCodeBox'), codeEl=$('accountFriendCode'), copyBtn=$('copyFriendCodeBtn'), codeInput=$('accountFriendCodeInput'), addCodeBtn=$('accountAddFriendCodeBtn');
-  if(codeBox) codeBox.style.display = guest ? 'none' : '';
-  if(codeEl){ const db=getAccountDb(); codeEl.textContent = guest ? '' : ((db[accountState.user] && db[accountState.user].friendCode) || accountState.user || 'NO-CODE'); }
-  if(copyBtn) copyBtn.disabled = guest;
-  if(codeInput) codeInput.disabled = guest;
-  if(addCodeBtn) addCodeBtn.disabled = guest;
+  document.body.classList.toggle('guestAccount',guest);
+  const displayName=guest?'Guest':(cloudProfile?.username||cloudUser?.email||'Player');
+  const dock=$('accountDockStatus');
+  if(dock) dock.textContent=guest?'Guest':displayName;
+
+  const name=$('accountStatusName'),sub=$('accountStatusSub');
+  if(name) name.textContent=guest?'Playing as Guest':'Logged in as '+displayName;
+  if(sub){
+    if(!supabaseAvailable()) sub.textContent='Cloud accounts are unavailable because the Supabase configuration or SDK did not load.';
+    else if(guest) sub.textContent='You can deploy normally, but shop and cosmetic pulls are locked until you log in.';
+    else sub.textContent='Your account, friend code, Remnant, cosmetics, pity, and equipped items are stored in Supabase.';
+  }
+
+  const codeBox=$('accountCodeBox'),codeEl=$('accountFriendCode'),copyBtn=$('copyFriendCodeBtn');
+  const codeInput=$('accountFriendCodeInput'),addCodeBtn=$('accountAddFriendCodeBtn');
+  if(codeBox) codeBox.style.display=guest?'none':'';
+  if(codeEl) codeEl.textContent=guest?'':(cloudProfile?.friend_code||'LOADING');
+  if(copyBtn) copyBtn.disabled=guest||!cloudProfile?.friend_code;
+  if(codeInput) codeInput.disabled=guest;
+  if(addCodeBtn) addCodeBtn.disabled=guest;
+
   const tabs=document.querySelector('.accountWindow .accountTabs');
-  if(tabs){ if(guest) tabs.style.removeProperty('display'); else tabs.style.setProperty('display','none','important'); }
-  document.querySelectorAll('.accountWindow [data-account-panel]').forEach(p=>{ if(guest) p.style.removeProperty('display'); else p.style.setProperty('display','none','important'); });
-  const settings=$('accountSettingsBox'); if(settings) settings.classList.toggle('active', !guest);
-  const guestBtn=$('guestBtn'), logoutBtn=$('logoutBtn'), guestBox=document.querySelector('.accountGuestBox');
+  if(tabs){
+    if(guest) tabs.style.removeProperty('display');
+    else tabs.style.setProperty('display','none','important');
+  }
+  document.querySelectorAll('.accountWindow [data-account-panel]').forEach(panel=>{
+    if(guest) panel.style.removeProperty('display');
+    else panel.style.setProperty('display','none','important');
+  });
+
+  const settings=$('accountSettingsBox');
+  if(settings) settings.classList.toggle('active',!guest);
+  const guestBtn=$('guestBtn'),logoutBtn=$('logoutBtn'),guestBox=document.querySelector('.accountGuestBox');
   if(guestBox) guestBox.style.setProperty('grid-template-columns','1fr','important');
-  if(guestBtn) guestBtn.style.display = guest ? '' : 'none';
-  if(logoutBtn) logoutBtn.style.display = guest ? 'none' : '';
+  if(guestBtn) guestBtn.style.display=guest?'':'none';
+  if(logoutBtn) logoutBtn.style.display=guest?'none':'';
+
   const shopModal=document.querySelector('[data-modal="shop"] .modalCard');
   if(shopModal){
     let lock=shopModal.querySelector('.guestPullLock');
-    if(guest){ if(!lock){ lock=document.createElement('div'); lock.className='guestPullLock'; lock.textContent='Guest mode: shop is locked. Login or register so Remnant and cosmetics can be saved to your account.'; const grid=shopModal.querySelector('.shopPackGrid'); shopModal.insertBefore(lock, grid||shopModal.firstChild); } }
-    else if(lock){ lock.remove(); }
-    shopModal.querySelectorAll('[data-buy-remnant]').forEach(btn=>{ btn.disabled=guest; });
+    if(guest){
+      if(!lock){
+        lock=document.createElement('div');
+        lock.className='guestPullLock';
+        lock.textContent='Guest mode: shop is locked. Login or register so purchases can be saved to your cloud account.';
+        const grid=shopModal.querySelector('.shopPackGrid');
+        shopModal.insertBefore(lock,grid||shopModal.firstChild);
+      }
+    }else if(lock) lock.remove();
+    shopModal.querySelectorAll('[data-buy-remnant]').forEach(btn=>btn.disabled=guest);
   }
-  const shopHint=$('shopHint'); if(shopHint) shopHint.textContent = guest ? 'Login or register to use the shop. Guest purchases are disabled.' : 'Prototype shop: buttons add ◆ Remnant locally to this account.';
-  const logout=$('logoutBtn'); if(logout) logout.disabled = guest;
+
+  const shopHint=$('shopHint');
+  if(shopHint) shopHint.textContent=guest
+    ? 'Login or register to use the shop.'
+    : 'Prototype shop: Remnant and cosmetics are saved to your Supabase account.';
+
   const gachaModal=document.querySelector('[data-modal="gacha"] .modalCard');
   if(gachaModal){
     let lock=gachaModal.querySelector('.guestPullLock');
     if(guest){
-      if(!lock){ lock=document.createElement('div'); lock.className='guestPullLock'; lock.textContent='Guest mode: cosmetic pulls are locked. Login or register so cosmetics can be saved to your account.'; const tabs=gachaModal.querySelector('.gachaTabs'); gachaModal.insertBefore(lock, tabs||gachaModal.firstChild); }
-    }else if(lock){ lock.remove(); }
+      if(!lock){
+        lock=document.createElement('div');
+        lock.className='guestPullLock';
+        lock.textContent='Guest mode: cosmetic pulls are locked. Login or register to save pulls to your cloud account.';
+        const tabsEl=gachaModal.querySelector('.gachaTabs');
+        gachaModal.insertBefore(lock,tabsEl||gachaModal.firstChild);
+      }
+    }else if(lock) lock.remove();
   }
-  renderGachaMenu && renderGachaMenu();
+  if(typeof renderGachaMenu==='function') renderGachaMenu();
 }
-function switchAccount(next){ accountState=next; saveAccountSession(); loadGacha(); renderAccountStatus(); updateCosmeticPreview(false); }
+function switchAccount(next){
+  accountState=next||{guest:true,user:''};
+  if(accountState.guest){
+    cloudUser=null;
+    cloudProfile=null;
+    cloudGameDataLoaded=false;
+    cloudFriendProfiles.clear();
+    friends=[];
+    partyMembers=[];
+    loadGacha();
+    renderSocial();
+  }
+  renderAccountStatus();
+  updateCosmeticPreview(false);
+}
+async function ensureCloudRows(user){
+  const preferred=cleanAccountName(user?.user_metadata?.username||ui.playerName?.value||'Player')||'Player';
+  let {data:profile,error:profileError}=await fragmentSupabase
+    .from('profiles')
+    .select('id,username,friend_code,created_at')
+    .eq('id',user.id)
+    .maybeSingle();
+
+  if(profileError) throw profileError;
+  if(!profile){
+    const inserted=await fragmentSupabase
+      .from('profiles')
+      .insert({id:user.id,username:preferred})
+      .select('id,username,friend_code,created_at')
+      .single();
+    if(inserted.error) throw inserted.error;
+    profile=inserted.data;
+  }
+
+  let {data:save,error:saveError}=await fragmentSupabase
+    .from('player_data')
+    .select('remnant,owned_cosmetics,gacha_pity,equipped_cosmetics,settings')
+    .eq('user_id',user.id)
+    .maybeSingle();
+
+  if(saveError) throw saveError;
+  if(!save){
+    const inserted=await fragmentSupabase
+      .from('player_data')
+      .insert({user_id:user.id})
+      .select('remnant,owned_cosmetics,gacha_pity,equipped_cosmetics,settings')
+      .single();
+    if(inserted.error) throw inserted.error;
+    save=inserted.data;
+  }
+  return {profile,save};
+}
+async function loadCloudFriends(){
+  cloudFriendProfiles.clear();
+  friends=[];
+  if(!cloudUser) return;
+
+  const {data:rows,error}=await fragmentSupabase
+    .from('friendships')
+    .select('friend_id')
+    .eq('user_id',cloudUser.id);
+  if(error) throw error;
+
+  const ids=(rows||[]).map(row=>row.friend_id).filter(Boolean);
+  if(!ids.length){
+    renderSocial();
+    return;
+  }
+
+  const {data:profiles,error:profileError}=await fragmentSupabase
+    .from('profiles')
+    .select('id,username,friend_code')
+    .in('id',ids);
+  if(profileError) throw profileError;
+
+  for(const profile of profiles||[]){
+    const code=cleanFriendCode(profile.friend_code);
+    if(!code) continue;
+    cloudFriendProfiles.set(code,profile);
+    cloudFriendProfiles.set(profile.id,profile);
+    friends.push(code);
+  }
+  friends=friends.slice(0,40);
+  renderSocial();
+}
+async function addCloudFriend(friendCode){
+  if(!cloudUser) throw new Error('Login before adding friends.');
+  const code=cleanFriendCode(friendCode);
+  if(!code) throw new Error('Enter a valid friend code.');
+
+  const {data:friend,error:lookupError}=await fragmentSupabase
+    .from('profiles')
+    .select('id,username,friend_code')
+    .eq('friend_code',code)
+    .maybeSingle();
+  if(lookupError) throw lookupError;
+  if(!friend) throw new Error('No account uses that friend code.');
+  if(friend.id===cloudUser.id) throw new Error('You cannot add yourself.');
+
+  const {error:insertError}=await fragmentSupabase
+    .from('friendships')
+    .upsert({user_id:cloudUser.id,friend_id:friend.id},{onConflict:'user_id,friend_id'});
+  if(insertError) throw insertError;
+
+  await loadCloudFriends();
+  return friend;
+}
+async function removeCloudFriend(friendCode){
+  if(!cloudUser) return;
+  const code=cleanFriendCode(friendCode);
+  const profile=cloudFriendProfiles.get(code);
+  if(!profile) return;
+  const {error}=await fragmentSupabase
+    .from('friendships')
+    .delete()
+    .eq('user_id',cloudUser.id)
+    .eq('friend_id',profile.id);
+  if(error) throw error;
+  await loadCloudFriends();
+}
+async function loadCloudAccount(options={}){
+  if(!fragmentSupabase){
+    switchAccount({guest:true,user:''});
+    accountHint('Supabase is not configured. Check the Render environment variables and redeploy.',true);
+    return false;
+  }
+  if(cloudAccountLoading) return false;
+  cloudAccountLoading=true;
+  try{
+    const {data:{user},error:userError}=await fragmentSupabase.auth.getUser();
+    if(userError && !String(userError.message||'').toLowerCase().includes('session')) throw userError;
+    if(!user){
+      switchAccount({guest:true,user:''});
+      accountHint('Not logged in. Create an account or continue as Guest.');
+      return false;
+    }
+
+    const {profile,save}=await ensureCloudRows(user);
+    cloudUser=user;
+    cloudProfile=profile;
+    accountState={guest:false,user:user.id};
+
+    remnant=Math.max(0,Math.floor(Number(save.remnant)||0));
+    ownedCosmetics=Array.isArray(save.owned_cosmetics)?save.owned_cosmetics.filter(Boolean):[];
+    ownedCosmetics=[...new Set(ownedCosmetics)];
+    gachaPity=sanitizePity(save.gacha_pity||{});
+    cloudGameDataLoaded=true;
+
+    renderOwnedCosmeticOptions();
+    const equipped=save.equipped_cosmetics||{};
+    const applySelect=(sel,value,fallback)=>{
+      if(!sel) return;
+      const wanted=String(value??fallback);
+      sel.value=[...sel.options].some(o=>o.value===wanted)?wanted:fallback;
+    };
+    applySelect(ui.skinSel,equipped.shape,'circle');
+    applySelect(ui.trailSel,equipped.trail,'none');
+    applySelect(ui.auraSel,equipped.aura,'none');
+    applySelect(ui.hatSel,equipped.hat,'none');
+    applySelect(ui.titleSel,equipped.title,'');
+
+    if(ui.playerName) ui.playerName.value=profile.username||ui.playerName.value||'Player';
+    await loadCloudFriends();
+    renderRemnantBadges();
+    renderGachaMenu();
+    renderAccountStatus();
+    updateCosmeticPreview(false);
+    if(!options.silent) accountHint('Cloud account loaded.');
+    return true;
+  }catch(error){
+    console.error('[Fragment.io] Cloud account load failed',error);
+    switchAccount({guest:true,user:''});
+    accountHint(error.message||'Could not load the cloud account.',true);
+    return false;
+  }finally{
+    cloudAccountLoading=false;
+  }
+}
+async function saveCloudProgress(){
+  if(!fragmentSupabase || !cloudUser || !cloudGameDataLoaded) return;
+  const payload={
+    user_id:cloudUser.id,
+    remnant:Math.max(0,Math.floor(Number(remnant)||0)),
+    owned_cosmetics:[...new Set(ownedCosmetics)].filter(Boolean),
+    gacha_pity:sanitizePity(gachaPity),
+    equipped_cosmetics:cloudEquippedPayload(),
+    settings:{
+      sfx_volume:Number(sfxVolume)||0,
+      music_volume:Number(musicVolume)||0
+    }
+  };
+  const {error}=await fragmentSupabase
+    .from('player_data')
+    .upsert(payload,{onConflict:'user_id'});
+  if(error) throw error;
+}
+function queueCloudSave(){
+  if(!cloudUser || !cloudGameDataLoaded) return;
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer=setTimeout(()=>{
+    saveCloudProgress().catch(error=>{
+      console.error('[Fragment.io] Cloud save failed',error);
+      accountHint('Cloud save failed: '+(error.message||'unknown error'),true);
+    });
+  },450);
+}
+async function registerCloudAccount(username,email,password){
+  const {data,error}=await fragmentSupabase.auth.signUp({
+    email,
+    password,
+    options:{data:{username},emailRedirectTo:window.location.origin}
+  });
+  if(error) throw error;
+  return data;
+}
+async function loginCloudAccount(email,password){
+  const {data,error}=await fragmentSupabase.auth.signInWithPassword({email,password});
+  if(error) throw error;
+  return data;
+}
 function initAccounts(){
-  try{ const saved=JSON.parse(localStorage.getItem(ACCOUNT_SESSION_KEY)||'null'); if(saved && typeof saved==='object') accountState={guest:!!saved.guest,user:cleanAccountName(saved.user||'')}; }catch(e){}
-  if(!accountState.user) accountState.guest=true;
   document.querySelectorAll('[data-account-tab]').forEach(btn=>btn.addEventListener('click',()=>{
     document.querySelectorAll('[data-account-tab]').forEach(b=>b.classList.toggle('active',b===btn));
     document.querySelectorAll('[data-account-panel]').forEach(p=>p.classList.toggle('active',p.dataset.accountPanel===btn.dataset.accountTab));
   }));
-  const loginBtn=$('loginBtn'), registerBtn=$('registerBtn'), guestBtn=$('guestBtn'), logoutBtn=$('logoutBtn'), copyCodeBtn=$('copyFriendCodeBtn'), addCodeBtn=$('accountAddFriendCodeBtn'), changeEmailBtn=$('changeEmailBtn'), changePassBtn=$('changePassBtn');
-  if(loginBtn) loginBtn.onclick=()=>{ const email=cleanEmail($('loginUser')?.value), pass=String($('loginPass')?.value||''); const db=getAccountDb(); if(!email || !validEmail(email)){ accountHint('Invalid email: enter the email you registered with.', true); return; } if(!pass){ accountHint('Enter your password.', true); return; } const hit=findAccountForLogin(email, pass); if(!hit){ accountHint('Wrong email or password.', true); tone(120,.08,'square',.025); return; } if(hit.data && !hit.data.friendCode){ hit.data.friendCode=makeFriendCode(db); db[hit.id]=hit.data; setAccountDb(db); } switchAccount({guest:false,user:hit.id}); if(ui.playerName && (!ui.playerName.value || ui.playerName.value==='Sinister')) ui.playerName.value=accountDisplayName(hit.id); accountHint('Logged in. Pulls are unlocked.'); closeMenuModals(); };
-  if(registerBtn) registerBtn.onclick=()=>{ const u=cleanAccountName($('registerUser')?.value), email=cleanEmail($('registerEmail')?.value), pass=String($('registerPass')?.value||''); const db=getAccountDb(); if(u.length<3){ accountHint('Invalid username: it needs to be at least 3 letters long.', true); return; } if(!email || !validEmail(email)){ accountHint('Invalid email: enter a valid email address to register.', true); return; } if(emailAlreadyRegistered(email)){ accountHint('Invalid email: this email is already registered. Login with that email instead.', true); return; } if(pass.length<6){ accountHint('Invalid password: it needs to be at least 6 letters long.', true); return; } const code=makeFriendCode(db); db[code]={username:u,pass,email,friendCode:code,friends:[],created:Date.now()}; setAccountDb(db); switchAccount({guest:false,user:code}); if(ui.playerName) ui.playerName.value=u; accountHint('Account created. Shop and pulls are unlocked.'); closeMenuModals(); };
-  if(copyCodeBtn) copyCodeBtn.onclick=()=>{ if(isGuestAccount()){ accountHint('Guests do not have a saved friend code.', true); return; } const code=$('accountFriendCode')?.textContent||''; try{ navigator.clipboard && navigator.clipboard.writeText(code); }catch(e){} accountHint('Friend code copied: '+code); };
-  if(addCodeBtn) addCodeBtn.onclick=()=>{ if(isGuestAccount()){ accountHint('Login or register before adding friends by code.', true); return; } const hit=accountByFriendCode($('accountFriendCodeInput')?.value); if(!hit){ accountHint('No account found with that friend code.', true); return; } if(hit.user===accountState.user){ accountHint('That is your own friend code.', true); return; } if(!friends.includes(hit.user)) friends.unshift(hit.user); saveFriends(); renderSocial(); if($('accountFriendCodeInput')) $('accountFriendCodeInput').value=''; accountHint('Added '+accountDisplayName(hit.user)+' to your friends.'); };
-  if(changeEmailBtn) changeEmailBtn.onclick=()=>{ if(isGuestAccount()){ accountHint('Login before changing your email.', true); return; } const email=cleanEmail($('changeEmailInput')?.value); if(!email || !validEmail(email)){ accountHint('Invalid email: enter a valid new email address.', true); return; } if(emailAlreadyRegistered(email, accountState.user)){ accountHint('Invalid email: this email is already used by another account.', true); return; } const db=getAccountDb(); if(!db[accountState.user]){ accountHint('Account data missing. Log in again.', true); return; } db[accountState.user].email=email; setAccountDb(db); if($('changeEmailInput')) $('changeEmailInput').value=''; accountHint('Email changed. Next login uses '+email+'.'); renderAccountStatus(); };
-  if(changePassBtn) changePassBtn.onclick=()=>{ if(isGuestAccount()){ accountHint('Login before changing your password.', true); return; } const current=String($('currentPassInput')?.value||''), next=String($('changePassInput')?.value||''); const db=getAccountDb(); const rec=db[accountState.user]; if(!rec){ accountHint('Account data missing. Log in again.', true); return; } if(current!==rec.pass){ accountHint('Wrong current password.', true); return; } if(next.length<6){ accountHint('Invalid password: it needs to be at least 6 letters long.', true); return; } rec.pass=next; db[accountState.user]=rec; setAccountDb(db); if($('currentPassInput')) $('currentPassInput').value=''; if($('changePassInput')) $('changePassInput').value=''; accountHint('Password changed. Use the new password next time.'); };
-  if(guestBtn) guestBtn.onclick=()=>{ switchAccount({guest:true,user:''}); accountHint('Guest mode enabled. Pulls are locked, but play is allowed.'); closeMenuModals(); };
-  if(logoutBtn) logoutBtn.onclick=()=>{ switchAccount({guest:true,user:''}); accountHint('Logged out. Guest mode enabled.'); };
+
+  const loginBtn=$('loginBtn'),registerBtn=$('registerBtn'),guestBtn=$('guestBtn'),logoutBtn=$('logoutBtn');
+  const copyCodeBtn=$('copyFriendCodeBtn'),addCodeBtn=$('accountAddFriendCodeBtn');
+  const changeUsernameBtn=$('changeUsernameBtn'),changeEmailBtn=$('changeEmailBtn'),changePassBtn=$('changePassBtn');
+
+  if(loginBtn) loginBtn.onclick=async()=>{
+    const email=cleanEmail($('loginUser')?.value);
+    const password=String($('loginPass')?.value||'');
+    if(!validEmail(email)){ accountHint('Enter the email address you registered with.',true); return; }
+    if(!password){ accountHint('Enter your password.',true); return; }
+    if(!fragmentSupabase){ accountHint('Supabase did not load. Check the deployment configuration.',true); return; }
+    setAccountBusy(loginBtn,true,'Logging in…');
+    try{
+      await loginCloudAccount(email,password);
+      await loadCloudAccount();
+      accountHint('Logged in. Cloud saving is active.');
+      closeMenuModals();
+    }catch(error){
+      accountHint(error.message||'Login failed.',true);
+      tone(120,.08,'square',.025);
+    }finally{
+      setAccountBusy(loginBtn,false);
+    }
+  };
+
+  if(registerBtn) registerBtn.onclick=async()=>{
+    const username=cleanAccountName($('registerUser')?.value);
+    const email=cleanEmail($('registerEmail')?.value);
+    const password=String($('registerPass')?.value||'');
+    if(username.length<3){ accountHint('Username must be at least 3 characters.',true); return; }
+    if(!validEmail(email)){ accountHint('Enter a valid email address.',true); return; }
+    if(password.length<6){ accountHint('Password must be at least 6 characters.',true); return; }
+    if(!fragmentSupabase){ accountHint('Supabase did not load. Check the deployment configuration.',true); return; }
+
+    setAccountBusy(registerBtn,true,'Creating…');
+    try{
+      const data=await registerCloudAccount(username,email,password);
+      if(data.session){
+        await loadCloudAccount();
+        accountHint('Account created. Cloud saving is active.');
+        closeMenuModals();
+      }else{
+        accountHint('Account created. Check your email to confirm it, then log in.');
+        document.querySelector('[data-account-tab="login"]')?.click();
+      }
+    }catch(error){
+      accountHint(error.message||'Registration failed.',true);
+    }finally{
+      setAccountBusy(registerBtn,false);
+    }
+  };
+
+  if(copyCodeBtn) copyCodeBtn.onclick=async()=>{
+    const code=cloudProfile?.friend_code||'';
+    if(!code){ accountHint('Your friend code is not loaded yet.',true); return; }
+    try{ await navigator.clipboard.writeText(code); }
+    catch(error){
+      const temp=document.createElement('textarea');
+      temp.value=code;
+      document.body.appendChild(temp);
+      temp.select();
+      document.execCommand('copy');
+      temp.remove();
+    }
+    accountHint('Friend code copied: '+code);
+  };
+
+  if(addCodeBtn) addCodeBtn.onclick=async()=>{
+    const input=$('accountFriendCodeInput');
+    const code=cleanFriendCode(input?.value);
+    setAccountBusy(addCodeBtn,true,'Adding…');
+    try{
+      const friend=await addCloudFriend(code);
+      if(input) input.value='';
+      accountHint('Added '+friend.username+' to your friends.');
+    }catch(error){
+      accountHint(error.message||'Could not add that friend.',true);
+    }finally{
+      setAccountBusy(addCodeBtn,false);
+    }
+  };
+
+  if(changeUsernameBtn) changeUsernameBtn.onclick=async()=>{
+    if(!cloudUser){ accountHint('Login before changing your username.',true); return; }
+    const username=cleanAccountName($('changeUsernameInput')?.value);
+    if(username.length<3){ accountHint('Username must be at least 3 characters.',true); return; }
+    setAccountBusy(changeUsernameBtn,true,'Saving…');
+    try{
+      const {data,error}=await fragmentSupabase
+        .from('profiles')
+        .update({username})
+        .eq('id',cloudUser.id)
+        .select('id,username,friend_code,created_at')
+        .single();
+      if(error) throw error;
+      cloudProfile=data;
+      if(ui.playerName) ui.playerName.value=username;
+      if($('changeUsernameInput')) $('changeUsernameInput').value='';
+      renderAccountStatus();
+      accountHint('Username changed.');
+    }catch(error){
+      accountHint(error.message||'Could not change username.',true);
+    }finally{
+      setAccountBusy(changeUsernameBtn,false);
+    }
+  };
+
+  if(changeEmailBtn) changeEmailBtn.onclick=async()=>{
+    if(!cloudUser){ accountHint('Login before changing your email.',true); return; }
+    const email=cleanEmail($('changeEmailInput')?.value);
+    if(!validEmail(email)){ accountHint('Enter a valid new email address.',true); return; }
+    setAccountBusy(changeEmailBtn,true,'Saving…');
+    try{
+      const {error}=await fragmentSupabase.auth.updateUser({email});
+      if(error) throw error;
+      if($('changeEmailInput')) $('changeEmailInput').value='';
+      accountHint('Email update requested. Supabase may require confirmation.');
+    }catch(error){
+      accountHint(error.message||'Could not change email.',true);
+    }finally{
+      setAccountBusy(changeEmailBtn,false);
+    }
+  };
+
+  if(changePassBtn) changePassBtn.onclick=async()=>{
+    if(!cloudUser){ accountHint('Login before changing your password.',true); return; }
+    const current=String($('currentPassInput')?.value||'');
+    const next=String($('changePassInput')?.value||'');
+    if(!current){ accountHint('Enter your current password.',true); return; }
+    if(next.length<6){ accountHint('New password must be at least 6 characters.',true); return; }
+    setAccountBusy(changePassBtn,true,'Saving…');
+    try{
+      const verify=await fragmentSupabase.auth.signInWithPassword({email:cloudUser.email,password:current});
+      if(verify.error) throw new Error('Current password is incorrect.');
+      const {error}=await fragmentSupabase.auth.updateUser({password:next});
+      if(error) throw error;
+      if($('currentPassInput')) $('currentPassInput').value='';
+      if($('changePassInput')) $('changePassInput').value='';
+      accountHint('Password changed.');
+    }catch(error){
+      accountHint(error.message||'Could not change password.',true);
+    }finally{
+      setAccountBusy(changePassBtn,false);
+    }
+  };
+
+  if(guestBtn) guestBtn.onclick=()=>{
+    switchAccount({guest:true,user:''});
+    accountHint('Guest mode enabled. Pulls remain locked.');
+    closeMenuModals();
+  };
+
+  if(logoutBtn) logoutBtn.onclick=async()=>{
+    setAccountBusy(logoutBtn,true,'Logging out…');
+    try{
+      clearTimeout(cloudSaveTimer);
+      await saveCloudProgress().catch(()=>{});
+      const {error}=await fragmentSupabase.auth.signOut();
+      if(error) throw error;
+      switchAccount({guest:true,user:''});
+      accountHint('Logged out. Guest mode enabled.');
+    }catch(error){
+      accountHint(error.message||'Logout failed.',true);
+    }finally{
+      setAccountBusy(logoutBtn,false);
+    }
+  };
+
   renderAccountStatus();
-  setTimeout(()=>{ if(isGuestAccount()) openMenuModal('account'); }, 250);
+
+  if(fragmentSupabase){
+    fragmentSupabase.auth.onAuthStateChange((event,session)=>{
+      setTimeout(()=>{
+        if(event==='SIGNED_OUT'){
+          switchAccount({guest:true,user:''});
+          return;
+        }
+        if(['INITIAL_SESSION','SIGNED_IN','TOKEN_REFRESHED','USER_UPDATED'].includes(event) && session?.user){
+          loadCloudAccount({silent:true});
+        }
+      },0);
+    });
+    loadCloudAccount({silent:true}).then(loaded=>{
+      if(!loaded && isGuestAccount()) setTimeout(()=>openMenuModal('account'),250);
+    });
+  }else{
+    accountHint('Supabase did not load. Verify the Render variables and internet connection.',true);
+    setTimeout(()=>openMenuModal('account'),250);
+  }
 }
+
 
 const gachaRarities = [
   {key:'common', name:'Common', color:'#9ca9b8', rate:80},
@@ -5759,14 +6279,33 @@ let remnant = 0, ownedCosmetics = [];
 let gachaPity = {};
 function defaultPity(){ return {standard:{pity:0,epicPity:0,guaranteed:false}, limitedSpecial:{pity:0,epicPity:0,guaranteed:false}, limitedHat:{pity:0,epicPity:0,guaranteed:false}}; }
 function sanitizePity(raw){ const base=defaultPity(); if(raw && typeof raw==='object'){ for(const k of Object.keys(base)){ base[k] = Object.assign(base[k], raw[k]||{}); base[k].pity=Math.max(0,Math.min(89,Math.floor(Number(base[k].pity)||0))); base[k].epicPity=Math.max(0,Math.min(9,Math.floor(Number(base[k].epicPity)||0))); base[k].guaranteed=!!base[k].guaranteed; } } return base; }
-function currentAccountStorageKey(suffix){ return accountState && !accountState.guest && accountState.user ? 'fragmentio_account_'+accountState.user+'_'+suffix : 'fragmentio_guest_'+suffix; }
+function currentAccountStorageKey(suffix){ return 'fragmentio_guest_'+suffix; }
 function loadGacha(){
-  const n = Number(localStorage.getItem(currentAccountStorageKey('remnant'))||'0'); remnant = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
-  try{ ownedCosmetics = JSON.parse(localStorage.getItem(currentAccountStorageKey('owned_cosmetics'))||'[]').filter(Boolean); }catch(e){ ownedCosmetics=[]; }
-  try{ gachaPity = sanitizePity(JSON.parse(localStorage.getItem(currentAccountStorageKey('gacha_pity_v2'))||'{}')); }catch(e){ gachaPity = defaultPity(); }
-  ownedCosmetics = [...new Set(ownedCosmetics)]; renderOwnedCosmeticOptions(); renderGachaMenu(); renderRemnantBadges();
+  if(!isGuestAccount() && cloudGameDataLoaded){
+    ownedCosmetics=[...new Set(ownedCosmetics)].filter(Boolean);
+    renderOwnedCosmeticOptions();
+    renderGachaMenu();
+    renderRemnantBadges();
+    return;
+  }
+  const n=Number(localStorage.getItem(currentAccountStorageKey('remnant'))||'0');
+  remnant=Number.isFinite(n)?Math.max(0,Math.floor(n)):0;
+  try{ ownedCosmetics=JSON.parse(localStorage.getItem(currentAccountStorageKey('owned_cosmetics'))||'[]').filter(Boolean); }catch(e){ ownedCosmetics=[]; }
+  try{ gachaPity=sanitizePity(JSON.parse(localStorage.getItem(currentAccountStorageKey('gacha_pity_v2'))||'{}')); }catch(e){ gachaPity=defaultPity(); }
+  ownedCosmetics=[...new Set(ownedCosmetics)];
+  renderOwnedCosmeticOptions();
+  renderGachaMenu();
+  renderRemnantBadges();
 }
-function saveGacha(){ localStorage.setItem(currentAccountStorageKey('remnant'), String(Math.max(0,Math.floor(remnant)))); localStorage.setItem(currentAccountStorageKey('owned_cosmetics'), JSON.stringify([...new Set(ownedCosmetics)])); localStorage.setItem(currentAccountStorageKey('gacha_pity_v2'), JSON.stringify(gachaPity)); }
+function saveGacha(){
+  if(!isGuestAccount() && cloudUser && cloudGameDataLoaded){
+    queueCloudSave();
+    return;
+  }
+  localStorage.setItem(currentAccountStorageKey('remnant'),String(Math.max(0,Math.floor(remnant))));
+  localStorage.setItem(currentAccountStorageKey('owned_cosmetics'),JSON.stringify([...new Set(ownedCosmetics)]));
+  localStorage.setItem(currentAccountStorageKey('gacha_pity_v2'),JSON.stringify(gachaPity));
+}
 function allCosmetics(){ return [...gachaCatalog, ...limitedCosmetics, ...limitedHatCosmetics]; }
 function cosmeticById(id){ return allCosmetics().find(c=>c.id===id); }
 function rarityInfo(key){ return gachaRarities.find(r=>r.key===key) || gachaRarities[0]; }
@@ -6212,6 +6751,7 @@ function updateCosmeticPreview(animate=true){
   ui.previewCosmetics.textContent='Core: '+shapeInfo.label+' · Trail: '+trailInfo.label+' · Aura: '+auraInfo.label+' · Hat: '+hatInfo.label;
 }
 ['playerName','titleSel','clanTag','trailSel','auraSel','hatSel','skinSel'].forEach(id=>{ const el=$(id); if(el){ el.addEventListener('input',updateCosmeticPreview); el.addEventListener('change',updateCosmeticPreview); }});
+['titleSel','trailSel','auraSel','hatSel','skinSel'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('change',()=>{ if(!isGuestAccount()) saveGacha(); }); });
 updateCosmeticPreview(false);
 
 
