@@ -17,6 +17,23 @@ const SUPPORTED_MODES = new Set(['normal','test','duo','squad','teams','br','bos
 const DROPPABLE_PACKET_TYPES = new Set(['peer_state','bots_state','fragments_state','world_state','bosses_state']);
 const rooms = new Map();
 const clients = new Set();
+const parties = new Map();
+const matchQueues = new Map();
+const userClients = new Map();
+const reconnectReservations = new Map();
+const pendingPartyInvites = new Map();
+
+const MODE_RULES = {
+  normal:{capacity:12, partyMax:6, targetLow:8, targetMid:10, targetHigh:12, waitMs:8000, joinMid:true, spectate:true},
+  duo:{capacity:12, partyMax:2, targetLow:8, targetMid:10, targetHigh:12, waitMs:9000, joinMid:true, spectate:true},
+  squad:{capacity:18, partyMax:6, targetLow:8, targetMid:12, targetHigh:18, waitMs:9000, joinMid:true, spectate:true},
+  teams:{capacity:20, partyMax:6, targetLow:12, targetMid:16, targetHigh:20, waitMs:10000, joinMid:true, spectate:true},
+  br:{capacity:40, partyMax:4, targetLow:24, targetMid:32, targetHigh:40, waitMs:18000, joinMid:false, spectate:true},
+  bossrush:{capacity:6, partyMax:6, targetLow:1, targetMid:3, targetHigh:6, waitMs:7000, joinMid:true, spectate:true},
+  pvp:{capacity:12, partyMax:6, targetLow:2, targetMid:6, targetHigh:12, waitMs:12000, joinMid:true, spectate:true},
+  test:{capacity:1, partyMax:1, targetLow:1, targetMid:1, targetHigh:1, waitMs:0, joinMid:false, spectate:false}
+};
+
 
 function id(bytes = 8){ return crypto.randomBytes(bytes).toString('hex'); }
 function cleanRoom(v){ return String(v || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0,18) || crypto.randomBytes(3).toString('hex').toUpperCase(); }
@@ -25,6 +42,27 @@ function cleanMode(v){
   const mode = String(v || 'normal').toLowerCase();
   return SUPPORTED_MODES.has(mode) ? mode : 'normal';
 }
+function modeRules(mode){ return MODE_RULES[cleanMode(mode)] || MODE_RULES.normal; }
+function roomCapacity(room){ return modeRules(room?.mode).capacity; }
+function cleanUserId(v){ return String(v||'').trim().toLowerCase().replace(/[^a-f0-9-]/g,'').slice(0,36); }
+function partyCode(){ return 'P-'+crypto.randomBytes(4).toString('hex').toUpperCase(); }
+function matchCode(){ return 'M-'+crypto.randomBytes(5).toString('hex').toUpperCase(); }
+function onlineClientForUser(userId){
+  const set=userClients.get(String(userId||''));
+  if(!set) return null;
+  for(const client of set){ if(client.socket && !client.socket.destroyed) return client; }
+  return null;
+}
+function allOnlineClientsForUser(userId){ return [...(userClients.get(String(userId||''))||[])].filter(c=>c.socket&&!c.socket.destroyed); }
+function partyForClient(client){ return client?.partyId ? parties.get(client.partyId)||null : null; }
+function privacyAllows(value, isFriend=true, isParty=false){
+  const rule=String(value||'friends').toLowerCase();
+  if(rule==='nobody') return false;
+  if(rule==='party') return !!isParty;
+  if(rule==='friends') return !!isFriend || !!isParty;
+  return true;
+}
+
 function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
 function rand(a, b){ return a + Math.random() * (b - a); }
 function irand(a, b){ return Math.floor(rand(a, b)); }
@@ -48,9 +86,11 @@ function randomArenaPoint(minRadius=0, margin=360){
 function teamForClient(room, client){
   if(['duo','squad','test'].includes(room.mode)) return 'blue';
   if(room.mode === 'teams'){
+    if(client.matchTeam==='blue' || client.matchTeam==='red') return client.matchTeam;
     const list=[...room.clients];
-    const idx=Math.max(0,list.indexOf(client));
-    return idx % 2 === 0 ? 'blue' : 'red';
+    const blue=list.filter(c=>c!==client && c.serverTeam==='blue').length;
+    const red=list.filter(c=>c!==client && c.serverTeam==='red').length;
+    return blue<=red ? 'blue' : 'red';
   }
   return 'neutral';
 }
@@ -131,6 +171,7 @@ function makeRoom(code){
   return {
     code,
     clients:new Set(),
+    spectators:new Set(),
     leaderId:null,
     mode:'normal',
     matchStarted:false,
@@ -154,7 +195,10 @@ function makeRoom(code){
     nextBossAt:Date.now()+32000,
     lastErrorAt:0,
     lastSquadLimitNotice:0,
-    createdAt:Date.now()
+    createdAt:Date.now(),
+    emptySince:0,
+    fillBots:true,
+    matchmaking:false
   };
 }
 function getRoom(code){
@@ -191,19 +235,30 @@ function lobbyPayload(room){
   };
 }
 function broadcastLobby(room){ broadcast(room.code, lobbyPayload(room)); }
-function removeFromRoom(client){
+function removeFromRoom(client, options={}){
   if(!client.room) return;
   const room = rooms.get(client.room);
   if(room){
-    room.clients.delete(client);
-    broadcast(client.room, {type:'peer_left', clientId:client.id, name:client.name}, client);
+    const wasPlayer=room.clients.delete(client);
+    const wasSpectator=room.spectators?.delete(client);
+    if(wasPlayer) broadcast(room.code, {type:'peer_left', clientId:client.id, name:client.name}, client);
     chooseLeader(room);
-    if(room.clients.size === 0){ rooms.delete(client.room); }
-    else { broadcastLobby(room); }
+    if(room.clients.size === 0 && (!room.spectators || room.spectators.size===0)){
+      if(room.matchStarted){ room.emptySince=Date.now(); }
+      else rooms.delete(client.room);
+    }else if(wasPlayer){
+      if(room.matchStarted && room.mode!=='br') reconcileServerBots(room);
+      broadcastLobby(room);
+    }
+    if(wasPlayer || wasSpectator) broadcastPresenceForUser(client.userId);
   }
   client.room = null;
   client.ready = false;
   client.inMatch = false;
+  client.role='social';
+  client.serverTeam='neutral';
+  client.matchTeam=null;
+  if(!options.keepSnapshot) client.snapshot=null;
 }
 function send(client, obj){
   if(!client || !client.socket || client.socket.destroyed || !client.socket.writable) return false;
@@ -231,6 +286,7 @@ function broadcast(roomCode, obj, except=null){
   const room = rooms.get(roomCode);
   if(!room) return;
   for(const client of room.clients){ if(client !== except) send(client, obj); }
+  for(const client of (room.spectators||[])){ if(client !== except) send(client, obj); }
 }
 function peersFor(client){
   const room = rooms.get(client.room);
@@ -245,53 +301,67 @@ function peersFor(client){
 const botNames = ['Echo','Mira','Waltz','Kite','Phantom','Ivy','Rook','Bolt','June','Quartz','HomingBug','Needle','Comet','Vector','Orbit','FlareFox','Drift','Cannon','Sable','Nova','Atlas','Vega','Pixel','Frost','Rift','Juno','Nyx','Astra','Mako','Rune','Vale','Onyx','Luma','Cinder','Glitch','Delta','Zero','Solar','Iris','Vortex','Prism','Flux','Ash','Cobalt','Ember','Halo','Zenith','Crow','Pico','Blade'];
 const archetypes = ['starter','swordsman','ronin','azure','solar_lance','hakka','deadeye','hydra','world_eater','black_star','bloodlord','bullet_storm','machine','minigunner','sniper','rocketeer','gravity_mage','stormcaller'];
 const colors = ['#ff775d','#6a7cf7','#53b07b','#ffcf58','#76d7ff','#cb80ff','#d84a4a','#9aa9b8'];
-function botCountForMode(mode){
-  // One authoritative bot roster per room, not per player.
-  // Lower counts improve readability and significantly reduce network/render load.
-  if(mode === 'pvp' || mode === 'bossrush') return 0;
-  if(mode === 'test') return 6;
-  if(mode === 'duo') return 6;
-  if(mode === 'squad') return 8;
-  if(mode === 'teams') return 10;
-  if(mode === 'br') return 12;
-  return 7;
+function targetPopulationForMode(mode,humanCount){
+  const rules=modeRules(mode);
+  if(mode==='test') return 7;
+  if(mode==='pvp' || mode==='bossrush') return humanCount;
+  if(humanCount<=2) return rules.targetLow;
+  if(humanCount<=5) return rules.targetMid;
+  return rules.targetHigh;
+}
+function botCountForMode(mode,humanCount=1,fillBots=true){
+  if(!fillBots || mode==='pvp' || mode==='bossrush') return 0;
+  if(mode==='test') return 6;
+  return Math.max(0,targetPopulationForMode(mode,humanCount)-humanCount);
 }
 function teamForBot(mode, i, count){
   if(mode === 'teams') return i < Math.ceil(count/2) ? 'blue' : 'red';
   if(['duo','squad','test'].includes(mode)) return 'red';
   return 'neutral';
 }
+function createServerBot(room,i,count){
+  const team = teamForBot(room.mode, i, count);
+  const passive = room.mode === 'test';
+  const namePrefix = room.mode === 'br' ? 'BR ' : room.mode === 'teams' ? (team === 'blue' ? 'Blue ' : 'Red ') : room.mode === 'squad' ? 'Enemy ' : '';
+  const point = room.mode === 'test'
+    ? {x:((i % 4) - 1.5) * 260, y:(Math.floor(i / 4) - 1) * 230}
+    : randomArenaPoint(720,360);
+  const roam = randomArenaPoint(620,260);
+  return {
+    id:'bot_' + id(5),
+    name: passive ? `Dummy ${String(i+1).padStart(2,'0')}` : `${namePrefix}${botNames[i % botNames.length]}-${String(i+1).padStart(2,'0')}`,
+    x:point.x, y:point.y,
+    vx:0, vy:0, r:18, angle:rand(0, Math.PI*2),
+    hp: passive ? 280 : 115, maxHp: passive ? 280 : 115,
+    score:0, frags:0, level:1,
+    team, ally:team === 'blue', passive,
+    archetype: archetypes[i % archetypes.length],
+    bodyColor: passive ? '#7fd8ff' : colors[i % colors.length],
+    fireCd:rand(1.3,2.1), think:0, strafe:Math.random()<0.5 ? -1 : 1,
+    aimError:rand(-0.10,0.10), dodge:rand(.75,1.25), confidence:rand(.75,1.22),
+    meleeCd:rand(.9,1.5), lastTargetId:null, targetLockUntil:0,
+    personality:['duelist','hunter','scavenger','coward','roamer'][i%5],
+    roamX:roam.x, roamY:roam.y,
+    spawnGraceUntil:Date.now()+rand(1700,2600),
+    dead:false, respawnAt:0, lastHitBy:null
+  };
+}
 function spawnServerBots(room){
   room.bots = [];
-  const count = botCountForMode(room.mode);
-  for(let i=0;i<count;i++){
-    const team = teamForBot(room.mode, i, count);
-    const passive = room.mode === 'test';
-    const namePrefix = room.mode === 'br' ? 'BR ' : room.mode === 'teams' ? (team === 'blue' ? 'Blue ' : 'Red ') : room.mode === 'squad' ? 'Enemy ' : '';
-    const point = room.mode === 'test'
-      ? {x:((i % 4) - 1.5) * 260, y:(Math.floor(i / 4) - 1) * 230}
-      : randomArenaPoint(720,360);
-    const roam = randomArenaPoint(620,260);
-    const bot = {
-      id:'bot_' + id(5),
-      name: passive ? `Dummy ${String(i+1).padStart(2,'0')}` : `${namePrefix}${botNames[i % botNames.length]}-${String(i+1).padStart(2,'0')}`,
-      x:point.x, y:point.y,
-      vx:0, vy:0, r:18, angle:rand(0, Math.PI*2),
-      hp: passive ? 280 : 115, maxHp: passive ? 280 : 115,
-      score:0, frags:0, level:1,
-      team, ally:team === 'blue', passive,
-      archetype: archetypes[i % archetypes.length],
-      bodyColor: passive ? '#7fd8ff' : colors[i % colors.length],
-      fireCd:rand(1.3,2.1), think:0, strafe:Math.random()<0.5 ? -1 : 1,
-      aimError:rand(-0.10,0.10), dodge:rand(.75,1.25), confidence:rand(.75,1.22),
-      meleeCd:rand(.9,1.5), lastTargetId:null, targetLockUntil:0,
-      personality:['duelist','hunter','scavenger','coward','roamer'][i%5],
-      roamX:roam.x, roamY:roam.y,
-      spawnGraceUntil:Date.now()+rand(1700,2600),
-      dead:false, respawnAt:0, lastHitBy:null
-    };
-    room.bots.push(bot);
+  const count = botCountForMode(room.mode,room.clients.size,room.fillBots!==false);
+  for(let i=0;i<count;i++) room.bots.push(createServerBot(room,i,count));
+}
+function reconcileServerBots(room){
+  if(!room || !room.matchStarted || room.mode==='br') return;
+  const desired=botCountForMode(room.mode,room.clients.size,room.fillBots!==false);
+  while(room.bots.length>desired){
+    const deadIndex=room.bots.findIndex(b=>b.dead);
+    room.bots.splice(deadIndex>=0?deadIndex:room.bots.length-1,1);
   }
+  while(room.bots.length<desired){
+    room.bots.push(createServerBot(room,room.bots.length,desired));
+  }
+  broadcast(room.code,{type:'bots_state',mode:room.mode,bots:room.bots.map(botSnapshot),immediate:true});
 }
 function startMatch(room){
   room.matchStarted = true;
@@ -1107,50 +1177,348 @@ function sanitizeProjectileOptions(room, client, raw){
   }
   return out;
 }
+
+function joinClientToRoom(client, room, options={}){
+  removeFromRoom(client,{keepSnapshot:false});
+  client.room=room.code;
+  client.role='player';
+  client.name=safeName(options.name||client.profile?.username||client.name||'Player');
+  client.mode=cleanMode(options.mode||room.mode);
+  client.ready=false;
+  client.inMatch=!!room.matchStarted;
+  client.snapshot=null;
+  client.spawnProtectedUntil=Date.now()+3000;
+  room.emptySince=0;
+  room.clients.add(client);
+  chooseLeader(room);
+  assignRoomTeams(room);
+  send(client,{type:'welcome',clientId:client.id,room:room.code,hidden:true});
+  const peers=peersFor(client);
+  if(peers.length) send(client,{type:'peers',peers});
+  broadcast(room.code,{type:'peer_joined',clientId:client.id,name:client.name,mode:room.mode},client);
+  broadcastLobby(room);
+  if(room.matchStarted){
+    client.inMatch=true;
+    const near=options.spawnNearClient?.snapshot ? {x:options.spawnNearClient.snapshot.x||0,y:options.spawnNearClient.snapshot.y||0} : null;
+    send(client,{type:'match_start',mode:room.mode,matchId:room.matchId,startedAt:Date.now(),lateJoin:true,spawnNear:near});
+    send(client,{type:'bots_state',mode:room.mode,bots:room.bots.map(botSnapshot)});
+    sendSharedState(client,room,true);
+    if(room.mode!=='br') reconcileServerBots(room);
+  }
+  broadcastPresenceForUser(client.userId);
+}
+
+async function supabaseRequest(endpoint, token, options={}){
+  const base=String(process.env.SUPABASE_URL||'').replace(/\/+$/,'');
+  const key=String(process.env.SUPABASE_PUBLISHABLE_KEY||'').trim();
+  if(!base || !key) throw new Error('Supabase server variables are missing.');
+  const headers={apikey:key,Authorization:'Bearer '+token,'Content-Type':'application/json',...(options.headers||{})};
+  const response=await fetch(base+endpoint,{...options,headers});
+  let body=null;
+  try{ body=await response.json(); }catch(_e){}
+  if(!response.ok) throw new Error(body?.message||body?.msg||body?.error_description||('Supabase HTTP '+response.status));
+  return body;
+}
+async function refreshClientProfile(client){
+  if(!client?.authenticated || !client.accessToken || !client.userId) return;
+  const rows=await supabaseRequest('/rest/v1/profiles?id=eq.'+encodeURIComponent(client.userId)+'&select=id,username,friend_code,profile_settings',client.accessToken,{method:'GET'});
+  if(Array.isArray(rows) && rows[0]){
+    client.profile=rows[0];
+    client.name=safeName(rows[0].username||client.name||'Player');
+  }
+}
+async function authenticateSocket(client, token){
+  token=String(token||'').trim();
+  if(!token) throw new Error('Missing account token.');
+  const user=await supabaseRequest('/auth/v1/user',token,{method:'GET'});
+  if(!user?.id) throw new Error('Invalid account session.');
+  client.accessToken=token;
+  client.userId=user.id;
+  client.authenticated=true;
+  client.name=safeName(user.user_metadata?.username||client.name||'Player');
+  client.profile={id:user.id,username:client.name,friend_code:'',profile_settings:{}};
+  try{ await refreshClientProfile(client); }catch(_e){}
+  if(!userClients.has(user.id)) userClients.set(user.id,new Set());
+  userClients.get(user.id).add(client);
+  await refreshClientFriends(client);
+  for(const party of parties.values()){
+    if(party.members.has(user.id)){ client.partyId=party.id; break; }
+  }
+  send(client,{type:'auth_ok',userId:user.id,clientId:client.id,name:client.name});
+  sendPartyStateForClient(client);
+  sendWatchedPresence(client);
+  const reservation=reconnectReservations.get(user.id);
+  if(reservation && reservation.expires>Date.now()){
+    const room=rooms.get(reservation.roomCode);
+    if(room){
+      reconnectReservations.delete(user.id);
+      joinClientToRoom(client,room,{mode:room.mode,name:client.name});
+      send(client,{type:'reconnect_match',mode:room.mode,room:room.code});
+    }
+  }
+  broadcastPresenceForUser(user.id);
+}
+async function refreshClientFriends(client){
+  client.friendIds=new Set();
+  if(!client.authenticated || !client.accessToken) return;
+  const rows=await supabaseRequest('/rest/v1/friendships?user_id=eq.'+encodeURIComponent(client.userId)+'&select=friend_id',client.accessToken,{method:'GET'});
+  for(const row of (Array.isArray(rows)?rows:[])) if(row.friend_id) client.friendIds.add(row.friend_id);
+}
+function samePartyUsers(a,b){ return !!a?.partyId && a.partyId===b?.partyId; }
+function presenceFor(viewer,target){
+  if(!target) return {status:'offline'};
+  const isFriend=!!viewer?.friendIds?.has(target.userId);
+  const isParty=samePartyUsers(viewer,target);
+  const settings=target.profile?.profile_settings||{};
+  let status='online';
+  const party=partyForClient(target);
+  const queued=party?.queued || target.queueId;
+  if(target.role==='spectator') status='spectating';
+  else if(target.room && target.inMatch) status='in_match';
+  else if(queued) status='searching';
+  else if(party && party.members.size>1) status='in_party';
+  if(!privacyAllows(settings.show_status||'friends',isFriend,isParty)) return {status:'online'};
+  const room=target.room?rooms.get(target.room):null;
+  const allowSpectate=room && modeRules(room.mode).spectate && privacyAllows(settings.allow_spectate||'friends',isFriend,isParty);
+  const allowJoin=room && target.inMatch && modeRules(room.mode).joinMid && room.clients.size<roomCapacity(room) && privacyAllows(settings.allow_join||'friends',isFriend,isParty);
+  return {
+    status,
+    mode:room?.mode||party?.mode||null,
+    players:room?.clients?.size||0,
+    capacity:room?roomCapacity(room):0,
+    joinable:!!allowJoin,
+    spectatable:!!allowSpectate,
+    partySize:party?.members?.size||0
+  };
+}
+function sendWatchedPresence(client){
+  if(!client?.authenticated) return;
+  const rows=[];
+  for(const friendId of (client.friendIds||[])) rows.push({userId:friendId,...presenceFor(client,onlineClientForUser(friendId))});
+  send(client,{type:'presence_state',friends:rows});
+}
+function broadcastPresenceForUser(userId){
+  if(!userId) return;
+  for(const client of clients){
+    if(!client.authenticated) continue;
+    if(client.userId===userId || client.friendIds?.has(userId)) sendWatchedPresence(client);
+  }
+}
+function partyPayload(party){
+  const members=[];
+  for(const userId of party.members){
+    const c=onlineClientForUser(userId);
+    members.push({userId,name:c?.profile?.username||c?.name||party.memberNames.get(userId)||'Player',online:!!c,ready:!!party.ready.get(userId),leader:userId===party.leaderId,status:c?presenceFor(c,c).status:'offline'});
+  }
+  return {type:'party_state',partyId:party.id,leaderId:party.leaderId,mode:party.mode,fillBots:party.fillBots,queued:party.queued,members};
+}
+function broadcastParty(party){
+  if(!party) return;
+  const payload=partyPayload(party);
+  for(const userId of party.members) for(const c of allOnlineClientsForUser(userId)){ c.partyId=party.id; send(c,payload); }
+  for(const userId of party.members) broadcastPresenceForUser(userId);
+}
+function sendPartyStateForClient(client){
+  const party=partyForClient(client);
+  if(party) send(client,partyPayload(party));
+  else send(client,{type:'party_state',partyId:null,leaderId:null,mode:'normal',fillBots:true,queued:false,members:client.authenticated?[{userId:client.userId,name:client.name,online:true,ready:false,leader:true,status:'online'}]:[]});
+}
+function ensureParty(client){
+  let party=partyForClient(client);
+  if(party) return party;
+  party={id:partyCode(),leaderId:client.userId,members:new Set([client.userId]),memberNames:new Map([[client.userId,client.name]]),ready:new Map([[client.userId,false]]),mode:'normal',fillBots:true,queued:false,queueId:null,createdAt:Date.now()};
+  parties.set(party.id,party); client.partyId=party.id; broadcastParty(party); return party;
+}
+function leavePartyUser(userId,party){
+  if(!party || !party.members.has(userId)) return;
+  party.members.delete(userId); party.ready.delete(userId); party.memberNames.delete(userId);
+  for(const c of allOnlineClientsForUser(userId)){ c.partyId=null; sendPartyStateForClient(c); }
+  if(party.leaderId===userId) party.leaderId=party.members.values().next().value||null;
+  if(!party.members.size){ parties.delete(party.id); cancelQueueParty(party); }
+  else broadcastParty(party);
+}
+function cancelQueueParty(party){
+  if(!party) return;
+  for(const [mode,list] of matchQueues){ matchQueues.set(mode,list.filter(entry=>entry.partyId!==party.id)); }
+  party.queued=false; party.queueId=null; broadcastParty(party);
+}
+function queueMembersForEntry(entry){ return entry.userIds.map(onlineClientForUser).filter(c=>c&&c.authenticated&&!c.room); }
+function queueEntry(client,mode,asParty=true,fillBots=true){
+  mode=cleanMode(mode);
+  if(mode==='test') return send(client,{type:'queue_error',message:'Test Arena is offline training only.'});
+  let party=partyForClient(client);
+  let userIds=[client.userId],partyId=null;
+  if(asParty && party && party.members.size>1){
+    if(party.leaderId!==client.userId) return send(client,{type:'queue_error',message:'Only the party leader can start matchmaking.'});
+    const onlineIds=[...party.members].filter(id=>onlineClientForUser(id));
+    if(onlineIds.length!==party.members.size) return send(client,{type:'queue_error',message:'Every party member must be online.'});
+    if([...party.members].some(id=>id!==party.leaderId && !party.ready.get(id))) return send(client,{type:'queue_error',message:'Every party member must be ready.'});
+    userIds=[...party.members]; partyId=party.id; party.mode=mode; party.fillBots=fillBots!==false; party.queued=true;
+  }
+  const rules=modeRules(mode);
+  if(userIds.length>rules.partyMax) return send(client,{type:'queue_error',message:'This mode allows parties of up to '+rules.partyMax+'.'});
+  if(userIds.length>rules.capacity) return send(client,{type:'queue_error',message:'Party is too large for this mode.'});
+  for(const list of matchQueues.values()){
+    for(let i=list.length-1;i>=0;i--) if(list[i].userIds.some(id=>userIds.includes(id))) list.splice(i,1);
+  }
+  const entry={id:'Q-'+id(4),partyId,userIds,mode,fillBots:fillBots!==false,queuedAt:Date.now()};
+  if(!matchQueues.has(mode)) matchQueues.set(mode,[]);
+  matchQueues.get(mode).push(entry);
+  for(const uid of userIds) for(const c of allOnlineClientsForUser(uid)){ c.queueId=entry.id; send(c,{type:'queue_state',active:true,mode,players:userIds.length,target:targetPopulationForMode(mode,userIds.length),startIn:Math.ceil(rules.waitMs/1000)}); }
+  if(party) broadcastParty(party);
+  for(const uid of userIds) broadcastPresenceForUser(uid);
+}
+function cancelClientQueue(client){
+  for(const [mode,list] of matchQueues){
+    const removed=list.filter(e=>e.userIds.includes(client.userId));
+    matchQueues.set(mode,list.filter(e=>!e.userIds.includes(client.userId)));
+    for(const e of removed){ if(e.partyId){ const p=parties.get(e.partyId); if(p){p.queued=false;p.queueId=null;broadcastParty(p);} } for(const uid of e.userIds) for(const c of allOnlineClientsForUser(uid)){c.queueId=null;send(c,{type:'queue_state',active:false});} }
+  }
+  broadcastPresenceForUser(client.userId);
+}
+function assignTeamsForEntries(room,entries){
+  if(room.mode!=='teams') return;
+  let blue=0,red=0;
+  for(const entry of entries){
+    const team=blue<=red?'blue':'red';
+    for(const uid of entry.userIds){ const c=onlineClientForUser(uid); if(c) c.matchTeam=team; }
+    if(team==='blue') blue+=entry.userIds.length; else red+=entry.userIds.length;
+  }
+}
+function startQueuedMatch(mode,entries){
+  const room=getRoom(matchCode());
+  room.mode=mode; room.matchmaking=true; room.fillBots=entries.some(e=>e.fillBots!==false); room.matchStarted=false;
+  assignTeamsForEntries(room,entries);
+  for(const entry of entries){
+    for(const uid of entry.userIds){
+      const c=onlineClientForUser(uid);
+      if(!c) continue;
+      c.queueId=null;
+      joinClientToRoom(c,room,{mode,name:c.name});
+      send(c,{type:'match_found',mode,players:entries.reduce((n,e)=>n+e.userIds.length,0),capacity:roomCapacity(room)});
+    }
+    if(entry.partyId){ const p=parties.get(entry.partyId); if(p){p.queued=false;p.queueId=null;for(const uid of p.members)p.ready.set(uid,false);broadcastParty(p);} }
+  }
+  startMatch(room);
+  for(const entry of entries) for(const uid of entry.userIds) broadcastPresenceForUser(uid);
+}
+function processMatchQueues(){
+  const now=Date.now();
+  for(const [mode,list] of matchQueues){
+    const valid=list.filter(entry=>queueMembersForEntry(entry).length===entry.userIds.length);
+    matchQueues.set(mode,valid);
+    if(!valid.length) continue;
+    const rules=modeRules(mode);
+    let group=[],count=0;
+    for(const entry of valid){ if(count+entry.userIds.length<=rules.capacity){group.push(entry);count+=entry.userIds.length;} }
+    const oldest=Math.min(...group.map(e=>e.queuedAt));
+    const waited=now-oldest;
+    const canStart=(mode==='pvp'?count>=2:count>=1) && (waited>=rules.waitMs || count>=Math.min(rules.capacity,Math.max(4,rules.targetMid)));
+    const startIn=Math.max(0,Math.ceil((rules.waitMs-waited)/1000));
+    for(const entry of valid) for(const uid of entry.userIds) for(const c of allOnlineClientsForUser(uid)) send(c,{type:'queue_state',active:true,mode,players:count,target:targetPopulationForMode(mode,count),startIn});
+    if(canStart){
+      const ids=new Set(group.map(e=>e.id));
+      matchQueues.set(mode,valid.filter(e=>!ids.has(e.id)));
+      startQueuedMatch(mode,group);
+    }
+  }
+}
+function handlePartyInvite(client,targetUserId){
+  targetUserId=cleanUserId(targetUserId);
+  if(!client.authenticated || !client.friendIds?.has(targetUserId)) return send(client,{type:'social_error',message:'That account is not in your friend list.'});
+  const target=onlineClientForUser(targetUserId);
+  if(!target) return send(client,{type:'social_error',message:'That friend is offline.'});
+  if(target.room&&target.inMatch) return send(client,{type:'social_error',message:'That friend is already in a match.'});
+  const party=ensureParty(client);
+  if(party.leaderId!==client.userId) return send(client,{type:'social_error',message:'Only the party leader can invite players.'});
+  if(party.members.size>=6) return send(client,{type:'social_error',message:'Party is full.'});
+  const inviteId='I-'+id(4);
+  pendingPartyInvites.set(inviteId,{id:inviteId,partyId:party.id,fromUserId:client.userId,toUserId:targetUserId,expires:Date.now()+30000});
+  send(target,{type:'party_invite',inviteId,fromUserId:client.userId,fromName:client.name,partySize:party.members.size,mode:party.mode,expiresIn:30});
+  send(client,{type:'social_notice',message:'Party invite sent to '+target.name+'.'});
+}
+function acceptPartyInvite(client,inviteId){
+  const inv=pendingPartyInvites.get(String(inviteId||''));
+  if(!inv || inv.toUserId!==client.userId || inv.expires<Date.now()) return send(client,{type:'social_error',message:'That party invite expired.'});
+  const party=parties.get(inv.partyId);
+  if(!party || party.members.size>=6) return send(client,{type:'social_error',message:'That party is no longer available.'});
+  const old=partyForClient(client); if(old&&old!==party) leavePartyUser(client.userId,old);
+  party.members.add(client.userId); party.memberNames.set(client.userId,client.name); party.ready.set(client.userId,false); client.partyId=party.id;
+  pendingPartyInvites.delete(inviteId); broadcastParty(party);
+}
+function spectateFriend(client,targetUserId){
+  targetUserId=cleanUserId(targetUserId);
+  if(!client.friendIds?.has(targetUserId)) return send(client,{type:'social_error',message:'That player is not in your friend list.'});
+  const target=onlineClientForUser(targetUserId); const room=target?.room?rooms.get(target.room):null;
+  if(!target || !room || !target.inMatch) return send(client,{type:'social_error',message:'That friend is no longer in a match.'});
+  const settings=target.profile?.profile_settings||{};
+  if(!modeRules(room.mode).spectate || !privacyAllows(settings.allow_spectate||'friends',true,samePartyUsers(client,target))) return send(client,{type:'social_error',message:'Spectating is disabled for this match.'});
+  removeFromRoom(client);
+  client.room=room.code; client.role='spectator'; client.inMatch=false; room.spectators.add(client); room.emptySince=0;
+  const canJoin=modeRules(room.mode).joinMid && room.mode!=='br' && room.clients.size<roomCapacity(room) && privacyAllows(settings.allow_join||'friends',true,samePartyUsers(client,target));
+  send(client,{type:'spectator_start',mode:room.mode,matchId:room.matchId,targetUserId,targetClientId:target.id,targetName:target.name,joinable:!!canJoin});
+  const peers=peersFor(client); if(peers.length) send(client,{type:'peers',peers});
+  send(client,{type:'bots_state',mode:room.mode,bots:room.bots.map(botSnapshot)}); sendSharedState(client,room,true);
+  broadcastPresenceForUser(client.userId);
+}
+function joinFriend(client,targetUserId){
+  targetUserId=cleanUserId(targetUserId);
+  if(!client.friendIds?.has(targetUserId)) return send(client,{type:'join_denied',message:'That player is not in your friend list.'});
+  const target=onlineClientForUser(targetUserId); const room=target?.room?rooms.get(target.room):null;
+  if(!target || !room || !target.inMatch) return send(client,{type:'join_denied',message:'That friend is no longer in a match.'});
+  const rules=modeRules(room.mode),settings=target.profile?.profile_settings||{};
+  if(!rules.joinMid || room.mode==='br') return send(client,{type:'join_denied',message:'Joining is closed for Battle Royale and locked matches.'});
+  if(room.clients.size>=rules.capacity) return send(client,{type:'join_denied',message:'That match is full.'});
+  if(!privacyAllows(settings.allow_join||'friends',true,samePartyUsers(client,target))) return send(client,{type:'join_denied',message:'That friend does not allow joining.'});
+  joinClientToRoom(client,room,{mode:room.mode,name:client.name,spawnNearClient:target});
+  send(client,{type:'social_notice',message:'Joined '+target.name+'\'s match.'});
+}
 function handleMessage(client, msg){
   if(typeof msg !== 'object' || !msg) return;
   client.lastSeen=Date.now();
 
+  if(msg.type === 'authenticate'){
+    authenticateSocket(client,msg.accessToken).catch(error=>send(client,{type:'auth_error',message:error.message||'Authentication failed.'}));
+    return;
+  }
+  if(msg.type === 'social_refresh'){
+    Promise.all([refreshClientProfile(client),refreshClientFriends(client)])
+      .then(()=>{
+        sendWatchedPresence(client);
+        sendPartyStateForClient(client);
+        broadcastPresenceForUser(client.userId);
+      })
+      .catch(error=>send(client,{type:'social_error',message:error.message||'Could not refresh social data.'}));
+    return;
+  }
+  if(msg.type === 'presence_request'){ sendWatchedPresence(client); return; }
+  if(msg.type === 'party_invite'){ handlePartyInvite(client,msg.targetUserId); return; }
+  if(msg.type === 'party_accept'){ acceptPartyInvite(client,msg.inviteId); return; }
+  if(msg.type === 'party_decline'){ pendingPartyInvites.delete(String(msg.inviteId||'')); return; }
+  if(msg.type === 'party_leave'){
+    const p=partyForClient(client); if(p) leavePartyUser(client.userId,p); return;
+  }
+  if(msg.type === 'party_ready'){
+    const p=partyForClient(client); if(p){p.ready.set(client.userId,!!msg.ready);broadcastParty(p);} return;
+  }
+  if(msg.type === 'party_mode'){
+    const p=partyForClient(client); if(p&&p.leaderId===client.userId&&!p.queued){p.mode=cleanMode(msg.mode);p.fillBots=msg.fillBots!==false;for(const uid of p.members)p.ready.set(uid,uid===p.leaderId);broadcastParty(p);} return;
+  }
+  if(msg.type === 'queue_join'){ if(!client.authenticated)return send(client,{type:'queue_error',message:'Login before matchmaking.'}); queueEntry(client,msg.mode,msg.asParty!==false,msg.fillBots!==false); return; }
+  if(msg.type === 'queue_cancel'){ cancelClientQueue(client); return; }
+  if(msg.type === 'spectate_friend'){ spectateFriend(client,msg.friendUserId); return; }
+  if(msg.type === 'join_friend'){ joinFriend(client,msg.friendUserId); return; }
+  if(msg.type === 'leave_match'){ removeFromRoom(client); send(client,{type:'left_match'}); sendPartyStateForClient(client); return; }
   if(msg.type === 'join'){
-    removeFromRoom(client);
-    const room=getRoom(msg.room);
-    client.room=room.code;
-    client.name=safeName(msg.name);
-    client.mode=cleanMode(msg.mode);
-    client.ready=false;
-    client.inMatch=false;
-    client.snapshot=null;
-    client.spawnProtectedUntil=Date.now()+2600;
-    if(room.clients.size===0){
-      room.mode=client.mode;
-      room.matchStarted=false;
-      room.bots=[]; room.fragments=[]; room.bosses=[]; room.terrainFeatures=[]; room.hotZone=null;
-      room.nextTerrainAt=Date.now()+9000;
-      room.nextHotZoneAt=Date.now()+16000;
-      room.world={mode:null,timer:0,zones:[],nextAt:Date.now()+22000};
-      room.nextBossAt=Date.now()+32000;
-    }
-    room.clients.add(client);
-    chooseLeader(room);
-    assignRoomTeams(room);
-    send(client,{type:'welcome',clientId:client.id,room:room.code});
-    const peers=peersFor(client);
-    if(peers.length) send(client,{type:'peers',peers});
-    broadcast(room.code,{type:'peer_joined',clientId:client.id,name:client.name,mode:room.mode},client);
-    broadcastLobby(room);
-    if(room.matchStarted){
-      client.inMatch=true;
-      client.spawnProtectedUntil=Date.now()+3000;
-      send(client,{type:'match_start',mode:room.mode,matchId:room.matchId,startedAt:Date.now(),lateJoin:true});
-      send(client,{type:'bots_state',mode:room.mode,bots:room.bots.map(botSnapshot)});
-      sendSharedState(client,room,true);
-    }
+    const room=getRoom(msg.room); if(room.clients.size===0){room.mode=cleanMode(msg.mode);room.fillBots=true;}
+    joinClientToRoom(client,room,{mode:room.mode,name:msg.name});
     return;
   }
 
   if(!client.room) return;
   const room=rooms.get(client.room);
   if(!room) return;
+  if(client.role==='spectator' && msg.type!=='chat') return;
 
   if(msg.type === 'mode_change'){
     if(client.id!==room.leaderId || room.matchStarted) return;
@@ -1396,15 +1764,24 @@ server.on('upgrade', (req, socket) => {
   ].join('\r\n'));
   const client = {
     id:id(), socket, room:null, name:'Player', snapshot:null, buffer:null,
-    ready:false, inMatch:false, serverTeam:'neutral', spawnProtectedUntil:0,
+    ready:false, inMatch:false, role:'social', serverTeam:'neutral', spawnProtectedUntil:0,
+    authenticated:false, accessToken:'', userId:null, profile:null, friendIds:new Set(), partyId:null, queueId:null, matchTeam:null,
     lastSeen:Date.now(), lastParseErrorAt:0,
     chatTimes:[], chatMutedUntil:0, lastChatBody:'', lastChatAt:0,
     lastDeathDropAt:0
   };
   clients.add(client);
   socket.on('data', chunk => decodeFrames(client, chunk));
-  socket.on('close', () => { removeFromRoom(client); clients.delete(client); });
-  socket.on('error', () => { removeFromRoom(client); clients.delete(client); });
+  const cleanup=()=>{
+    if(client.cleanedUp) return; client.cleanedUp=true;
+    if(client.userId && client.room && client.inMatch) reconnectReservations.set(client.userId,{roomCode:client.room,expires:Date.now()+60000});
+    removeFromRoom(client);
+    cancelClientQueue(client);
+    clients.delete(client);
+    if(client.userId){ const set=userClients.get(client.userId); if(set){set.delete(client);if(!set.size)userClients.delete(client.userId);} broadcastPresenceForUser(client.userId); }
+  };
+  socket.on('close', cleanup);
+  socket.on('error', cleanup);
 });
 function tickRoomSafely(code, room, dt){
   try{
@@ -1422,14 +1799,19 @@ function tickRoomSafely(code, room, dt){
 }
 setInterval(()=>{
   for(const [code,room] of rooms){
-    if(room.clients.size===0){rooms.delete(code);continue;}
+    if(room.clients.size===0 && (!room.spectators||room.spectators.size===0)){
+      if(!room.matchStarted || (room.emptySince && Date.now()-room.emptySince>60000)){rooms.delete(code);continue;}
+    }
     tickRoomSafely(code,room,50);
   }
 },50);
+setInterval(processMatchQueues,1000);
 setInterval(()=>{
   const now=Date.now();
   for(const [code,room] of rooms){
-    if(room.clients.size===0){rooms.delete(code);continue;}
+    if(room.clients.size===0 && (!room.spectators||room.spectators.size===0)){
+      if(!room.matchStarted || (room.emptySince && now-room.emptySince>60000)){rooms.delete(code);continue;}
+    }
     for(const client of [...room.clients]){
       if(client.socket.destroyed || now-(client.lastSeen||now)>90000){
         try{client.socket.destroy();}catch(e){}
@@ -1441,6 +1823,6 @@ setInterval(()=>{
   }
 },5000);
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Fragment.io multiplayer server running on port ${PORT}`);
-  console.log("Leader chooses the mode. Everyone in the room must press READY before the match starts.");
+  console.log(`Fragment.io social/matchmaking server running on port ${PORT}`);
+  console.log('Friend presence, parties, spectating, joining, hidden matches, dynamic bot fill, and legacy rooms are enabled.');
 });
