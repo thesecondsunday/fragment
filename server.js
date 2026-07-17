@@ -13,7 +13,7 @@ const WORLD_W = 9600, WORLD_H = 6400, HALF_W = WORLD_W / 2, HALF_H = WORLD_H / 2
 const MAX_SQUAD_PLAYERS = 6;
 const MAX_FRAME_BYTES = 1024 * 1024;
 const MAX_SOCKET_BACKLOG = 2 * 1024 * 1024;
-const SUPPORTED_MODES = new Set(['normal','test','duo','squad','teams','br','bossrush','pvp']);
+const SUPPORTED_MODES = new Set(['normal','test','duo','squad','teams','br','bossrush']);
 const DROPPABLE_PACKET_TYPES = new Set(['peer_state','bots_state','fragments_state','world_state','bosses_state']);
 const rooms = new Map();
 const clients = new Set();
@@ -30,7 +30,6 @@ const MODE_RULES = {
   teams:{capacity:20, partyMax:6, targetLow:12, targetMid:16, targetHigh:20, waitMs:10000, joinMid:true, spectate:true},
   br:{capacity:40, partyMax:4, targetLow:24, targetMid:32, targetHigh:40, waitMs:18000, joinMid:false, spectate:true},
   bossrush:{capacity:6, partyMax:6, targetLow:1, targetMid:3, targetHigh:6, waitMs:7000, joinMid:true, spectate:true},
-  pvp:{capacity:12, partyMax:6, targetLow:2, targetMid:6, targetHigh:12, waitMs:12000, joinMid:true, spectate:true},
   test:{capacity:1, partyMax:1, targetLow:1, targetMid:1, targetHigh:1, waitMs:0, joinMid:false, spectate:false}
 };
 
@@ -304,13 +303,13 @@ const colors = ['#ff775d','#6a7cf7','#53b07b','#ffcf58','#76d7ff','#cb80ff','#d8
 function targetPopulationForMode(mode,humanCount){
   const rules=modeRules(mode);
   if(mode==='test') return 7;
-  if(mode==='pvp' || mode==='bossrush') return humanCount;
+  if(mode==='bossrush') return humanCount;
   if(humanCount<=2) return rules.targetLow;
   if(humanCount<=5) return rules.targetMid;
   return rules.targetHigh;
 }
 function botCountForMode(mode,humanCount=1,fillBots=true){
-  if(!fillBots || mode==='pvp' || mode==='bossrush') return 0;
+  if(!fillBots || mode==='bossrush') return 0;
   if(mode==='test') return 6;
   return Math.max(0,targetPopulationForMode(mode,humanCount)-humanCount);
 }
@@ -879,7 +878,6 @@ function fragCountsForMode(mode, playerCount=2){
   const extra=Math.max(0,players-2);
   if(mode==='bossrush') return {xp:0,natural:0,ability:0,evo:0,world:0,cursed:0};
   if(mode==='test') return {xp:44,natural:12,ability:6,evo:4,world:0,cursed:0};
-  if(mode==='pvp') return {xp:105+extra*8,natural:32+extra*2,ability:8+Math.min(3,extra),evo:5+Math.min(2,extra),world:1,cursed:2};
   if(mode==='br') return {xp:132+extra*8,natural:38+extra*2,ability:9+Math.min(3,extra),evo:6+Math.min(2,extra),world:1,cursed:2};
   return {
     xp:115+extra*10,
@@ -890,6 +888,18 @@ function fragCountsForMode(mode, playerCount=2){
     cursed:2
   };
 }
+const MAX_SHARED_FRAGMENTS=340;
+function trimSharedFragments(room,target=MAX_SHARED_FRAGMENTS){
+  if(!room||!Array.isArray(room.fragments))return;
+  const now=Date.now();
+  while(room.fragments.length>target){
+    let index=room.fragments.findIndex(f=>(f.kind==='xp'||f.kind==='natural')&&(!f.protectedUntil||f.protectedUntil<now));
+    if(index<0)index=room.fragments.findIndex(f=>!f.protectedUntil||f.protectedUntil<now);
+    if(index<0)index=0;
+    room.fragments.splice(index,1);
+  }
+}
+function reserveSharedFragmentSpace(room,count){trimSharedFragments(room,Math.max(0,MAX_SHARED_FRAGMENTS-Math.max(0,count||0)));}
 function spawnSharedFragment(room, kind='xp', x=null, y=null, extra=null){
   x = x == null ? rand(-HALF_W+140, HALF_W-140) : x;
   y = y == null ? rand(-HALF_H+140, HALF_H-140) : y;
@@ -930,14 +940,15 @@ function broadcastFragmentBatch(room, spawned, reason='drop'){
 function spawnDeathFragmentBurst(room, x, y, count, reason='death', abilityChance=0){
   const spawned=[];
   const safeCount=clamp(Math.floor(Number(count)||0),0,60);
+  reserveSharedFragmentSpace(room,safeCount+1);
   for(let i=0;i<safeCount;i++){
     const a=rand(0,Math.PI*2);
     const radius=Math.sqrt(Math.random())*rand(38,115);
     const kind=i>0 && i%8===0 ? 'natural' : 'xp';
-    spawned.push(spawnSharedFragment(room,kind,x+Math.cos(a)*radius,y+Math.sin(a)*radius));
+    const fragment=spawnSharedFragment(room,kind,x+Math.cos(a)*radius,y+Math.sin(a)*radius);fragment.protectedUntil=Date.now()+9000;spawned.push(fragment);
   }
   if(abilityChance>0 && Math.random()<abilityChance){
-    spawned.push(spawnSharedFragment(room,'ability',x+rand(-55,55),y+rand(-55,55)));
+    const abilityFragment=spawnSharedFragment(room,'ability',x+rand(-55,55),y+rand(-55,55));abilityFragment.protectedUntil=Date.now()+12000;spawned.push(abilityFragment);
   }
   broadcastFragmentBatch(room,spawned,reason);
   return spawned;
@@ -955,7 +966,7 @@ function initSharedWorld(room){
   room.nextTerrainAt = Date.now()+rand(4500,9000);
   room.nextHotZoneAt = Date.now()+rand(15000,26000);
   room.world = {mode:null, timer:0, zones:[], nextAt:Date.now()+rand(26000,42000)};
-  room.nextBossAt = ['pvp','test','br','bossrush'].includes(room.mode) ? 9999999999999 : Date.now()+rand(24000,36000);
+  room.nextBossAt = ['test','br','bossrush'].includes(room.mode) ? 9999999999999 : Date.now()+rand(24000,36000);
 }
 function maybeRefillFragments(room){
   if(!room.matchStarted || room.mode==='bossrush') return;
@@ -986,9 +997,7 @@ function maybeRefillFragments(room){
     if(!spawnIfMissing(kind)) break;
   }
 
-  if(room.fragments.length>235){
-    room.fragments.splice(0,room.fragments.length-235);
-  }
+  trimSharedFragments(room,MAX_SHARED_FRAGMENTS);
 }
 function activateSharedWorld(room, modeObj=null){
   const def = modeObj?.key ? (worldDefs.find(w=>w.key===modeObj.key) || modeObj) : worldDefs[irand(0, worldDefs.length)];
@@ -1011,7 +1020,7 @@ function worldSnapshot(room){
   };
 }
 function spawnSharedBoss(room, forcedId=null){
-  if(['pvp','test','br','bossrush'].includes(room.mode)) return null;
+  if(['test','br','bossrush'].includes(room.mode)) return null;
   if(room.bosses.some(b=>!b.dead)) return null;
   const def = forcedId ? (bossDefs.find(b=>b.id===forcedId) || bossDefs[0]) : bossDefs[irand(0,bossDefs.length)];
   const b = {
@@ -1036,7 +1045,7 @@ function nearestTargetForBoss(room, boss){
   return best ? {snap:best,d:bestD} : null;
 }
 function updateSharedBosses(room, dt){
-  if(!room.matchStarted || ['pvp','test','br','bossrush'].includes(room.mode)) return;
+  if(!room.matchStarted || ['test','br','bossrush'].includes(room.mode)) return;
   const now=Date.now();
   if(now > room.nextBossAt){ spawnSharedBoss(room); room.nextBossAt=now+rand(70000,100000); }
   for(const b of room.bosses){
@@ -1085,7 +1094,7 @@ function updateSharedWorld(room, dt){
       broadcast(room.code, {type:'world_event', action:'clear'});
     }else if(room.world.mode.key==='golden' && Math.random()<.06){ spawnSharedFragment(room, Math.random()<.78?'xp':'natural', rand(-HALF_W+220,HALF_W-220), rand(-HALF_H+220,HALF_H-220)); }
     else if(room.world.mode.key==='overgrowth' && Math.random()<.05){ spawnSharedFragment(room, 'natural', rand(-HALF_W+220,HALF_W-220), rand(-HALF_H+220,HALF_H-220)); }
-  }else if(now > room.world.nextAt && !['pvp','test','br'].includes(room.mode)){
+  }else if(now > room.world.nextAt && !['test','br'].includes(room.mode)){
     activateSharedWorld(room);
   }
 }
@@ -1413,7 +1422,7 @@ function processMatchQueues(){
     for(const entry of valid){ if(count+entry.userIds.length<=rules.capacity){group.push(entry);count+=entry.userIds.length;} }
     const oldest=Math.min(...group.map(e=>e.queuedAt));
     const waited=now-oldest;
-    const canStart=(mode==='pvp'?count>=2:count>=1) && (waited>=rules.waitMs || count>=Math.min(rules.capacity,Math.max(4,rules.targetMid)));
+    const canStart=count>=1 && (waited>=rules.waitMs || count>=Math.min(rules.capacity,Math.max(4,rules.targetMid)));
     const startIn=Math.max(0,Math.ceil((rules.waitMs-waited)/1000));
     for(const entry of valid) for(const uid of entry.userIds) for(const c of allOnlineClientsForUser(uid)) send(c,{type:'queue_state',active:true,mode,players:count,target:targetPopulationForMode(mode,count),startIn});
     if(canStart){
