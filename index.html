@@ -5567,12 +5567,19 @@ let cloudProfile=null;
 let cloudGameDataLoaded=false;
 let cloudSaveTimer=null;
 let cloudAccountLoading=false;
+let lastCloudLoadError=null;
 const cloudFriendProfiles=new Map();
 
 function cleanEmail(v){ return String(v||'').trim().slice(0,160); }
 function validEmail(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail(v)); }
 function cleanAccountName(name){ return String(name||'').trim().replace(/[<>]/g,'').slice(0,18); }
-function makeFriendCode(){ return ''; }
+function makeFriendCode(){
+  const bytes=new Uint8Array(4);
+  if(globalThis.crypto?.getRandomValues) crypto.getRandomValues(bytes);
+  else for(let i=0;i<bytes.length;i++) bytes[i]=Math.floor(Math.random()*256);
+  const hex=[...bytes].map(value=>value.toString(16).padStart(2,'0')).join('').toUpperCase();
+  return 'F7-'+hex.slice(0,4)+'-'+hex.slice(4,8);
+}
 function getAccountDb(){ return {}; }
 function setAccountDb(){}
 function saveAccountSession(){}
@@ -5757,39 +5764,117 @@ function switchAccount(next){
 }
 async function ensureCloudRows(user){
   const preferred=cleanAccountName(user?.user_metadata?.username||ui.playerName?.value||'Player')||'Player';
-  let {data:profile,error:profileError}=await fragmentSupabase
+
+  let profileResult=await fragmentSupabase
     .from('profiles')
     .select('id,username,friend_code,created_at')
     .eq('id',user.id)
     .maybeSingle();
 
-  if(profileError) throw profileError;
-  if(!profile){
-    const inserted=await fragmentSupabase
-      .from('profiles')
-      .insert({id:user.id,username:preferred})
-      .select('id,username,friend_code,created_at')
-      .single();
-    if(inserted.error) throw inserted.error;
-    profile=inserted.data;
+  if(profileResult.error){
+    const error=new Error('Could not read your profile: '+normalizeCloudError(profileResult.error,'Database profile read failed.'));
+    error.cause=profileResult.error;
+    throw error;
   }
 
-  let {data:save,error:saveError}=await fragmentSupabase
+  let profile=profileResult.data;
+  if(!profile){
+    let insertError=null;
+
+    for(let attempt=0;attempt<5 && !profile;attempt++){
+      const friendCode=makeFriendCode();
+      const inserted=await fragmentSupabase
+        .from('profiles')
+        .insert({
+          id:user.id,
+          username:preferred,
+          friend_code:friendCode
+        })
+        .select('id,username,friend_code,created_at')
+        .single();
+
+      if(!inserted.error){
+        profile=inserted.data;
+        break;
+      }
+
+      insertError=inserted.error;
+
+      // Extremely unlikely friend-code collision: generate another code.
+      if(String(insertError.code||'')==='23505' && /friend_code/i.test(String(insertError.message||''))){
+        continue;
+      }
+
+      // Another browser/login event may have created the row concurrently.
+      if(String(insertError.code||'')==='23505'){
+        const existing=await fragmentSupabase
+          .from('profiles')
+          .select('id,username,friend_code,created_at')
+          .eq('id',user.id)
+          .maybeSingle();
+        if(!existing.error && existing.data){
+          profile=existing.data;
+          break;
+        }
+      }
+
+      break;
+    }
+
+    if(!profile){
+      const error=new Error(
+        'Your login works, but Supabase rejected creation of the profiles row: '+
+        normalizeCloudError(insertError,'Profile insert failed. Run supabase_profile_creation_fix.sql.')
+      );
+      error.cause=insertError;
+      throw error;
+    }
+  }
+
+  let saveResult=await fragmentSupabase
     .from('player_data')
     .select('remnant,owned_cosmetics,gacha_pity,equipped_cosmetics,settings')
     .eq('user_id',user.id)
     .maybeSingle();
 
-  if(saveError) throw saveError;
+  if(saveResult.error){
+    const error=new Error('Could not read your game save: '+normalizeCloudError(saveResult.error,'Game-save read failed.'));
+    error.cause=saveResult.error;
+    throw error;
+  }
+
+  let save=saveResult.data;
   if(!save){
     const inserted=await fragmentSupabase
       .from('player_data')
       .insert({user_id:user.id})
       .select('remnant,owned_cosmetics,gacha_pity,equipped_cosmetics,settings')
       .single();
-    if(inserted.error) throw inserted.error;
-    save=inserted.data;
+
+    if(inserted.error){
+      // Handle a simultaneous insert from another auth-state callback.
+      if(String(inserted.error.code||'')==='23505'){
+        const existing=await fragmentSupabase
+          .from('player_data')
+          .select('remnant,owned_cosmetics,gacha_pity,equipped_cosmetics,settings')
+          .eq('user_id',user.id)
+          .maybeSingle();
+        if(!existing.error && existing.data) save=existing.data;
+      }
+
+      if(!save){
+        const error=new Error(
+          'Your profile loaded, but Supabase rejected creation of player_data: '+
+          normalizeCloudError(inserted.error,'Game-save insert failed. Run supabase_profile_creation_fix.sql.')
+        );
+        error.cause=inserted.error;
+        throw error;
+      }
+    }else{
+      save=inserted.data;
+    }
   }
+
   return {profile,save};
 }
 async function loadCloudFriends(){
@@ -5868,6 +5953,7 @@ async function loadCloudAccount(options={}){
   }
   if(cloudAccountLoading) return false;
   cloudAccountLoading=true;
+  lastCloudLoadError=null;
   try{
     const {data:{user},error:userError}=await fragmentSupabase.auth.getUser();
     if(userError && !String(userError.message||'').toLowerCase().includes('session')) throw userError;
@@ -5910,7 +5996,8 @@ async function loadCloudAccount(options={}){
     if(!options.silent) accountHint('Cloud account loaded.');
     return true;
   }catch(error){
-    console.error('[Fragment.io] Cloud account load failed',error);
+    lastCloudLoadError=error;
+    console.error('[Fragment.io] Cloud account load failed',error,error?.cause||'');
     switchAccount({guest:true,user:''});
     accountHint(normalizeCloudError(error,'Could not load the cloud account.'),true);
     return false;
@@ -6034,7 +6121,7 @@ function initAccounts(){
     try{
       await loginCloudAccount(email,password);
       const loaded=await loadCloudAccount();
-      if(!loaded) throw new Error('Authentication succeeded, but the player profile could not be loaded.');
+      if(!loaded) throw (lastCloudLoadError||new Error('Authentication succeeded, but the player profile could not be loaded.'));
       accountHint('Logged in. Cloud saving is active.');
       closeMenuModals();
     }catch(error){
@@ -6059,7 +6146,7 @@ function initAccounts(){
       const data=await registerCloudAccount(username,email,password);
       if(data.session){
         const loaded=await loadCloudAccount();
-        if(!loaded) throw new Error('Account created, but the database profile/save could not be loaded. Run the supplied migration SQL.');
+        if(!loaded) throw (lastCloudLoadError||new Error('Account created, but the database profile/save could not be loaded.'));
         accountHint('Account created. Cloud saving is active.');
         closeMenuModals();
       }else{
