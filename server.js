@@ -247,30 +247,52 @@ function lobbyPayload(room){
   };
 }
 function broadcastLobby(room){ broadcast(room.code, lobbyPayload(room)); }
-function removeFromRoom(client, options={}){
-  if(!client.room) return;
-  const room = rooms.get(client.room);
-  if(room){
-    const wasPlayer=room.clients.delete(client);
-    const wasSpectator=room.spectators?.delete(client);
-    if(wasPlayer) broadcast(room.code, {type:'peer_left', clientId:client.id, name:client.name}, client);
-    chooseLeader(room);
-    if(room.clients.size === 0 && (!room.spectators || room.spectators.size===0)){
-      if(room.matchStarted){ room.emptySince=Date.now(); }
-      else rooms.delete(client.room);
-    }else if(wasPlayer){
-      if(room.matchStarted && room.mode!=='br') reconcileServerBots(room);
-      broadcastLobby(room);
+function removeFromRoom(client,options={}){
+  if(!client)return;
+  const previousRoomCode=client.room;
+  const party=partyForClient(client);
+  let room=null,wasPlayer=false,wasSpectator=false;
+
+  if(previousRoomCode){
+    room=rooms.get(previousRoomCode);
+    if(room){
+      wasPlayer=room.clients.delete(client);
+      wasSpectator=room.spectators?.delete(client)||false;
+      if(wasPlayer){
+        broadcast(room.code,{type:'peer_left',clientId:client.id,name:client.name},client);
+      }
+      chooseLeader(room);
+      if(room.clients.size===0&&(!room.spectators||room.spectators.size===0)){
+        if(room.matchStarted)room.emptySince=Date.now();
+        else rooms.delete(previousRoomCode);
+      }else if(wasPlayer){
+        if(room.matchStarted&&room.mode!=='br')reconcileServerBots(room);
+        broadcastLobby(room);
+      }
     }
-    if(wasPlayer || wasSpectator) broadcastPresenceForUser(client.userId);
   }
-  client.room = null;
-  client.ready = false;
-  client.inMatch = false;
+
+  client.room=null;
+  client.ready=false;
+  client.inMatch=false;
   client.role='social';
   client.serverTeam='neutral';
   client.matchTeam=null;
-  if(!options.keepSnapshot) client.snapshot=null;
+  if(!options.keepSnapshot)client.snapshot=null;
+
+  // Party membership is intentionally retained when leaving a match.
+  if(party){
+    party.queued=false;
+    party.queueId=null;
+    if(party.ready.has(client.userId)&&client.userId!==party.leaderId){
+      party.ready.set(client.userId,false);
+    }
+    broadcastParty(party);
+  }
+
+  if(wasPlayer||wasSpectator||previousRoomCode){
+    broadcastPresenceForUser(client.userId);
+  }
 }
 function send(client, obj){
   if(!client || !client.socket || client.socket.destroyed || !client.socket.writable) return false;
@@ -438,78 +460,110 @@ function livePlayerSnapshots(room){
     .filter(c=>c.snapshot && !c.snapshot.dead && c.inMatch)
     .map(c=>({client:c, ...c.snapshot}));
 }
-function botCanTarget(bot, target){
-  if(!target || target.dead) return false;
-  if(sameCombatTeam(bot.team, target.team)) return false;
+function botCanTarget(bot,target){
+  if(!target||target.dead)return false;
+  if(sameCombatTeam(bot.team,target.team))return false;
   if(target.kind==='player'){
-    if(clientIsInvincible(target.client)) return false;
-    if(finiteNumber(target.invisible,target.client?.snapshot?.invisible||0,0,30)>0.03) return false;
+    if(clientIsInvincible(target.client))return false;
+    if(finiteNumber(target.invisible,target.client?.snapshot?.invisible||0,0,30)>0.03)return false;
+  }
+  if(target.kind==='clone'){
+    if(!target.client?.inMatch||target.client?.snapshot?.dead)return false;
+    if(finiteNumber(target.invisible,0,0,30)>0.03)return false;
   }
   return true;
 }
-function nearestTargetForBot(room, bot){
+function nearestTargetForBot(room,bot){
   const now=Date.now();
   const candidates=[];
+
   for(const snap of livePlayerSnapshots(room)){
+    const team=snap.client.serverTeam||snap.team||'neutral';
     candidates.push({
       kind:'player',
       id:snap.client.id,
       key:'player:'+snap.client.id,
       name:snap.name||snap.client.name,
       client:snap.client,
-      x:snap.x||0, y:snap.y||0, vx:snap.vx||0, vy:snap.vy||0,
-      hp:snap.hp||1, maxHp:snap.maxHp||1,
-      team:snap.client.serverTeam||snap.team||'neutral',
+      x:snap.x||0,y:snap.y||0,vx:snap.vx||0,vy:snap.vy||0,
+      hp:snap.hp||1,maxHp:snap.maxHp||1,
+      team,
       dead:!!snap.dead,
       invisible:finiteNumber(snap.invisible,0,0,30),
       human:true
     });
+
+    for(const clone of (snap.clones||[])){
+      if(!clone||clone.dead)continue;
+      candidates.push({
+        kind:'clone',
+        id:snap.client.id+':'+clone.cloneId,
+        key:'clone:'+snap.client.id+':'+clone.cloneId,
+        name:clone.name||((snap.name||snap.client.name)+' Clone'),
+        client:snap.client,
+        cloneId:clone.cloneId,
+        x:clone.x||snap.x||0,
+        y:clone.y||snap.y||0,
+        vx:clone.vx||0,
+        vy:clone.vy||0,
+        hp:clone.hp||1,
+        maxHp:clone.maxHp||1,
+        team,
+        dead:!!clone.dead,
+        invisible:finiteNumber(clone.invisible,0,0,30),
+        human:false
+      });
+    }
   }
+
   for(const other of room.bots){
-    if(other===bot || other.dead) continue;
+    if(other===bot||other.dead)continue;
     candidates.push({
       kind:'bot',
       id:other.id,
       key:'bot:'+other.id,
       name:other.name,
       bot:other,
-      x:other.x, y:other.y, vx:other.vx||0, vy:other.vy||0,
-      hp:other.hp, maxHp:other.maxHp,
+      x:other.x,y:other.y,vx:other.vx||0,vy:other.vy||0,
+      hp:other.hp,maxHp:other.maxHp,
       team:other.team||'neutral',
       dead:!!other.dead,
       human:false
     });
   }
 
-  const locked = candidates.find(t=>t.key===bot.lastTargetId);
-  if(locked && bot.targetLockUntil>now && botCanTarget(bot,locked)){
-    const d=dist(bot,locked);
-    if(d<1250) return {snap:locked,d};
+  const locked=candidates.find(target=>target.key===bot.lastTargetId);
+  if(locked&&bot.targetLockUntil>now&&botCanTarget(bot,locked)){
+    const distance=dist(bot,locked);
+    if(distance<1250)return{snap:locked,d:distance};
   }
 
-  let best=null, bestScore=-Infinity;
+  let best=null,bestScore=-Infinity;
   for(const target of candidates){
-    if(!botCanTarget(bot,target)) continue;
-    const d=dist(bot,target);
-    if(d>1220) continue;
+    if(!botCanTarget(bot,target))continue;
+    const distance=dist(bot,target);
+    if(distance>1220)continue;
     const hpRatio=clamp((target.hp||1)/Math.max(1,target.maxHp||1),0,1);
     let assigned=0;
     for(const other of room.bots){
-      if(other!==bot && !other.dead && other.lastTargetId===target.key) assigned++;
+      if(other!==bot&&!other.dead&&other.lastTargetId===target.key)assigned++;
     }
-    let score = -d*.43 + (1-hpRatio)*165 - assigned*62;
-    score += target.kind==='bot' ? 46 : 8;
-    if(bot.lastHitBy===target.id) score += 240;
-    if(d<300) score += 74;
-    if(bot.personality==='hunter') score += (1-hpRatio)*90;
-    if(bot.personality==='scavenger' && hpRatio>.62) score -= 85;
-    if(bot.personality==='coward' && d<260 && target.hp>bot.hp) score -= 150;
-    if(score>bestScore){ bestScore=score; best=target; }
+    let score=-distance*.43+(1-hpRatio)*165-assigned*62;
+    if(target.kind==='bot')score+=46;
+    else if(target.kind==='clone')score+=31;
+    else score+=8;
+    if(bot.lastHitBy===target.id)score+=240;
+    if(distance<300)score+=74;
+    if(bot.personality==='hunter')score+=(1-hpRatio)*90;
+    if(bot.personality==='scavenger'&&hpRatio>.62)score-=85;
+    if(bot.personality==='coward'&&distance<260&&target.hp>bot.hp)score-=150;
+    if(score>bestScore){bestScore=score;best=target;}
   }
-  if(!best) return null;
+
+  if(!best)return null;
   bot.lastTargetId=best.key;
   bot.targetLockUntil=now+rand(850,1750);
-  return {snap:best,d:dist(bot,best)};
+  return{snap:best,d:dist(bot,best)};
 }
 function killServerBot(room, bot, source){
   if(!bot || bot.dead) return;
@@ -543,14 +597,13 @@ function damageServerBot(room, bot, amount, source){
   if(bot.hp<=0) killServerBot(room,bot,source);
   return true;
 }
-function deliverBotDamage(room, attacker, target, amount, cause){
-  if(!target || !botCanTarget(attacker,target)) return false;
-  // Mild online bot damage increase. Class identities and cooldowns stay the
-  // same; only the final authoritative damage is increased.
+function deliverBotDamage(room,attacker,target,amount,cause){
+  if(!target||!botCanTarget(attacker,target))return false;
   amount=clamp(finiteNumber(amount,0)*1.18,0,500);
   attacker.score=(attacker.score||0)+Math.max(1,Math.round(amount*6));
-  attacker.frags=(attacker.frags||0)+(Math.random()<0.08?1:0);
+  attacker.frags=(attacker.frags||0)+(Math.random()<.08?1:0);
   attacker.level=1+Math.floor((attacker.score||0)/700);
+
   if(target.kind==='player'){
     return sendDamageToClient(target.client,{
       type:'bot_hit',
@@ -560,9 +613,27 @@ function deliverBotDamage(room, attacker, target, amount, cause){
       cause
     });
   }
-  if(target.kind==='bot'){
-    return damageServerBot(room,target.bot,amount,{kind:'bot',id:attacker.id,name:attacker.name,bot:attacker});
+
+  if(target.kind==='clone'){
+    return send(target.client,{
+      type:'bot_hit',
+      botId:attacker.id,
+      botName:attacker.name,
+      cloneId:target.cloneId,
+      amount,
+      cause
+    });
   }
+
+  if(target.kind==='bot'){
+    return damageServerBot(room,target.bot,amount,{
+      kind:'bot',
+      id:attacker.id,
+      name:attacker.name,
+      bot:attacker
+    });
+  }
+
   return false;
 }
 
@@ -1652,7 +1723,15 @@ function handleMessage(client, msg){
     for(const uid of party.members) for(const member of allOnlineClientsForUser(uid)) if(member.room===room.code) send(member,payload);
     return;
   }
-  if(msg.type === 'leave_match'){ removeFromRoom(client); send(client,{type:'left_match'}); sendPartyStateForClient(client); return; }
+  if(msg.type === 'leave_match'){
+    const party=partyForClient(client);
+    removeFromRoom(client);
+    send(client,{type:'left_match'});
+    sendPartyStateForClient(client);
+    if(party)broadcastParty(party);
+    sendWatchedPresence(client);
+    return;
+  }
   if(msg.type === 'join'){
     const room=getRoom(msg.room); if(room.clients.size===0){room.mode=cleanMode(msg.mode);room.fillBots=true;}
     joinClientToRoom(client,room,{mode:room.mode,name:msg.name});
@@ -1924,12 +2003,24 @@ server.on('upgrade', (req, socket) => {
   clients.add(client);
   socket.on('data', chunk => decodeFrames(client, chunk));
   const cleanup=()=>{
-    if(client.cleanedUp) return; client.cleanedUp=true;
-    if(client.userId && client.room && client.inMatch) reconnectReservations.set(client.userId,{roomCode:client.room,expires:Date.now()+60000});
+    if(client.cleanedUp)return;
+    client.cleanedUp=true;
+    const party=partyForClient(client);
+    if(client.userId&&client.room&&client.inMatch){
+      reconnectReservations.set(client.userId,{roomCode:client.room,expires:Date.now()+60000});
+    }
     removeFromRoom(client);
     cancelClientQueue(client);
     clients.delete(client);
-    if(client.userId){ const set=userClients.get(client.userId); if(set){set.delete(client);if(!set.size)userClients.delete(client.userId);} broadcastPresenceForUser(client.userId); }
+    if(client.userId){
+      const set=userClients.get(client.userId);
+      if(set){
+        set.delete(client);
+        if(!set.size)userClients.delete(client.userId);
+      }
+      broadcastPresenceForUser(client.userId);
+    }
+    if(party)broadcastParty(party);
   };
   socket.on('close', cleanup);
   socket.on('error', cleanup);
@@ -1957,6 +2048,14 @@ setInterval(()=>{
   }
 },50);
 setInterval(processMatchQueues,1000);
+setInterval(()=>{
+  for(const client of clients){
+    if(client.authenticated)sendWatchedPresence(client);
+  }
+  for(const party of parties.values()){
+    if(party.members.size)broadcastParty(party);
+  }
+},1800);
 setInterval(()=>{
   const now=Date.now();
   for(const [code,room] of rooms){
