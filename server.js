@@ -22,6 +22,7 @@ const matchQueues = new Map();
 const userClients = new Map();
 const reconnectReservations = new Map();
 const pendingPartyInvites = new Map();
+const playerReports = [];
 
 const MODE_RULES = {
   normal:{capacity:12, partyMax:6, targetLow:8, targetMid:10, targetHigh:12, waitMs:8000, joinMid:true, spectate:true},
@@ -124,6 +125,7 @@ function sanitizeSnapshot(client, room, raw){
   }
   const snap = {...raw};
   snap.id = client.id;
+  snap.userId = client.userId || "";
   snap.entityId = safeToken(raw.entityId || '',64);
   snap.name = safeName(raw.name || client.name);
   snap.title = String(raw.title || '').replace(/[<>]/g,'').slice(0,40);
@@ -373,6 +375,13 @@ function reconcileServerBots(room){
   }
   broadcast(room.code,{type:'bots_state',mode:room.mode,bots:room.bots.map(botSnapshot),immediate:true});
 }
+
+function publicPlayerCard(client){
+  const profile=client?.profile||{},progress=client?.progress||{},stats=progress.stats||{};
+  return {userId:client?.userId||'',username:profile.username||client?.name||'Player',title:profile.equipped_title||'',banner:profile.profile_banner||'default',icon:profile.profile_icon||'core:circle',level:Number(progress.account_level)||1,achievementPoints:Number(progress.achievement_points)||0,favoriteEvolution:String(stats.favorite_evolution||''),showcasedAchievement:(profile.featured_achievements||progress.showcased_achievements||[])[0]||''};
+}
+function roomPlayerCards(room){return [...room.clients].filter(c=>c.authenticated&&c.userId).map(publicPlayerCard);}
+
 function startMatch(room){
   room.matchStarted = true;
   room.matchId++;
@@ -390,7 +399,7 @@ function startMatch(room){
   spawnServerBots(room);
   initSharedWorld(room);
   const botsState = {type:'bots_state', mode:room.mode, bots:room.bots.map(botSnapshot), immediate:true};
-  broadcast(room.code, {type:'match_start', mode:room.mode, matchId:room.matchId, startedAt:now});
+  broadcast(room.code, {type:'match_start', mode:room.mode, matchId:room.matchId, startedAt:now, playerCards:roomPlayerCards(room)});
   broadcast(room.code, botsState);
   broadcastSharedState(room, true);
   broadcastLobby(room);
@@ -1226,7 +1235,7 @@ function joinClientToRoom(client, room, options={}){
   if(room.matchStarted){
     client.inMatch=true;
     const near=options.spawnNearClient?.snapshot ? {x:options.spawnNearClient.snapshot.x||0,y:options.spawnNearClient.snapshot.y||0} : null;
-    send(client,{type:'match_start',mode:room.mode,matchId:room.matchId,startedAt:room.startedAt||Date.now(),lateJoin:true,quickPlayBackfill:!!options.quickPlayBackfill,spawnNear:near});
+    send(client,{type:'match_start',mode:room.mode,matchId:room.matchId,startedAt:room.startedAt||Date.now(),lateJoin:true,quickPlayBackfill:!!options.quickPlayBackfill,spawnNear:near,playerCards:roomPlayerCards(room)});
     send(client,{type:'bots_state',mode:room.mode,bots:room.bots.map(botSnapshot)});
     sendSharedState(client,room,true);
     if(room.mode!=='br') reconcileServerBots(room);
@@ -1247,11 +1256,15 @@ async function supabaseRequest(endpoint, token, options={}){
 }
 async function refreshClientProfile(client){
   if(!client?.authenticated || !client.accessToken || !client.userId) return;
-  const rows=await supabaseRequest('/rest/v1/profiles?id=eq.'+encodeURIComponent(client.userId)+'&select=id,username,friend_code,profile_settings',client.accessToken,{method:'GET'});
+  const rows=await supabaseRequest('/rest/v1/profiles?id=eq.'+encodeURIComponent(client.userId)+'&select=id,username,friend_code,about_me,equipped_title,profile_banner,profile_icon,featured_cosmetics,featured_achievements,profile_settings',client.accessToken,{method:'GET'});
   if(Array.isArray(rows) && rows[0]){
     client.profile=rows[0];
     client.name=safeName(rows[0].username||client.name||'Player');
   }
+  try{
+    const progressRows=await supabaseRequest('/rest/v1/player_progress?user_id=eq.'+encodeURIComponent(client.userId)+'&select=account_level,achievement_points,stats,showcased_achievements',client.accessToken,{method:'GET'});
+    client.progress=Array.isArray(progressRows)?progressRows[0]||null:null;
+  }catch(_error){ client.progress=null; }
 }
 async function authenticateSocket(client, token){
   token=String(token||'').trim();
@@ -1615,6 +1628,26 @@ function handleMessage(client, msg){
   if(msg.type === 'queue_cancel'){ cancelClientQueue(client); return; }
   if(msg.type === 'spectate_friend'){ spectateFriend(client,msg.friendUserId); return; }
   if(msg.type === 'join_friend'){ joinFriend(client,msg.friendUserId); return; }
+
+  if(msg.type === 'report_player'){
+    if(!client.authenticated) return send(client,{type:'social_error',message:'Login before reporting a player.'});
+    const targetUserId=cleanUserId(msg.targetUserId);
+    if(!targetUserId || targetUserId===client.userId) return;
+    playerReports.push({id:'R-'+id(5),reporterUserId:client.userId,targetUserId,reason:safeToken(msg.reason||'unspecified',48),createdAt:new Date().toISOString(),room:client.room||null});
+    while(playerReports.length>500) playerReports.shift();
+    console.warn('[Fragment.io] Player report',playerReports[playerReports.length-1]);
+    send(client,{type:'social_notice',message:'Report submitted for moderator review.'});
+    return;
+  }
+  if(msg.type === 'party_ping'){
+    if(!client.authenticated || !client.room || !client.inMatch) return;
+    const party=partyForClient(client); if(!party || party.members.size<2) return;
+    const kind=safeToken(msg.kind,24); if(!['enemy','fragment','boss','retreat','group'].includes(kind)) return;
+    const room=rooms.get(client.room); if(!room) return;
+    const payload={type:'party_ping',kind,x:finiteNumber(msg.x,client.snapshot?.x||0,-HALF_W,HALF_W),y:finiteNumber(msg.y,client.snapshot?.y||0,-HALF_H,HALF_H),sourceName:client.name,userId:client.userId};
+    for(const uid of party.members) for(const member of allOnlineClientsForUser(uid)) if(member.room===room.code) send(member,payload);
+    return;
+  }
   if(msg.type === 'leave_match'){ removeFromRoom(client); send(client,{type:'left_match'}); sendPartyStateForClient(client); return; }
   if(msg.type === 'join'){
     const room=getRoom(msg.room); if(room.clients.size===0){room.mode=cleanMode(msg.mode);room.fillBots=true;}
@@ -1683,7 +1716,9 @@ function handleMessage(client, msg){
       targetId:target.id,
       amount,
       sourceId:client.id,
-      sourceName:client.name
+      sourceUserId:client.userId||'',
+      sourceName:client.name,
+      attack:safeToken(msg.attack||client.snapshot?.archetype||'player_attack',48)
     });
   }else if(msg.type === 'fragment_collect'){
     collectSharedFragment(room,client,String(msg.id||''));
@@ -1877,7 +1912,7 @@ server.on('upgrade', (req, socket) => {
   const client = {
     id:id(), socket, room:null, name:'Player', snapshot:null, buffer:null,
     ready:false, inMatch:false, role:'social', serverTeam:'neutral', spawnProtectedUntil:0,
-    authenticated:false, accessToken:'', userId:null, profile:null, friendIds:new Set(), partyId:null, queueId:null, matchTeam:null,
+    authenticated:false, accessToken:'', userId:null, profile:null, progress:null, friendIds:new Set(), partyId:null, queueId:null, matchTeam:null,
     lastSeen:Date.now(), lastParseErrorAt:0,
     chatTimes:[], chatMutedUntil:0, lastChatBody:'', lastChatAt:0,
     lastDeathDropAt:0

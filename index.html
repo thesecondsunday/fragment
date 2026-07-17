@@ -3448,6 +3448,7 @@ body.guestAccount .menuModal[data-modal="gacha"] .rollBtn,body.guestAccount .men
         <button class="windowBtn" type="button" data-open-modal="squad"><b>Squad</b><span id="partyCount">1 / 6</span></button>
         <button class="windowBtn profileWindowBtn" type="button" data-open-modal="profile"><b>Profile</b><span id="profileDockLevel">Level 1</span></button>
         <button class="windowBtn achievementsWindowBtn" type="button" data-open-modal="achievements"><b>Achievements</b><span id="achievementDockStatus">0 / 33</span></button>
+        <button class="windowBtn challengesWindowBtn" type="button" data-open-modal="challenges"><b>Weekly Challenges</b><span id="challengeDockStatus">0 / 4</span></button>
         <button class="windowBtn accountWindowBtn" type="button" data-open-modal="account"><b>Account</b><span id="accountDockStatus">Guest</span></button>
         <button class="windowBtn" type="button" data-open-modal="settings"><b>Settings</b><span>Theme / sound</span></button>
       </aside>
@@ -3549,6 +3550,10 @@ body.guestAccount .menuModal[data-modal="gacha"] .rollBtn,body.guestAccount .men
           </div>
           <div id="equipPicker" class="equipPicker hidden" role="menu" aria-label="Cosmetic choices"></div>
         </div>
+        <section class="cosmeticPresetSection">
+          <div class="cosmeticPresetHeading"><div><b>COSMETIC PRESETS</b><span>Save and equip complete looks instantly.</span></div><small>3 SLOTS</small></div>
+          <div id="cosmeticPresetGrid" class="cosmeticPresetGrid"></div>
+        </section>
       </div>
     </div>
 
@@ -3569,6 +3574,20 @@ body.guestAccount .menuModal[data-modal="gacha"] .rollBtn,body.guestAccount .men
           <button class="achievementFilter" type="button" data-achievement-filter="secret">Secret</button>
         </div>
         <div id="achievementBrowser" class="achievementBrowser"></div>
+      </div>
+    </div>
+
+
+    <div class="menuModal" data-modal="challenges">
+      <div class="modalCard weeklyChallengesWindow">
+        <div class="modalTop"><h2>Weekly Challenges</h2><button class="modalClose" type="button" data-close-modal>×</button></div>
+        <div class="weeklyChallengeHeader">
+          <div><span>WEEKLY RESET</span><b id="weeklyResetText">Calculating…</b></div>
+          <div><span>COMPLETED</span><b id="weeklyCompletedText">0 / 4</b></div>
+          <div><span>REWARDS READY</span><b id="weeklyClaimableText">0</b></div>
+        </div>
+        <div id="weeklyChallengeGrid" class="weeklyChallengeGrid"></div>
+        <p class="weeklyChallengeNote">Progress is account-wide. Test Arena does not count. Rewards reset every Monday at 00:00 UTC.</p>
       </div>
     </div>
 
@@ -3856,7 +3875,8 @@ body.guestAccount .menuModal[data-modal="gacha"] .rollBtn,body.guestAccount .men
   </div>
   <div id="bottomLeft" class="panel">
     <h3>Current Area</h3>
-    <div class="row"><span>Biome</span><b id="uiBiome">Meadow</b></div>
+    <div class="row"><span>Area</span><b id="uiBiome">Verdant Divide</b></div>
+    <div class="row"><span>Area Effect</span><b id="uiAreaEffect" style="font-size:11px;text-align:right;">Gentle regeneration</b></div>
     <div class="row"><span>World Timer</span><b id="uiWorldTimer">—</b></div>
     <div class="row"><span>World Effect</span><b id="uiWorldDesc" style="font-size:12px; text-align:right;">No active shift.</b></div>
     <div class="row"><span>Tip</span><b id="uiTip" style="font-size:12px; text-align:right;">Rare ability fragments fill empty slots only.</b></div>
@@ -3881,6 +3901,18 @@ body.guestAccount .menuModal[data-modal="gacha"] .rollBtn,body.guestAccount .men
   </div>
 </div>
 
+<div id="partyInGameHud" class="panel hidden">
+  <h3>Party</h3><div id="partyInGameMembers"></div>
+  <button id="togglePingBarBtn" type="button">V · Quick Ping</button>
+</div>
+<div id="partyPingBar" class="hidden" aria-label="Party ping menu">
+  <button type="button" data-party-ping="enemy">Enemy Here</button>
+  <button type="button" data-party-ping="fragment">Rare Fragment</button>
+  <button type="button" data-party-ping="boss">Boss</button>
+  <button type="button" data-party-ping="retreat">Retreat</button>
+  <button type="button" data-party-ping="group">Group Up</button>
+</div>
+
 <div id="notice"></div>
 <div id="tip"></div>
 
@@ -3903,13 +3935,40 @@ body.guestAccount .menuModal[data-modal="gacha"] .rollBtn,body.guestAccount .men
 </button>
 
 <div id="death" class="overlay hidden">
-  <div id="deathCard" class="card">
-    <h2 id="deathTitle">YOU SHATTERED</h2>
-    <p id="deathStats"></p>
-    <div style="display:flex; gap:10px; justify-content:center;">
-      <button id="retryBtn">Restart</button>
-      <button id="menuBtn">Main Menu</button>
+  <div id="deathCard" class="card deathRecapCard">
+    <div class="deathRecapTop"><div><span>CORE FAILURE REPORT</span><h2 id="deathTitle">YOU SHATTERED</h2></div><div id="deathKillerHp" class="deathKillerHp">— HP</div></div>
+    <div class="deathRecapGrid">
+      <section class="deathKillerPanel"><span>ELIMINATED BY</span><b id="deathKillerName">THE ARENA</b><em id="deathKillerBuild">Unknown source</em></section>
+      <section class="deathRecapStats" id="deathStats"></section>
     </div>
+    <div class="deathRecapActions">
+      <button id="retryBtn" type="button">Respawn</button>
+      <button id="deathSpectateBtn" type="button">Spectate Killer</button>
+      <button id="deathProfileBtn" type="button">View Profile</button>
+      <button id="deathReportBtn" type="button">Report</button>
+      <button id="menuBtn" type="button">Main Menu</button>
+    </div>
+    <div id="deathRecapHint" class="deathRecapHint">Damage and final-hit information are recorded for the current life.</div>
+  </div>
+</div>
+
+
+<div id="matchPlayerCards" class="overlay hidden matchPlayerCardsOverlay">
+  <div class="matchPlayerCardsPanel">
+    <div class="matchPlayerCardsTop"><div><span>MATCH FOUND</span><h2 id="matchPlayerCardsMode">NORMAL</h2></div><small>CLICK TO SKIP</small></div>
+    <div id="matchPlayerCardsGrid" class="matchPlayerCardsGrid"></div>
+  </div>
+</div>
+
+<div id="inGameProfileOverlay" class="overlay hidden inGameProfileOverlay">
+  <div class="inGameProfileCard card">
+    <div class="inGameProfileTop"><div id="inGameProfileBanner" class="inGameProfileBanner"><canvas id="inGameProfileIcon" width="92" height="92"></canvas></div><button id="closeInGameProfileBtn" type="button">×</button></div>
+    <div class="inGameProfileIdentity"><h2 id="inGameProfileName">PLAYER</h2><b id="inGameProfileTitle">NO TITLE</b><span id="inGameProfileLevel">LEVEL 1</span></div>
+    <p id="inGameProfileAbout">Loading profile…</p>
+    <div id="inGameProfileFavorite" class="inGameProfileFavorite"></div>
+    <div id="inGameProfileStats" class="inGameProfileStats"></div>
+    <div><h3>Featured Cosmetics</h3><div id="inGameProfileCosmetics" class="inGameProfileShowcase"></div></div>
+    <div><h3>Achievement Showcase</h3><div id="inGameProfileAchievements" class="inGameProfileShowcase"></div></div>
   </div>
 </div>
 
@@ -4398,14 +4457,14 @@ const worldModes = [
   {key:'golden', name:'Golden Rain', color:'#d6a84a', desc:'Golden showers create safe loot zones and bonus fragments.'}
 ];
 const biomes = [
-  {name:'Meadow', x:-HALF_W, y:-HALF_H, w:WORLD_W/4, h:WORLD_H/2, color:'#2f5d45', detail:'#3d7455', accent:'#92d96d'},
-  {name:'Frozen Wastes', x:-HALF_W+WORLD_W/4, y:-HALF_H, w:WORLD_W/4, h:WORLD_H/2, color:'#5d87a5', detail:'#709ab7', accent:'#d8f3ff'},
-  {name:'Volcanic Basin', x:-HALF_W+WORLD_W/2, y:-HALF_H, w:WORLD_W/4, h:WORLD_H/2, color:'#7c4a3c', detail:'#9d6152', accent:'#ff8a54'},
-  {name:'Sky Salt Flats', x:-HALF_W+WORLD_W*3/4, y:-HALF_H, w:WORLD_W/4, h:WORLD_H/2, color:'#718391', detail:'#8b9aa5', accent:'#f3fbff'},
-  {name:'Ancient Forest', x:-HALF_W, y:0, w:WORLD_W/4, h:WORLD_H/2, color:'#345f3f', detail:'#46734d', accent:'#80c75a'},
-  {name:'Crystal Desert', x:-HALF_W+WORLD_W/4, y:0, w:WORLD_W/4, h:WORLD_H/2, color:'#b2a37d', detail:'#c7b994', accent:'#fff0a6'},
-  {name:'Corrupted Void', x:-HALF_W+WORLD_W/2, y:0, w:WORLD_W/4, h:WORLD_H/2, color:'#5b4267', detail:'#765689', accent:'#cb80ff'},
-  {name:'Storm Coast', x:-HALF_W+WORLD_W*3/4, y:0, w:WORLD_W/4, h:WORLD_H/2, color:'#42566d', detail:'#526a83', accent:'#b9d4ff'}
+  {id:'verdant',name:'Verdant Divide',effect:'Gentle regeneration',desc:'Living ground slowly restores damaged cores.',x:-HALF_W,y:-HALF_H,w:WORLD_W/4,h:WORLD_H/2,color:'#2f5d45',detail:'#3d7455',accent:'#92d96d'},
+  {id:'glacial',name:'Glacial Relay',effect:'Reduced acceleration',desc:'Frozen relay fields make sudden movement harder.',x:-HALF_W+WORLD_W/4,y:-HALF_H,w:WORLD_W/4,h:WORLD_H/2,color:'#5d87a5',detail:'#709ab7',accent:'#d8f3ff'},
+  {id:'furnace',name:'The Furnace',effect:'Fragments grant bonus XP',desc:'Heat vents energize every fragment collected inside the basin.',x:-HALF_W+WORLD_W/2,y:-HALF_H,w:WORLD_W/4,h:WORLD_H/2,color:'#7c4a3c',detail:'#9d6152',accent:'#ff8a54'},
+  {id:'skyglass',name:'Skyglass Expanse',effect:'Movement speed increased',desc:'Low resistance lets fighters cross the open flats quickly.',x:-HALF_W+WORLD_W*3/4,y:-HALF_H,w:WORLD_W/4,h:WORLD_H/2,color:'#718391',detail:'#8b9aa5',accent:'#f3fbff'},
+  {id:'nullgarden',name:'Null Garden',effect:'Natural fragments heal more',desc:'Unstable growth converts natural fragments into stronger recovery.',x:-HALF_W,y:0,w:WORLD_W/4,h:WORLD_H/2,color:'#345f3f',detail:'#46734d',accent:'#80c75a'},
+  {id:'sharddunes',name:'Shard Dunes',effect:'Fragment score increased',desc:'Crystal deposits amplify the value of collected fragments.',x:-HALF_W+WORLD_W/4,y:0,w:WORLD_W/4,h:WORLD_H/2,color:'#b2a37d',detail:'#c7b994',accent:'#fff0a6'},
+  {id:'terminus',name:'Elevator Terminus',effect:'Boss activity increased',desc:'Administrative signals draw bosses and Floor 7 anomalies.',x:-HALF_W+WORLD_W/2,y:0,w:WORLD_W/4,h:WORLD_H/2,color:'#5b4267',detail:'#765689',accent:'#cb80ff'},
+  {id:'stormbreak',name:'Stormbreak Coast',effect:'Dash recharge increased',desc:'Coastal static rapidly restores mobility systems.',x:-HALF_W+WORLD_W*3/4,y:0,w:WORLD_W/4,h:WORLD_H/2,color:'#42566d',detail:'#526a83',accent:'#b9d4ff'}
 ];
 
 const globalBase = [
@@ -4704,6 +4763,7 @@ function netApplySnapshot(snap){
     if(state.screen==='play') addChat('SERVER', (snap.name||'Friend')+' joined the room.');
   }
   ent.netClientId=snap.id;
+  ent.userId=snap.userId||ent.userId||'';
   ent.lastNet=performance.now();
   ent.name=snap.name||ent.name;
   ent.title=snap.title||''; ent.clan=snap.clan||'';
@@ -5720,6 +5780,11 @@ let cloudSaveTimer=null;
 let cloudAccountLoading=false;
 let lastCloudLoadError=null;
 let accountProgress=null;
+let cosmeticPresets=[null,null,null];
+let weeklyChallengeState={weekKey:'',baseline:{},claimed:{},evolutionWins:{}};
+let partyWorldPings=[];
+let incomingMatchPlayerCards=[];
+let deathRecapState={damageTaken:0,lastAttack:'Unknown attack',lastSource:null,killer:null};
 let persistentMatchSession=null;
 const cloudFriendProfiles=new Map();
 
@@ -6098,8 +6163,8 @@ async function removeCloudFriend(friendCode){
   await loadCloudFriends();
 }
 
-function defaultAccountProgress(){return {user_id:cloudUser?.id||'',account_level:1,account_xp:0,achievement_points:0,achievements:{},stats:{matches:0,wins:0,eliminations:0,bot_eliminations:0,deaths:0,fragments:0,bosses:0,br_wins:0,playtime_seconds:0,highest_score:0,friends_added:0,matches_with_friends:0,spectated_matches:0,joined_friend_matches:0,fracture_rank:0,favorite_evolution:'',evolution_mastery:{}},showcased_achievements:[]};}
-function normalizeAccountProgress(row){const base=defaultAccountProgress();row=row||{};const stats={...base.stats,...(row.stats||{})};stats.fracture_rank=Math.max(0,Math.min(7,Number(stats.fracture_rank)||0));stats.favorite_evolution=String(stats.favorite_evolution||'');stats.evolution_mastery={...(stats.evolution_mastery||{})};return {...base,...row,account_level:Math.max(1,Math.min(100,Number(row.account_level)||1)),account_xp:Math.max(0,Number(row.account_xp)||0),achievement_points:Math.max(0,Number(row.achievement_points)||0),achievements:{...(row.achievements||{})},stats,showcased_achievements:Array.isArray(row.showcased_achievements)?row.showcased_achievements.slice(0,5):[]};}
+function defaultAccountProgress(){return {user_id:cloudUser?.id||'',account_level:1,account_xp:0,achievement_points:0,achievements:{},stats:{matches:0,wins:0,eliminations:0,bot_eliminations:0,deaths:0,fragments:0,bosses:0,br_wins:0,playtime_seconds:0,highest_score:0,friends_added:0,matches_with_friends:0,spectated_matches:0,joined_friend_matches:0,fracture_rank:0,favorite_evolution:'',evolution_mastery:{},wins_by_evolution:{}},showcased_achievements:[]};}
+function normalizeAccountProgress(row){const base=defaultAccountProgress();row=row||{};const stats={...base.stats,...(row.stats||{})};stats.fracture_rank=Math.max(0,Math.min(7,Number(stats.fracture_rank)||0));stats.favorite_evolution=String(stats.favorite_evolution||'');stats.evolution_mastery={...(stats.evolution_mastery||{})};stats.wins_by_evolution={...(stats.wins_by_evolution||{})};return {...base,...row,account_level:Math.max(1,Math.min(100,Number(row.account_level)||1)),account_xp:Math.max(0,Number(row.account_xp)||0),achievement_points:Math.max(0,Number(row.achievement_points)||0),achievements:{...(row.achievements||{})},stats,showcased_achievements:Array.isArray(row.showcased_achievements)?row.showcased_achievements.slice(0,5):[]};}
 async function ensureCloudProgress(user){
   let result=await fragmentSupabase.from('player_progress').select('user_id,account_level,account_xp,achievement_points,achievements,stats,showcased_achievements').eq('user_id',user.id).maybeSingle();
   if(result.error)throw result.error;
@@ -6137,6 +6202,7 @@ async function loadCloudAccount(options={}){
     ownedCosmetics=[...new Set(ownedCosmetics)];
     gachaPity=sanitizePity(save.gacha_pity||{});
     cloudGameDataLoaded=true;
+    loadSupplementalSettings(save.settings||{});
 
     renderOwnedCosmeticOptions();
     const equipped=save.equipped_cosmetics||{};
@@ -6181,7 +6247,9 @@ async function saveCloudProgress(){
     equipped_cosmetics:cloudEquippedPayload(),
     settings:{
       sfx_volume:Number(sfxVolume)||0,
-      music_volume:Number(musicVolume)||0
+      music_volume:Number(musicVolume)||0,
+      cosmetic_presets:sanitizeCosmeticPresets(cosmeticPresets),
+      weekly_challenges:sanitizeWeeklyChallengeState(weeklyChallengeState)
     }
   };
   const {error}=await fragmentSupabase.from('player_data').upsert(payload,{onConflict:'user_id'});
@@ -11105,7 +11173,7 @@ function updatePlayer(dt){
   updateEntity(actor, dt);
   const mx = (isActionDown('moveRight')||keys['arrowright']?1:0) - (isActionDown('moveLeft')||keys['arrowleft']?1:0);
   const my = (isActionDown('moveDown')||keys['arrowdown']?1:0) - (isActionDown('moveUp')||keys['arrowup']?1:0);
-  let speed = actor.speed * (actor.status.speed>0 ? 1.9 : 1) * (actor.status.shadowDashBoost>0 ? shadowStatsFor(actor).boostMult : 1) * (actor.status.slow>0 ? (actor.status.slowPower||.32) : 1) * (world.mode?.key==='frozen' ? 0.8 : 1);
+  let speed = actor.speed * areaSpeedMultiplier(actor) * (actor.status.speed>0 ? 1.9 : 1) * (actor.status.shadowDashBoost>0 ? shadowStatsFor(actor).boostMult : 1) * (actor.status.slow>0 ? (actor.status.slowPower||.32) : 1) * (world.mode?.key==='frozen' ? 0.8 : 1);
   if(world.mode?.key==='zero') speed *= 1.06;
   if(actor.status.freeze>0 || actor.status.stun>0) speed = 0;
   const L = Math.hypot(mx,my)||1;
@@ -14716,6 +14784,77 @@ function installSocialHub(){
   renderQueueState();renderSocial();updateMatchButtons();renderProfileDock();renderAchievementsBrowser();
   if(cloudUser)ensureSocialConnection();
 }
+
+/* ===== SOCIAL CONTENT & RETENTION PATCH ===== */
+const WEEKLY_CHALLENGES={
+  fragments:{name:'Fragment Harvest',description:'Collect 500 fragments in eligible matches.',stat:'fragments',target:500,remnant:250,xp:300},
+  bosses:{name:'Authority Problems',description:'Defeat 10 bosses.',stat:'bosses',target:10,remnant:500,xp:500},
+  friends:{name:'Together We Fracture',description:'Play 5 matches with at least one friend in your party.',stat:'matches_with_friends',target:5,remnant:300,xp:350},
+  diversity:{name:'Evolution Rotation',description:'Win with 3 different evolution paths.',stat:'evolution_diversity',target:3,remnant:600,xp:650}
+};
+const PARTY_PING_TYPES={enemy:{label:'ENEMY HERE',color:'#ff5d67'},fragment:{label:'RARE FRAGMENT',color:'#ffcf58'},boss:{label:'BOSS',color:'#c37bff'},retreat:{label:'RETREAT',color:'#8ae4ff'},group:{label:'GROUP UP',color:'#66d98b'}};
+function currentWeekKey(date=new Date()){const d=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()));const day=(d.getUTCDay()+6)%7;d.setUTCDate(d.getUTCDate()-day);return d.toISOString().slice(0,10);}
+function nextWeeklyReset(){const d=new Date();const day=(d.getUTCDay()+6)%7;const monday=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()-day+7));return monday;}
+function sanitizeCosmeticPresets(value){return Array.from({length:3},(_,i)=>{const p=Array.isArray(value)?value[i]:null;if(!p||typeof p!=='object')return null;return{name:String(p.name||('Preset '+(i+1))).slice(0,20),shape:String(p.shape||'circle').slice(0,40),trail:String(p.trail||'none').slice(0,40),aura:String(p.aura||'none').slice(0,40),hat:String(p.hat||'none').slice(0,40),title:String(p.title||'').slice(0,40)};});}
+function sanitizeWeeklyChallengeState(value){value=value&&typeof value==='object'?value:{};return{weekKey:String(value.weekKey||''),baseline:{...(value.baseline||{})},claimed:{...(value.claimed||{})},evolutionWins:{...(value.evolutionWins||{})}};}
+function resetWeeklyChallenges(force=false){const key=currentWeekKey();if(!force&&weeklyChallengeState.weekKey===key)return;const s=accountProgress?.stats||{};weeklyChallengeState={weekKey:key,baseline:{fragments:Number(s.fragments)||0,bosses:Number(s.bosses)||0,matches_with_friends:Number(s.matches_with_friends)||0},claimed:{},evolutionWins:{}};queueCloudSave();}
+function loadSupplementalSettings(settings={}){cosmeticPresets=sanitizeCosmeticPresets(settings.cosmetic_presets||[]);weeklyChallengeState=sanitizeWeeklyChallengeState(settings.weekly_challenges||{});resetWeeklyChallenges();renderCosmeticPresets();renderWeeklyChallenges();}
+function currentCosmeticPreset(){return{name:'',shape:ui.skinSel?.value||'circle',trail:ui.trailSel?.value||'none',aura:ui.auraSel?.value||'none',hat:ui.hatSel?.value||'none',title:ui.titleSel?.value||''};}
+function cosmeticPresetSummary(p){if(!p)return'Empty slot';return[`Core: ${primaryName(p.shape)}`,`Hat: ${primaryName(p.hat)}`,`Aura: ${primaryName(p.aura)}`,`Trail: ${primaryName(p.trail)}`,`Title: ${p.title?primaryName(p.title):'None'}`].join(' · ');}
+function renderCosmeticPresets(){const grid=$('cosmeticPresetGrid');if(!grid)return;grid.innerHTML=Array.from({length:3},(_,i)=>{const p=cosmeticPresets[i];return`<article class="cosmeticPresetCard"><input maxlength="20" data-preset-name="${i}" value="${escapeHtml(p?.name||('Preset '+(i+1)))}"><div class="cosmeticPresetSummary">${escapeHtml(cosmeticPresetSummary(p))}</div><div class="cosmeticPresetActions"><button type="button" data-save-preset="${i}">Save Current</button><button type="button" data-equip-preset="${i}" ${p?'':'disabled'}>Equip</button></div></article>`;}).join('');}
+function ownedValueAllowed(type,value){if((type==='shape'&&value==='circle')||(type!=='shape'&&(value==='none'||value==='')))return true;return !!allCosmetics().find(c=>c.type===type&&c.value===value&&ownedCosmetics.includes(c.id));}
+function equipCosmeticPreset(index){const p=cosmeticPresets[index];if(!p)return;const safe={shape:ownedValueAllowed('shape',p.shape)?p.shape:'circle',trail:ownedValueAllowed('trail',p.trail)?p.trail:'none',aura:ownedValueAllowed('aura',p.aura)?p.aura:'none',hat:ownedValueAllowed('hat',p.hat)?p.hat:'none',title:ownedValueAllowed('title',p.title)?p.title:''};ui.skinSel.value=safe.shape;ui.trailSel.value=safe.trail;ui.auraSel.value=safe.aura;ui.hatSel.value=safe.hat;ui.titleSel.value=safe.title;updateCosmeticPreview(true);queueCloudSave();notify('Preset equipped',p.name||('Preset '+(index+1)));}
+function saveCosmeticPreset(index){const current=currentCosmeticPreset();const name=document.querySelector(`[data-preset-name="${index}"]`)?.value||('Preset '+(index+1));cosmeticPresets[index]={...current,name:String(name).trim().slice(0,20)||('Preset '+(index+1))};renderCosmeticPresets();queueCloudSave();notify('Preset saved',cosmeticPresets[index].name);}
+function weeklyChallengeProgress(id){resetWeeklyChallenges();const def=WEEKLY_CHALLENGES[id],s=accountProgress?.stats||{};if(def.stat==='evolution_diversity')return Object.keys(weeklyChallengeState.evolutionWins||{}).filter(key=>weeklyChallengeState.evolutionWins[key]).length;return Math.max(0,(Number(s[def.stat])||0)-(Number(weeklyChallengeState.baseline?.[def.stat])||0));}
+function renderWeeklyChallenges(){const grid=$('weeklyChallengeGrid');if(!grid)return;resetWeeklyChallenges();let completed=0,claimable=0;grid.innerHTML=Object.entries(WEEKLY_CHALLENGES).map(([id,def])=>{const value=weeklyChallengeProgress(id),done=value>=def.target,claimed=!!weeklyChallengeState.claimed?.[id];if(done)completed++;if(done&&!claimed)claimable++;const pct=clamp(value/def.target*100,0,100);return`<article class="weeklyChallengeCard ${done?'complete':''} ${claimed?'claimed':''}"><div class="weeklyChallengeTop"><b>${escapeHtml(def.name)}</b><span>${Math.min(value,def.target)} / ${def.target}</span></div><p>${escapeHtml(def.description)}</p><div class="weeklyProgress"><i style="width:${pct}%"></i></div><div class="weeklyChallengeBottom"><div class="weeklyReward">◆ ${def.remnant} · +${def.xp} XP</div><button type="button" data-claim-weekly="${id}" ${done&&!claimed?'':'disabled'}>${claimed?'Claimed':done?'Claim Reward':'In Progress'}</button></div></article>`;}).join('');$('weeklyCompletedText').textContent=completed+' / 4';$('weeklyClaimableText').textContent=claimable;$('challengeDockStatus').textContent=completed+' / 4';const ms=Math.max(0,nextWeeklyReset()-new Date()),days=Math.floor(ms/86400000),hours=Math.floor(ms%86400000/3600000);$('weeklyResetText').textContent=`${days}d ${hours}h`;}
+function claimWeeklyChallenge(id){const def=WEEKLY_CHALLENGES[id];if(!def||weeklyChallengeState.claimed?.[id]||weeklyChallengeProgress(id)<def.target)return;weeklyChallengeState.claimed[id]=new Date().toISOString();remnant+=def.remnant;grantAccountXP(def.xp,'Weekly challenge');renderRemnantBadges();renderWeeklyChallenges();queueCloudSave();notify('Weekly reward claimed',`${def.name} · ◆ ${def.remnant} · +${def.xp} XP`);}
+function areaSpeedMultiplier(entity){if(!entity)return 1;const b=getBiomeAt(entity.x,entity.y);if(b.id==='glacial')return .91;if(b.id==='skyglass')return 1.08;return 1;}
+let areaEffectTimer=0,terminusBossTimer=0;
+const _updateBiomeEffectsContentPatch=updateBiomeEffects;
+updateBiomeEffects=function(dt){if(!player)return;const b=getBiomeAt(player.x,player.y);areaEffectTimer+=dt;terminusBossTimer+=dt;if(b.id==='verdant'&&player.hp<player.maxHp&&Math.random()<0.012)player.hp=Math.min(player.maxHp,player.hp+.9);if(b.id==='furnace'&&Math.random()<0.012)ring(player.x+rand(-250,250),player.y+rand(-180,180),'#ff8a54',38);if(b.id==='stormbreak'){player.dashCd=Math.max(0,(player.dashCd||0)-dt*.22);if(Math.random()<0.005)ring(player.x+rand(-170,170),player.y+rand(-150,150),'#b9d4ff',55);}if(b.id==='terminus'&&!netUsesServerWorld()&&gameMode==='normal'&&terminusBossTimer>42000&&!bosses.some(x=>!x.dead)){terminusBossTimer=0;spawnBoss();announce('ELEVATOR TERMINUS: Administrative signal detected.');}};
+const _updatePlayerContentPatch=updatePlayer;updatePlayer=function(dt){if(player){const mult=areaSpeedMultiplier(player);player.areaSpeedMultiplier=mult;}return _updatePlayerContentPatch(dt);};
+const _tryCollectContentPatch=tryCollect;tryCollect=function(ent){const beforeFrags=ent?.frags||0,beforeHp=ent?.hp||0,b=getBiomeAt(ent?.x||0,ent?.y||0);const result=_tryCollectContentPatch(ent);const gained=Math.max(0,(ent?.frags||0)-beforeFrags);if(ent===player&&gained>0){if(b.id==='nullgarden')ent.hp=Math.min(ent.maxHp,ent.hp+gained*2.4);if(b.id==='sharddunes')ent.score+=gained*14;if(b.id==='furnace')giveXP(ent,gained*3);}return result;};
+function currentAreaDescription(){const focus=controlledEntity()||player;return focus?getBiomeAt(focus.x,focus.y):biomes[0];}
+function drawAreaLabels(camX,camY){ctx.save();ctx.font='900 24px Arial';ctx.textAlign='center';for(const b of biomes){const sx=b.x+b.w/2-camX,sy=b.y+42-camY;if(sx<-300||sx>canvas.width+300||sy<-100||sy>canvas.height+100)continue;ctx.globalAlpha=.35;ctx.fillStyle='#fff';ctx.fillText(b.name.toUpperCase(),sx,sy);ctx.font='900 11px Arial';ctx.fillText(b.effect.toUpperCase(),sx,sy+18);ctx.font='900 24px Arial';}ctx.restore();}
+const _drawMapSystemsContentPatch=drawMapSystems;drawMapSystems=function(camX,camY,viewW,viewH){const result=_drawMapSystemsContentPatch(camX,camY,viewW,viewH);drawAreaLabels(camX,camY);drawPartyWorldPings(camX,camY);return result;};
+function drawPartyPingsOnMap(canvasEl){if(!canvasEl||!partyWorldPings.length)return;const c=canvasEl.getContext('2d');for(const p of partyWorldPings){const x=(p.x+HALF_W)/WORLD_W*canvasEl.width,y=(p.y+HALF_H)/WORLD_H*canvasEl.height;c.save();c.globalAlpha=clamp(p.life/3,0,1);c.fillStyle=p.color;c.strokeStyle='#fff';c.lineWidth=2;c.beginPath();c.arc(x,y,5,0,Math.PI*2);c.fill();c.stroke();c.restore();}}
+const _drawMiniMapContentPatch=drawMiniMap;drawMiniMap=function(){const result=_drawMiniMapContentPatch();drawPartyPingsOnMap($('miniMap'));return result;};
+const _drawBigMapContentPatch=drawBigMap;drawBigMap=function(){const result=_drawBigMapContentPatch();drawPartyPingsOnMap($('bigMap'));return result;};
+function sendPartyPing(kind){const def=PARTY_PING_TYPES[kind];if(!def||!player)return;const point=screenToWorld(mouse.x,mouse.y);if(multiplayer.connected&&socialState.party?.members?.length>1)netSend({type:'party_ping',kind,x:point.x,y:point.y});else receivePartyPing({kind,x:point.x,y:point.y,sourceName:player.name,userId:cloudUser?.id||''});$('partyPingBar').classList.add('hidden');}
+function receivePartyPing(msg){const def=PARTY_PING_TYPES[msg.kind];if(!def)return;partyWorldPings.push({kind:msg.kind,x:Number(msg.x)||0,y:Number(msg.y)||0,sourceName:String(msg.sourceName||'Party'),life:8,color:def.color,label:def.label});partyWorldPings=partyWorldPings.slice(-12);addChat('PARTY',`${msg.sourceName||'Party'}: ${def.label}`);tone(520,0.07,'square',0.025);}
+function drawPartyWorldPings(camX,camY){ctx.save();ctx.textAlign='center';for(const p of partyWorldPings){const sx=p.x-camX,sy=p.y-camY,progress=clamp(p.life/8,0,1);ctx.globalAlpha=Math.min(1,progress*1.8);ctx.strokeStyle=p.color;ctx.lineWidth=4;ctx.beginPath();ctx.arc(sx,sy,24+Math.sin(performance.now()/120)*5,0,Math.PI*2);ctx.stroke();ctx.fillStyle=p.color;ctx.font='900 11px Arial';ctx.fillText(p.label,sx,sy-34);ctx.fillStyle='#fff';ctx.font='900 9px Arial';ctx.fillText(p.sourceName,sx,sy-22);}ctx.restore();}
+function renderPartyInGameHud(){const box=$('partyInGameHud'),list=$('partyInGameMembers');if(!box||!list)return;const members=socialState.party?.members||[];box.classList.toggle('hidden',state.screen!=='play'||members.length<2);if(members.length<2)return;list.innerHTML=members.map(m=>{const ent=m.userId===cloudUser?.id?player:remotePlayers.find(r=>r.userId===m.userId);const status=ent&&!ent.dead?Math.ceil(ent.hp)+' HP':m.status==='in_match'?'IN MATCH':String(m.status||'ONLINE').replace('_',' ').toUpperCase();return`<div class="partyHudMember ${m.online?'online':''}"><i></i><b>${m.leader?'★ ':''}${escapeHtml(m.name)}</b><span>${escapeHtml(status)}</span></div>`;}).join('');}
+function drawProfileIconCanvas(canvasEl,value){if(!canvasEl)return;const c=canvasEl.getContext('2d');c.clearRect(0,0,canvasEl.width,canvasEl.height);const v=String(value||'core:circle');if(v.startsWith('hat:')){drawPreviewCore(c,canvasEl.width/2,canvasEl.height*.56,'circle','#5d8cff');drawHatShape(c,canvasEl.width/2,canvasEl.height*.56,v.slice(4));}else drawPreviewCore(c,canvasEl.width/2,canvasEl.height/2,v.startsWith('core:')?v.slice(5):'circle','#5d8cff');}
+function showMatchPlayerCards(cards,mode){cards=Array.isArray(cards)?cards:[];if(!cards.length&&cloudProfile)cards=[{userId:cloudUser?.id,username:cloudProfile.username,title:cloudProfile.equipped_title,banner:cloudProfile.profile_banner,icon:cloudProfile.profile_icon,level:accountProgress?.account_level||1,favoriteEvolution:accountProgress?.stats?.favorite_evolution||'',achievementPoints:accountProgress?.achievement_points||0}];if(!cards.length)return;const overlay=$('matchPlayerCards'),grid=$('matchPlayerCardsGrid');$('matchPlayerCardsMode').textContent=netModeLabel(mode||gameMode);grid.innerHTML=cards.slice(0,6).map((c,i)=>`<article class="matchPlayerCard banner-${escapeHtml(c.banner||'default')}"><canvas width="90" height="90" data-player-card-icon="${i}"></canvas><h3>${escapeHtml(c.username||'Player')}</h3><b>${escapeHtml(c.title||'NO TITLE')}</b><span>LEVEL ${Number(c.level)||1} · ${Number(c.achievementPoints)||0} AP</span><small>${c.favoriteEvolution?'Favourite: '+escapeHtml(primaryName(c.favoriteEvolution)):'No favourite evolution yet'}</small></article>`).join('');cards.slice(0,6).forEach((c,i)=>drawProfileIconCanvas(grid.querySelector(`[data-player-card-icon="${i}"]`),c.icon));overlay.classList.remove('hidden');clearTimeout(showMatchPlayerCards.timer);showMatchPlayerCards.timer=setTimeout(()=>overlay.classList.add('hidden'),3600);}
+function renderInGameProfile(data){if(!data)return;const {profile,progress}=data,p=normalizeAccountProgress(progress);$('inGameProfileName').textContent=profile.username||'Player';$('inGameProfileTitle').textContent=profile.equipped_title||'NO TITLE';$('inGameProfileLevel').textContent=`LEVEL ${p.account_level} · ${p.achievement_points} AP`;$('inGameProfileAbout').textContent=profile.about_me||'No profile description yet.';$('inGameProfileBanner').className='inGameProfileBanner banner-'+(profile.profile_banner||'default');drawProfileIconCanvas($('inGameProfileIcon'),profile.profile_icon);const fav=p.stats.favorite_evolution;$('inGameProfileFavorite').innerHTML=fav?`<b>FAVOURITE EVOLUTION · ${escapeHtml(primaryName(fav))}</b>`:'<b>NO FAVOURITE EVOLUTION YET</b>';const s=p.stats;$('inGameProfileStats').innerHTML=[['Matches',s.matches],['Wins',s.wins],['Eliminations',s.eliminations],['Bosses',s.bosses],['Fragments',s.fragments],['High Score',s.highest_score],['BR Wins',s.br_wins],['Playtime',Math.floor((s.playtime_seconds||0)/60)+'m']].map(([k,v])=>`<div><b>${Number(v||0).toLocaleString()}</b><span>${k}</span></div>`).join('');$('inGameProfileCosmetics').innerHTML=Array.from({length:5},(_,i)=>cosmeticShowcaseCard((profile.featured_cosmetics||[])[i])).join('');const achievements=profile.featured_achievements?.length?profile.featured_achievements:p.showcased_achievements;$('inGameProfileAchievements').innerHTML=Array.from({length:5},(_,i)=>achievementShowcaseCard((achievements||[])[i])).join('');$('inGameProfileOverlay').classList.remove('hidden');}
+async function openInGamePlayerProfile(userId){if(!userId||!cloudUser)return;try{const data=userId===cloudUser.id?{profile:cloudProfile,progress:accountProgress}:await fetchPlayerProfile(userId);if(!data)throw new Error('Profile not found.');renderInGameProfile(data);}catch(error){notify('Profile unavailable',normalizeCloudError(error));}}
+function recordIncomingDamage(amount,source,attack){if(!player||state.screen!=='play')return;deathRecapState.damageTaken+=Math.max(0,Number(amount)||0);deathRecapState.lastAttack=String(attack||'Unknown attack');deathRecapState.lastSource=source||null;}
+function buildDeathRecap(killer){deathRecapState.killer=killer||deathRecapState.lastSource||null;const k=deathRecapState.killer,userId=k?.userId||'';$('deathKillerName').textContent=k?.name||'THE ARENA';$('deathKillerBuild').textContent=k?(primaryName(k.archetype||'starter')+' · '+deathRecapState.lastAttack):deathRecapState.lastAttack;$('deathKillerHp').textContent=k&&Number.isFinite(k.hp)?Math.ceil(k.hp)+' HP':'— HP';$('deathStats').innerHTML=[['Damage received',Math.round(deathRecapState.damageTaken)],['Final attack',deathRecapState.lastAttack],['Final level',player?.level||1],['Score',Math.floor(player?.score||0).toLocaleString()],['Fragments',player?.frags||0],['Area',currentAreaDescription().name]].map(([k2,v])=>`<div class="deathStat"><b>${escapeHtml(String(v))}</b><span>${escapeHtml(k2)}</span></div>`).join('');$('deathProfileBtn').disabled=!userId;$('deathReportBtn').disabled=!userId;$('deathSpectateBtn').disabled=!(k?.networkRemote&&!k.dead);$('deathRecapHint').textContent=userId?'This is a real player account. You can view their profile or submit a report.':'Bots and bosses do not have public profiles.';}
+const _hitEntityContentPatch=hitEntity;hitEntity=function(target,dmg,source){if(target===player&&(!target.spawnInvincible||target.spawnInvincible<=0))recordIncomingDamage(dmg,source,source?.lastAttackLabel||primaryName(source?.archetype||'starter'));return _hitEntityContentPatch(target,dmg,source);};
+const _killEntityContentPatch=killEntity;killEntity=function(target,killer){const wasPlayer=target===player;const result=_killEntityContentPatch(target,killer);if(wasPlayer)buildDeathRecap(killer);return result;};
+function renderClickableServerLeaderboard(){if(!ui?.serverLb||!player)return;const list=[player,...remotePlayers.filter(r=>!r.dead),...bots.filter(b=>!b.dead),...bosses.filter(b=>!b.dead)].filter(Boolean).sort((a,b)=>(b.boss?999999:b.score)-(a.boss?999999:a.score)).slice(0,10);ui.serverLb.innerHTML=list.map((x,i)=>{const userId=x===player?cloudUser?.id:(x.networkRemote?x.userId:'');const badge=x.boss?'👹 ':x.networkRemote?'🌐 ':x.team==='blue'?'🟦 ':x.team==='red'?'🟥 ':'';return`<div class="lbRow ${x===player?'lbMe':''} ${userId?'lbProfileLink':''}" ${userId?`data-profile-user-id="${escapeHtml(userId)}" title="View ${escapeHtml(x.name)} profile"`:''}><b>${i+1}</b><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${badge}${displayName(x)}${x.networkRemote?'<span class="networkTag">ONLINE</span>':''}</span><b>${Math.floor(x.score).toLocaleString()}</b></div>`;}).join('');}
+renderServerLb=renderClickableServerLeaderboard;
+const _updateHudContentPatch=updateHud;updateHud=function(){const result=_updateHudContentPatch();if(player){const b=currentAreaDescription();if($('uiAreaEffect'))$('uiAreaEffect').textContent=b.effect||'None';renderPartyInGameHud();}return result;};
+const _updateContentPatch=update;update=function(dt){const result=_updateContentPatch(dt);for(let i=partyWorldPings.length-1;i>=0;i--){partyWorldPings[i].life-=dt/1000;if(partyWorldPings[i].life<=0)partyWorldPings.splice(i,1);}return result;};
+const _beginGameContentPatch=beginGame;beginGame=function(){deathRecapState={damageTaken:0,lastAttack:'Unknown attack',lastSource:null,killer:null};const result=_beginGameContentPatch();if(player)player.userId=cloudUser?.id||'';showMatchPlayerCards(incomingMatchPlayerCards,gameMode);incomingMatchPlayerCards=[];renderPartyInGameHud();return result;};
+const _finishPersistentMatchContentPatch=finishPersistentMatch;finishPersistentMatch=function(outcome='left'){if(outcome==='win'&&accountProgress&&player){const root=rootEvolution(player.archetype||'starter');accountProgress.stats.wins_by_evolution=accountProgress.stats.wins_by_evolution||{};accountProgress.stats.wins_by_evolution[root]=(accountProgress.stats.wins_by_evolution[root]||0)+1;weeklyChallengeState.evolutionWins[root]=true;}const result=_finishPersistentMatchContentPatch(outcome);renderWeeklyChallenges();return result;};
+const _recordPersistentEventContentPatch=recordPersistentEvent;recordPersistentEvent=function(type,data={}){const result=_recordPersistentEventContentPatch(type,data);renderWeeklyChallenges();return result;};
+const _handleNetworkContentPatch=handleFragmentNetworkMessage;handleFragmentNetworkMessage=function(msg){if(msg?.type==='party_ping')receivePartyPing(msg);if(msg?.type==='match_start')incomingMatchPlayerCards=Array.isArray(msg.playerCards)?msg.playerCards:[];if(msg?.type==='hit'&&msg.targetId===multiplayer.clientId){const source=multiplayer.remoteById.get(msg.sourceId);if(source&&msg.sourceUserId)source.userId=msg.sourceUserId;recordIncomingDamage(msg.amount,source,msg.attack||primaryName(source?.archetype||'starter'));}if(msg?.type==='bot_hit'&&msg.targetId===multiplayer.clientId){const source=multiplayer.botById.get(msg.botId);recordIncomingDamage(msg.amount,source,msg.cause||'Bot attack');}if(msg?.type==='boss_hit'&&msg.targetId===multiplayer.clientId){const source=multiplayer.bossById.get(msg.bossId);recordIncomingDamage(msg.amount,source,msg.attack||'Boss attack');}return _handleNetworkContentPatch(msg);};
+const _openMenuModalContentPatch=openMenuModal;openMenuModal=function(name){if(name==='challenges')renderWeeklyChallenges();if(name==='cosmetics')renderCosmeticPresets();return _openMenuModalContentPatch(name);};
+$('cosmeticPresetGrid')?.addEventListener('click',event=>{const save=event.target.closest('[data-save-preset]'),equip=event.target.closest('[data-equip-preset]');if(save)saveCosmeticPreset(Number(save.dataset.savePreset));if(equip)equipCosmeticPreset(Number(equip.dataset.equipPreset));});
+$('weeklyChallengeGrid')?.addEventListener('click',event=>{const btn=event.target.closest('[data-claim-weekly]');if(btn)claimWeeklyChallenge(btn.dataset.claimWeekly);});
+$('serverLb')?.addEventListener('click',event=>{const row=event.target.closest('[data-profile-user-id]');if(row)openInGamePlayerProfile(row.dataset.profileUserId);});
+$('closeInGameProfileBtn')?.addEventListener('click',()=>$('inGameProfileOverlay').classList.add('hidden'));
+$('matchPlayerCards')?.addEventListener('click',()=>$('matchPlayerCards').classList.add('hidden'));
+$('togglePingBarBtn')?.addEventListener('click',()=>$('partyPingBar').classList.toggle('hidden'));
+document.querySelectorAll('[data-party-ping]').forEach(btn=>btn.addEventListener('click',()=>sendPartyPing(btn.dataset.partyPing)));
+window.addEventListener('keydown',event=>{if(state.screen==='play'&&event.code==='KeyV'&&!event.repeat){event.preventDefault();$('partyPingBar')?.classList.toggle('hidden');}});
+$('deathProfileBtn')?.addEventListener('click',()=>{const uid=deathRecapState.killer?.userId;if(uid)openInGamePlayerProfile(uid);});
+$('deathSpectateBtn')?.addEventListener('click',()=>{const k=deathRecapState.killer;if(k?.networkRemote&&!k.dead){socialState.spectating=true;socialState.spectateFocusClientId=k.netClientId;ui.death.classList.add('hidden');$('spectatorHud')?.classList.remove('hidden');}});
+$('deathReportBtn')?.addEventListener('click',()=>{const k=deathRecapState.killer;if(k?.userId){netSend({type:'report_player',targetUserId:k.userId,reason:'death_recap'});$('deathReportBtn').disabled=true;$('deathRecapHint').textContent='Report submitted for moderator review.';}});
+renderCosmeticPresets();renderWeeklyChallenges();
+/* ===== END SOCIAL CONTENT & RETENTION PATCH ===== */
+
 installSocialHub();
 /* ===== END SOCIAL, PROFILE, MATCHMAKING & PROGRESSION PATCH ===== */
 
@@ -15925,6 +16064,18 @@ body.bossRushMinimal #leaveGameBtn{
 @keyframes mythicShardBurst{0%,10%{opacity:0;transform:translate(0,0) rotate(0) scale(.4)}24%{opacity:1;transform:translate(0,0) rotate(30deg) scale(1)}100%{opacity:0;transform:translate(70px,-110px) rotate(430deg) scale(.5)}}
 @media(max-width:620px){#mythicPullOverlay .mythicCutin{padding:18px 14px 22px!important}#mythicPullOverlay .mythicPreviewFrame{width:150px;height:150px}#mythicPullOverlay #mythicCutinPreview{width:135px;height:135px}#mythicPullOverlay #mythicCutinName{letter-spacing:-1.5px!important}}
 @media(prefers-reduced-motion:reduce){#mythicPullOverlay.show,#mythicPullOverlay *{animation-duration:.01ms!important;animation-iteration-count:1!important}}
+</style>
+
+
+<style id="fragment-social-content-patch-style">
+.cosmeticPresetSection{margin-top:12px;border:3px solid #101820;background:#eef3f7;padding:10px}.cosmeticPresetHeading{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:9px}.cosmeticPresetHeading b,.cosmeticPresetHeading span{display:block}.cosmeticPresetHeading span{font-size:10px;color:#526170;margin-top:2px}.cosmeticPresetGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.cosmeticPresetCard{border:3px solid #101820;background:#fff;padding:8px;min-width:0}.cosmeticPresetCard input{width:100%;font-weight:1000;margin-bottom:6px}.cosmeticPresetSummary{font-size:9px;color:#526170;min-height:34px;overflow-wrap:anywhere}.cosmeticPresetActions{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:7px}.cosmeticPresetActions button{min-height:34px}
+.weeklyChallengesWindow{width:min(960px,calc(100vw - 36px))!important}.weeklyChallengeHeader{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}.weeklyChallengeHeader>div{border:3px solid #101820;background:#eef3f7;padding:10px}.weeklyChallengeHeader span,.weeklyChallengeHeader b{display:block}.weeklyChallengeHeader span{font-size:9px;font-weight:1000}.weeklyChallengeHeader b{font-size:18px;margin-top:3px}.weeklyChallengeGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.weeklyChallengeCard{border:3px solid #101820;background:#fff;padding:11px}.weeklyChallengeCard.complete{background:#e1f3e6}.weeklyChallengeCard.claimed{opacity:.68}.weeklyChallengeTop{display:flex;justify-content:space-between;gap:8px}.weeklyChallengeTop b{font-size:13px}.weeklyChallengeTop span{font-size:9px;font-weight:1000}.weeklyChallengeCard p{font-size:10px;color:#526170;min-height:30px}.weeklyProgress{height:12px;border:3px solid #101820;background:#eef3f7}.weeklyProgress i{display:block;height:100%;background:#315fc9}.weeklyChallengeBottom{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-top:8px}.weeklyReward{font-size:9px;font-weight:1000}.weeklyChallengeNote{font-size:10px;color:#526170;margin:10px 0 0}
+#partyInGameHud{left:14px!important;top:260px!important;width:220px!important;max-height:250px;overflow:auto}#partyInGameMembers{display:grid;gap:5px}.partyHudMember{display:grid;grid-template-columns:8px minmax(0,1fr) auto;gap:6px;align-items:center;border:2px solid #101820;background:#eef3f7;padding:5px}.partyHudMember i{width:8px;height:8px;border-radius:50%;background:#7c8794}.partyHudMember.online i{background:#4dbd74}.partyHudMember b,.partyHudMember span{font-size:9px;overflow-wrap:anywhere}.partyHudMember span{text-align:right;color:#526170}#togglePingBarBtn{width:100%;margin-top:7px;min-height:34px}#partyPingBar{position:fixed;left:50%;bottom:118px;transform:translateX(-50%);z-index:1600;display:flex;gap:6px;flex-wrap:wrap;justify-content:center;width:min(680px,92vw);padding:8px;border:3px solid #101820;background:#c7ced6;box-shadow:6px 6px 0 rgba(0,0,0,.2)}#partyPingBar.hidden{display:none}#partyPingBar button{min-height:40px;flex:1 1 110px;border:3px solid #101820;background:#eef3f7;font-weight:1000}
+.deathRecapCard{width:min(780px,94vw)!important}.deathRecapTop{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.deathRecapTop span{font-size:9px;font-weight:1000}.deathRecapTop h2{margin:2px 0 0}.deathKillerHp{border:3px solid #101820;background:#eef3f7;padding:8px;font-weight:1000}.deathRecapGrid{display:grid;grid-template-columns:minmax(190px,.8fr) minmax(0,1.4fr);gap:10px;margin:12px 0}.deathKillerPanel,.deathRecapStats{border:3px solid #101820;background:#eef3f7;padding:12px}.deathKillerPanel span,.deathKillerPanel b,.deathKillerPanel em{display:block}.deathKillerPanel span{font-size:9px}.deathKillerPanel b{font-size:20px;margin:4px 0}.deathKillerPanel em{font-size:10px;color:#526170}.deathRecapStats{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}.deathStat{border:2px solid #101820;background:#fff;padding:7px}.deathStat b,.deathStat span{display:block}.deathStat b{font-size:16px}.deathStat span{font-size:9px;color:#526170}.deathRecapActions{display:flex;gap:7px;flex-wrap:wrap}.deathRecapActions button{flex:1 1 120px;min-height:42px}.deathRecapHint{font-size:9px;color:#526170;margin-top:8px}
+.matchPlayerCardsOverlay{z-index:4200!important;background:#101820ee!important}.matchPlayerCardsPanel{width:min(1060px,94vw);padding:18px}.matchPlayerCardsTop{display:flex;justify-content:space-between;align-items:end;color:#fff;margin-bottom:12px}.matchPlayerCardsTop span{font-size:10px;font-weight:1000;letter-spacing:.15em}.matchPlayerCardsTop h2{font-size:36px;margin:2px 0 0}.matchPlayerCardsGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.matchPlayerCard{border:4px solid #fff;background:#eef3f7;color:#101820;min-height:220px;padding:10px;position:relative;overflow:hidden}.matchPlayerCard:before{content:"";position:absolute;inset:0 0 auto;height:56px;background:#315fc9}.matchPlayerCard.banner-floor7:before{background:#7b1f2d}.matchPlayerCard.banner-void:before{background:#3b2857}.matchPlayerCard.banner-azure:before{background:#276f93}.matchPlayerCard canvas{position:relative;z-index:1;width:76px;height:76px;border:3px solid #101820;background:#fff;margin:18px auto 7px;display:block}.matchPlayerCard h3,.matchPlayerCard b,.matchPlayerCard span,.matchPlayerCard small{display:block;text-align:center;overflow-wrap:anywhere}.matchPlayerCard h3{font-size:18px;margin:0}.matchPlayerCard b{font-size:9px;color:#8b2638}.matchPlayerCard span{font-size:10px;margin-top:8px}.matchPlayerCard small{font-size:9px;color:#526170;margin-top:4px}
+.inGameProfileOverlay{z-index:5000!important;background:#101820cc!important}.inGameProfileCard{width:min(840px,94vw)!important;max-height:90vh;overflow:auto}.inGameProfileTop{display:flex;justify-content:space-between;align-items:flex-start}.inGameProfileBanner{width:100%;height:112px;background:#315fc9;border:3px solid #101820;display:flex;align-items:center;padding-left:18px}.inGameProfileBanner canvas{width:88px;height:88px;background:#fff;border:3px solid #101820}.inGameProfileTop button{width:44px;min-width:44px;height:44px;margin-left:8px}.inGameProfileIdentity h2{font-size:28px;margin:9px 0 0}.inGameProfileIdentity b,.inGameProfileIdentity span{display:block;font-size:10px}.inGameProfileCard>p{border:3px solid #101820;background:#eef3f7;padding:10px}.inGameProfileFavorite{border:3px solid #101820;background:#eef3f7;padding:10px}.inGameProfileStats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0}.inGameProfileStats div{border:3px solid #101820;background:#eef3f7;padding:7px;text-align:center}.inGameProfileStats b,.inGameProfileStats span{display:block}.inGameProfileStats span{font-size:8px}.inGameProfileShowcase{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.inGameProfileShowcase>div{border:2px solid #101820;background:#eef3f7;padding:6px;font-size:8px;overflow-wrap:anywhere}.lbRow.lbProfileLink{cursor:pointer}.lbRow.lbProfileLink:hover{background:#dbe7ff!important;outline:2px solid #315fc9}.lbRow.lbProfileLink span{text-decoration:underline;text-decoration-style:dotted}
+.areaWorldLabel{pointer-events:none}.partyWorldPing{pointer-events:none}
+@media(max-width:760px){.cosmeticPresetGrid,.weeklyChallengeHeader,.weeklyChallengeGrid,.deathRecapGrid{grid-template-columns:1fr}.inGameProfileStats{grid-template-columns:repeat(2,1fr)}.inGameProfileShowcase{grid-template-columns:repeat(2,1fr)}#partyInGameHud{top:auto!important;bottom:190px!important;width:190px!important}.matchPlayerCardsGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.matchPlayerCard{min-height:190px}.matchPlayerCard:nth-child(n+5){display:none}}
 </style>
 
 </body>
