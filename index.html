@@ -15715,5 +15715,120 @@ body.bossRushMinimal #leaveGameBtn{
 }
 </style>
 
+
+<style id="fragment-v1-modal-cutoff-fix">
+/* Prevent parent launcher containers from clipping modal windows. */
+#menu,
+#menuCard,
+#menuCard.v3Launcher,
+.v3Home{
+  overflow:visible!important;
+}
+
+/* Make every modal a viewport-centered overlay that can scroll safely. */
+.menuModal{
+  position:fixed!important;
+  inset:0!important;
+  display:none!important;
+  align-items:center!important;
+  justify-content:center!important;
+  padding:18px!important;
+  overflow:auto!important;
+  overscroll-behavior:contain!important;
+  z-index:3000!important;
+}
+.menuModal.active{
+  display:flex!important;
+}
+.menuModal .modalCard{
+  position:relative!important;
+  top:auto!important;
+  left:auto!important;
+  right:auto!important;
+  bottom:auto!important;
+  transform:none!important;
+  margin:auto!important;
+  width:min(960px, calc(100vw - 36px))!important;
+  max-width:calc(100vw - 36px)!important;
+  max-height:calc(100vh - 36px)!important;
+  overflow:auto!important;
+  box-sizing:border-box!important;
+}
+.menuModal .compactWindow.smallWindow{
+  width:min(700px, calc(100vw - 36px))!important;
+}
+.menuModal .profileWindow,
+.menuModal .profileEditWindow,
+.menuModal .achievementsWindow{
+  width:min(980px, calc(100vw - 36px))!important;
+}
+.menuModal .modalTop{
+  position:sticky!important;
+  top:0!important;
+  z-index:4!important;
+  background:#c7ced6!important;
+  padding-top:0!important;
+}
+.menuModal .modalTop h2{
+  padding-right:10px!important;
+}
+.menuModal .modalClose{
+  flex:0 0 auto!important;
+}
+.menuModal .modalCard > *{
+  min-width:0!important;
+}
+@media(max-width:700px){
+  .menuModal{
+    padding:12px!important;
+  }
+  .menuModal .modalCard,
+  .menuModal .profileWindow,
+  .menuModal .profileEditWindow,
+  .menuModal .achievementsWindow,
+  .menuModal .compactWindow.smallWindow{
+    width:calc(100vw - 24px)!important;
+    max-width:calc(100vw - 24px)!important;
+    max-height:calc(100vh - 24px)!important;
+  }
+}
+</style>
+
+
+<script id="fragment-v1-modal-cutoff-script">
+(function(){
+  function fitActiveMenuModals(){
+    document.querySelectorAll('.menuModal.active .modalCard').forEach(card=>{
+      card.style.maxHeight = Math.max(240, window.innerHeight - 36) + 'px';
+      card.style.maxWidth = Math.max(320, window.innerWidth - 36) + 'px';
+      card.scrollTop = Math.min(card.scrollTop, Math.max(0, card.scrollHeight - card.clientHeight));
+    });
+  }
+
+  const originalOpenMenuModal = window.openMenuModal;
+  if(typeof originalOpenMenuModal === 'function'){
+    window.openMenuModal = function patchedOpenMenuModal(name){
+      const result = originalOpenMenuModal.apply(this, arguments);
+      requestAnimationFrame(fitActiveMenuModals);
+      return result;
+    };
+  }
+
+  const originalCloseMenuModal = window.closeMenuModal;
+  if(typeof originalCloseMenuModal === 'function'){
+    window.closeMenuModal = function patchedCloseMenuModal(){
+      const result = originalCloseMenuModal.apply(this, arguments);
+      requestAnimationFrame(fitActiveMenuModals);
+      return result;
+    };
+  }
+
+  window.addEventListener('resize', fitActiveMenuModals);
+  window.addEventListener('orientationchange', fitActiveMenuModals);
+  document.addEventListener('DOMContentLoaded', ()=>requestAnimationFrame(fitActiveMenuModals));
+  requestAnimationFrame(fitActiveMenuModals);
+})();
+</script>
+
 </body>
 </html>
