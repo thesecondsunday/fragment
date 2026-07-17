@@ -1973,3 +1973,209 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`Fragment.io social/matchmaking server running on port ${PORT}`);
   console.log('Friend presence, parties, spectating, joining, hidden matches, dynamic bot fill, and legacy rooms are enabled.');
 });
+
+// -----------------------------------------------------------------------------
+// Fragment.io irregular island map synchronization patch
+// -----------------------------------------------------------------------------
+var sharedBiomes = [
+  {id:'glacial',name:'Glacial Relay',effect:'Reduced acceleration',cx:0,cy:-2100,sx:2500,sy:1200,bias:-.05,x:-3150,y:-3150,w:6300,h:2550},
+  {id:'verdant',name:'Verdant Divide',effect:'Gentle regeneration',cx:-2600,cy:-850,sx:2100,sy:1800,bias:0,x:-4600,y:-2600,w:3900,h:3600},
+  {id:'furnace',name:'The Furnace',effect:'Fragments grant bonus XP',cx:-3000,cy:1200,sx:1900,sy:1700,bias:0,x:-4650,y:-250,w:3550,h:3000},
+  {id:'sharddunes',name:'Shard Dunes',effect:'Fragment score increased',cx:-450,cy:2050,sx:2500,sy:1350,bias:.03,x:-2850,y:900,w:5100,h:2200},
+  {id:'stormbreak',name:'Stormbreak Coast',effect:'Dash recharge increased',cx:3200,cy:-1250,sx:1500,sy:1150,bias:-.04,x:1950,y:-2600,w:2350,h:2350},
+  {id:'skyglass',name:'Skyglass Expanse',effect:'Movement speed increased',cx:2900,cy:350,sx:1700,sy:1700,bias:0,x:1450,y:-900,w:2900,h:2950},
+  {id:'terminus',name:'Elevator Terminus',effect:'Boss activity increased',cx:2450,cy:2100,sx:1450,sy:1150,bias:-.02,x:1200,y:1050,w:3000,h:2050},
+  {id:'hub',name:'Shattered Hub',effect:'High-conflict neutral ground',cx:-150,cy:-250,sx:1050,sy:780,bias:-.16,x:-1500,y:-1250,w:2800,h:2050},
+  {id:'nullgarden',name:'Null Garden',effect:'Natural fragments heal more',cx:850,cy:450,sx:850,sy:720,bias:-.18,x:-50,y:-300,w:1850,h:1650}
+];
+
+function islandServerGauss(nx,ny,cx,cy,sx,sy){
+  const dx=(nx-cx)/sx,dy=(ny-cy)/sy;
+  return Math.exp(-(dx*dx+dy*dy));
+}
+function islandServerField(x,y){
+  const nx=x/HALF_W,ny=y/HALF_H;
+  let value=1-Math.pow(Math.abs(nx)/.87,2.55)-Math.pow(Math.abs(ny)/.86,2.45);
+  value+=.34*islandServerGauss(nx,ny,-.72,-.28,.34,.38);
+  value+=.20*islandServerGauss(nx,ny,-.48,.68,.38,.30);
+  value+=.26*islandServerGauss(nx,ny,.62,.60,.31,.33);
+  value+=.18*islandServerGauss(nx,ny,.73,-.55,.28,.25);
+  value+=.11*Math.sin(nx*8.4+ny*3.1)*Math.sin(ny*6.2-nx*2.2);
+  value-=.54*islandServerGauss(nx,ny,.84,-.05,.22,.26);
+  value-=.34*islandServerGauss(nx,ny,-.88,.20,.18,.30);
+  value-=.45*islandServerGauss(nx,ny,-.02,.94,.26,.16);
+  value-=.24*islandServerGauss(nx,ny,.10,-.92,.22,.14);
+  return value;
+}
+function islandServerInside(x,y,margin=0){
+  if(!Number.isFinite(x)||!Number.isFinite(y)||Math.abs(x)>HALF_W-5||Math.abs(y)>HALF_H-5)return false;
+  return islandServerField(x,y)>(Math.max(0,Number(margin)||0)/Math.min(HALF_W,HALF_H)*1.12);
+}
+function islandServerNearest(x,y,margin=0){
+  x=clamp(Number(x)||0,-HALF_W+10,HALF_W-10);
+  y=clamp(Number(y)||0,-HALF_H+10,HALF_H-10);
+  if(islandServerInside(x,y,margin))return{x,y};
+  let lo=0,hi=1;
+  for(let i=0;i<34;i++){
+    const mid=(lo+hi)/2;
+    if(islandServerInside(x*mid,y*mid,margin))lo=mid;else hi=mid;
+  }
+  let px=x*lo,py=y*lo;
+  const len=Math.hypot(px,py)||1,inward=Math.max(10,margin*.18);
+  px-=px/len*inward;py-=py/len*inward;
+  if(!islandServerInside(px,py,margin)){px=0;py=0;}
+  return{x:px,y:py};
+}
+function islandServerBiomeAt(x,y){
+  if(!islandServerInside(x,y,0)){const p=islandServerNearest(x,y,0);x=p.x;y=p.y;}
+  let best=sharedBiomes[0],bestScore=Infinity;
+  for(let i=0;i<sharedBiomes.length;i++){
+    const b=sharedBiomes[i],dx=(x-b.cx)/b.sx,dy=(y-b.cy)/b.sy;
+    const score=dx*dx+dy*dy+(b.bias||0)+.09*Math.sin(x/690+i*1.7)*Math.cos(y/610-i*.9);
+    if(score<bestScore){bestScore=score;best=b;}
+  }
+  return best;
+}
+function islandServerRandomPoint(margin=160,biomeId=null,minRadius=0){
+  const desired=biomeId?sharedBiomes.find(b=>b.id===biomeId):null;
+  for(let tries=0;tries<180;tries++){
+    let x,y;
+    if(desired){x=rand(desired.x+20,desired.x+desired.w-20);y=rand(desired.y+20,desired.y+desired.h-20);}
+    else{x=rand(-HALF_W+80,HALF_W-80);y=rand(-HALF_H+80,HALF_H-80);}
+    if(Math.hypot(x,y)<minRadius||!islandServerInside(x,y,margin))continue;
+    if(desired&&islandServerBiomeAt(x,y).id!==desired.id)continue;
+    return{x,y};
+  }
+  return desired?islandServerNearest(desired.cx,desired.cy,margin):{x:0,y:0};
+}
+function islandServerConstrainObject(obj,margin=40){
+  if(!obj)return false;
+  if(islandServerInside(obj.x,obj.y,margin))return false;
+  const p=islandServerNearest(obj.x,obj.y,margin);
+  obj.x=p.x;obj.y=p.y;obj.vx=(obj.vx||0)*.24;obj.vy=(obj.vy||0)*.24;
+  return true;
+}
+
+randomArenaPoint=function(minRadius=0,margin=360){
+  return islandServerRandomPoint(Math.max(80,margin),null,minRadius);
+};
+
+const islandOriginalSanitizeSnapshot=sanitizeSnapshot;
+sanitizeSnapshot=function(client,room,raw){
+  const snap=islandOriginalSanitizeSnapshot(client,room,raw);
+  const p=islandServerNearest(snap.x,snap.y,(snap.r||18)+12);
+  if(p.x!==snap.x||p.y!==snap.y){snap.x=p.x;snap.y=p.y;snap.vx*=.25;snap.vy*=.25;}
+  for(const clone of snap.clones||[]){
+    const cp=islandServerNearest(clone.x,clone.y,(clone.r||12)+8);clone.x=cp.x;clone.y=cp.y;
+  }
+  return snap;
+};
+
+const islandOriginalSpawnSharedFragment=spawnSharedFragment;
+spawnSharedFragment=function(room,kind='xp',x=null,y=null,extra=null){
+  const p=(x==null||y==null)?islandServerRandomPoint(30):islandServerNearest(x,y,30);
+  return islandOriginalSpawnSharedFragment(room,kind,p.x,p.y,extra);
+};
+
+function spawnSharedTerrainFeature(room){
+  const type=['crater','vine','ice','void','road'][irand(0,5)];
+  const p=islandServerRandomPoint(type==='road'?150:180);
+  const feature={
+    id:'terrain_'+(++room.lastTerrainSerial)+'_'+id(3),
+    type,x:p.x,y:p.y,life:rand(38,72),spawn:1.35,
+    r:type==='road'?170:type==='vine'?120:type==='crater'?95:type==='void'?115:135,
+    angle:rand(0,Math.PI)
+  };
+  room.terrainFeatures.push(feature);
+  if(room.terrainFeatures.length>40)room.terrainFeatures.splice(0,room.terrainFeatures.length-40);
+  broadcast(room.code,{type:'terrain_event',action:'spawn',terrain:terrainSnapshot(feature)});
+  return feature;
+}
+
+setSharedHotZone=function(room){
+  const b=sharedBiomes[irand(0,sharedBiomes.length)];
+  room.hotZone={biome:b,timer:75,pulse:0,id:'hot_'+id(4)};
+  room.nextHotZoneAt=Date.now()+rand(85000,110000);
+  broadcast(room.code,{type:'hotzone_event',action:'set',hotZone:hotZoneSnapshot(room.hotZone)});
+};
+
+updateSharedMapSystems=function(room,dt){
+  if(!room.matchStarted||room.mode==='bossrush')return;
+  const now=Date.now();
+  if(!room.hotZone&&now>(room.nextHotZoneAt||0)&&!['test','br'].includes(room.mode))setSharedHotZone(room);
+  if(room.hotZone){
+    room.hotZone.timer=Math.max(0,room.hotZone.timer-dt/1000);
+    room.hotZone.pulse=(room.hotZone.pulse||0)+dt/1000;
+    if(room.hotZone.timer<=0){
+      room.hotZone=null;room.nextHotZoneAt=now+rand(85000,112000);
+      broadcast(room.code,{type:'hotzone_event',action:'clear'});
+    }else if(Math.random()<.035){
+      const p=islandServerRandomPoint(45,room.hotZone.biome.id);
+      spawnSharedFragment(room,Math.random()<.78?'xp':Math.random()<.65?'natural':'ability',p.x,p.y);
+    }
+  }
+  if(now>(room.nextTerrainAt||0)&&!['test','br'].includes(room.mode)){
+    room.nextTerrainAt=now+rand(9000,13500);
+    if(Math.random()<.78)spawnSharedTerrainFeature(room);
+  }
+  for(let i=room.terrainFeatures.length-1;i>=0;i--){
+    const f=room.terrainFeatures[i];f.life-=dt/1000;f.spawn=Math.max(0,(f.spawn||0)-dt/1000);
+    islandServerConstrainObject(f,Math.min(180,(f.r||100)*.35));
+    if(f.life<=0)room.terrainFeatures.splice(i,1);
+  }
+};
+
+const islandOriginalActivateSharedWorld=activateSharedWorld;
+activateSharedWorld=function(room,modeObj=null){
+  const result=islandOriginalActivateSharedWorld(room,modeObj);
+  for(const z of room.world.zones){
+    const p=islandServerRandomPoint(Math.min(180,(z.r||250)*.28));z.x=p.x;z.y=p.y;
+  }
+  broadcast(room.code,{type:'world_event',action:'activate',world:room.world.mode,timer:room.world.timer,zones:room.world.zones});
+  return result;
+};
+
+const islandOriginalSpawnSharedBoss=spawnSharedBoss;
+spawnSharedBoss=function(room,forcedId=null){
+  const b=islandOriginalSpawnSharedBoss(room,forcedId);
+  if(b){
+    const p=islandServerRandomPoint((b.r||48)+90,null,600);b.x=p.x;b.y=p.y;
+    broadcast(room.code,{type:'bosses_state',bosses:room.bosses.map(bossSnapshot),immediate:true});
+  }
+  return b;
+};
+
+const islandOriginalUpdateServerBots=updateServerBots;
+updateServerBots=function(room,dt){
+  const result=islandOriginalUpdateServerBots(room,dt);
+  let corrected=false;
+  for(const bot of room.bots){
+    if(islandServerConstrainObject(bot,(bot.r||18)+12)){
+      const roam=islandServerRandomPoint(170);bot.roamX=roam.x;bot.roamY=roam.y;corrected=true;
+    }
+  }
+  if(corrected&&Date.now()-(room.lastIslandCorrectionBroadcast||0)>180){
+    room.lastIslandCorrectionBroadcast=Date.now();
+    broadcast(room.code,{type:'bots_state',mode:room.mode,bots:room.bots.map(botSnapshot)});
+  }
+  return result;
+};
+
+const islandOriginalUpdateSharedBosses=updateSharedBosses;
+updateSharedBosses=function(room,dt){
+  const result=islandOriginalUpdateSharedBosses(room,dt);
+  for(const boss of room.bosses)islandServerConstrainObject(boss,(boss.r||48)+70);
+  return result;
+};
+
+const islandOriginalUpdateSharedWorld=updateSharedWorld;
+updateSharedWorld=function(room,dt){
+  const result=islandOriginalUpdateSharedWorld(room,dt);
+  for(const f of room.fragments)islandServerConstrainObject(f,(f.r||9)+5);
+  for(const z of room.world.zones)islandServerConstrainObject(z,Math.min(180,(z.r||250)*.28));
+  for(const feature of room.terrainFeatures)islandServerConstrainObject(feature,Math.min(180,(feature.r||100)*.35));
+  return result;
+};
+
+console.log('[Fragment.io] Irregular island map synchronization enabled.');
+
