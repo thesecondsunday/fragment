@@ -5838,6 +5838,7 @@ let accountProgress=null;
 let cosmeticPresets=[null,null,null];
 let weeklyChallengeState={weekKey:'',baseline:{},claimed:{},evolutionWins:{}};
 let partyWorldPings=[];
+let partySpeechBubbles=[];
 let incomingMatchPlayerCards=[];
 let deathRecapState={damageTaken:0,lastAttack:'Unknown attack',lastSource:null,killer:null};
 let persistentMatchSession=null;
@@ -14234,6 +14235,7 @@ function draw(){
     for(const b of bots) drawEntity(b,cam.x,cam.y);
     for(const b of bosses) drawEntity(b,cam.x,cam.y);
     drawEntity(player,cam.x,cam.y);
+    drawPartySpeechBubbles(cam.x,cam.y);
     drawParticles(cam.x,cam.y);
     ctx.restore();
     drawWorldPostFX();
@@ -14281,11 +14283,16 @@ function filterChat(msg){
 function addChat(name,msg){
   if(gameMode==='bossrush' && String(name).toUpperCase()==='SERVER') return;
   chatMessages.push({name:filterChat(name), msg:filterChat(msg)});
-  chatMessages = chatMessages.slice(-8);
+  chatMessages = chatMessages.slice(-60);
   renderChat();
 }
 function renderChat(){
-  ui.chatMessages.innerHTML = chatMessages.map(m=>`<div class="chatMsg"><b>${m.name}:</b> ${m.msg}</div>`).join('');
+  if(!ui?.chatMessages)return;
+  const box=ui.chatMessages;
+  const distanceFromBottom=box.scrollHeight-box.scrollTop-box.clientHeight;
+  const shouldFollow=distanceFromBottom<28;
+  box.innerHTML=chatMessages.map(m=>`<div class="chatMsg"><b>${escapeHtml(m.name)}:</b> ${escapeHtml(m.msg)}</div>`).join('');
+  if(shouldFollow)box.scrollTop=box.scrollHeight;
 }
 function updateServerChat(dt){
   if(gameMode==='bossrush') return;
@@ -14324,6 +14331,9 @@ ui.chatInput.addEventListener('keydown', e=>{
   e.stopPropagation();
 });
 ui.chatInput.addEventListener('focus', ()=>{ keys['w']=keys['a']=keys['s']=keys['d']=false; });
+ui.chatMessages?.addEventListener('wheel',event=>event.stopPropagation(),{passive:true});
+ui.chatMessages?.addEventListener('pointerdown',event=>event.stopPropagation());
+window.addEventListener('resize',()=>{if(state.screen==='play')renderPartyInGameHud();});
 
 function forceWorld(mode){ world.mode=mode; world.timer=90; notify('Debug World: '+mode.name, mode.desc); updateHud(); }
 function resetEntityCombatForDebug(ent){
@@ -14878,10 +14888,126 @@ const _drawMapSystemsContentPatch=drawMapSystems;drawMapSystems=function(camX,ca
 function drawPartyPingsOnMap(canvasEl){if(!canvasEl||!partyWorldPings.length)return;const c=canvasEl.getContext('2d');for(const p of partyWorldPings){const x=(p.x+HALF_W)/WORLD_W*canvasEl.width,y=(p.y+HALF_H)/WORLD_H*canvasEl.height;c.save();c.globalAlpha=clamp(p.life/3,0,1);c.fillStyle=p.color;c.strokeStyle='#fff';c.lineWidth=2;c.beginPath();c.arc(x,y,5,0,Math.PI*2);c.fill();c.stroke();c.restore();}}
 const _drawMiniMapContentPatch=drawMiniMap;drawMiniMap=function(){const result=_drawMiniMapContentPatch();drawPartyPingsOnMap($('miniMap'));return result;};
 const _drawBigMapContentPatch=drawBigMap;drawBigMap=function(){const result=_drawBigMapContentPatch();drawPartyPingsOnMap($('bigMap'));return result;};
-function sendPartyPing(kind){const def=PARTY_PING_TYPES[kind];if(!def||!player)return;const point=screenToWorld(mouse.x,mouse.y);if(multiplayer.connected&&socialState.party?.members?.length>1)netSend({type:'party_ping',kind,x:point.x,y:point.y});else receivePartyPing({kind,x:point.x,y:point.y,sourceName:player.name,userId:cloudUser?.id||''});$('partyPingBar').classList.add('hidden');}
-function receivePartyPing(msg){const def=PARTY_PING_TYPES[msg.kind];if(!def)return;partyWorldPings.push({kind:msg.kind,x:Number(msg.x)||0,y:Number(msg.y)||0,sourceName:String(msg.sourceName||'Party'),life:8,color:def.color,label:def.label});partyWorldPings=partyWorldPings.slice(-12);addChat('PARTY',`${msg.sourceName||'Party'}: ${def.label}`);tone(520,0.07,'square',0.025);}
-function drawPartyWorldPings(camX,camY){ctx.save();ctx.textAlign='center';for(const p of partyWorldPings){const sx=p.x-camX,sy=p.y-camY,progress=clamp(p.life/8,0,1);ctx.globalAlpha=Math.min(1,progress*1.8);ctx.strokeStyle=p.color;ctx.lineWidth=4;ctx.beginPath();ctx.arc(sx,sy,24+Math.sin(performance.now()/120)*5,0,Math.PI*2);ctx.stroke();ctx.fillStyle=p.color;ctx.font='900 11px Arial';ctx.fillText(p.label,sx,sy-34);ctx.fillStyle='#fff';ctx.font='900 9px Arial';ctx.fillText(p.sourceName,sx,sy-22);}ctx.restore();}
-function renderPartyInGameHud(){const box=$('partyInGameHud'),list=$('partyInGameMembers');if(!box||!list)return;const members=socialState.party?.members||[];box.classList.toggle('hidden',state.screen!=='play'||members.length<2);if(members.length<2)return;list.innerHTML=members.map(m=>{const ent=m.userId===cloudUser?.id?player:remotePlayers.find(r=>r.userId===m.userId);const status=ent&&!ent.dead?Math.ceil(ent.hp)+' HP':m.status==='in_match'?'IN MATCH':String(m.status||'ONLINE').replace('_',' ').toUpperCase();return`<div class="partyHudMember ${m.online?'online':''}"><i></i><b>${m.leader?'★ ':''}${escapeHtml(m.name)}</b><span>${escapeHtml(status)}</span></div>`;}).join('');}
+function pingSpeakerEntity(userId,sourceName){
+  if(userId&&userId===cloudUser?.id)return player;
+  if(userId){
+    const remote=remotePlayers.find(entity=>entity.userId===userId&&!entity.dead);
+    if(remote)return remote;
+  }
+  if(sourceName){
+    const remote=remotePlayers.find(entity=>entity.name===sourceName&&!entity.dead);
+    if(remote)return remote;
+  }
+  return null;
+}
+function showPartySpeechBubble(userId,sourceName,label){
+  const key=String(userId||sourceName||'party');
+  partySpeechBubbles=partySpeechBubbles.filter(b=>b.key!==key);
+  partySpeechBubbles.push({key,userId:String(userId||''),sourceName:String(sourceName||'Party'),label:String(label||''),life:2.65,maxLife:2.65});
+  partySpeechBubbles=partySpeechBubbles.slice(-10);
+}
+function sendPartyPing(kind){
+  const def=PARTY_PING_TYPES[kind];
+  if(!def||!player)return;
+  const point=screenToWorld(mouse.x,mouse.y);
+  showPartySpeechBubble(cloudUser?.id||'local',player.name,def.label);
+  if(multiplayer.connected&&socialState.party?.members?.length>1){
+    netSend({type:'party_ping',kind,x:point.x,y:point.y});
+  }else{
+    receivePartyPing({kind,x:point.x,y:point.y,sourceName:player.name,userId:cloudUser?.id||'local'});
+  }
+  $('partyPingBar').classList.add('hidden');
+}
+function receivePartyPing(msg){
+  const def=PARTY_PING_TYPES[msg.kind];
+  if(!def)return;
+  partyWorldPings.push({kind:msg.kind,x:Number(msg.x)||0,y:Number(msg.y)||0,sourceName:String(msg.sourceName||'Party'),life:8,color:def.color,label:def.label});
+  partyWorldPings=partyWorldPings.slice(-12);
+  showPartySpeechBubble(msg.userId,msg.sourceName,def.label);
+  addChat('PARTY',`${msg.sourceName||'Party'}: ${def.label}`);
+  tone(520,0.07,'square',0.025);
+}
+function drawPartyWorldPings(camX,camY){
+  ctx.save();
+  ctx.textAlign='center';
+  for(const p of partyWorldPings){
+    const sx=p.x-camX,sy=p.y-camY,progress=clamp(p.life/8,0,1);
+    ctx.globalAlpha=Math.min(1,progress*1.8);
+    ctx.strokeStyle=p.color;
+    ctx.lineWidth=4;
+    ctx.beginPath();
+    ctx.arc(sx,sy,24+Math.sin(performance.now()/120)*5,0,Math.PI*2);
+    ctx.stroke();
+    ctx.fillStyle=p.color;
+    ctx.font='900 11px Arial';
+    ctx.fillText(p.label,sx,sy-34);
+    ctx.fillStyle='#fff';
+    ctx.font='900 9px Arial';
+    ctx.fillText(p.sourceName,sx,sy-22);
+  }
+  ctx.restore();
+}
+function drawPartySpeechBubbles(camX,camY){
+  if(!partySpeechBubbles.length)return;
+  ctx.save();
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  for(const bubble of partySpeechBubbles){
+    const ent=pingSpeakerEntity(bubble.userId,bubble.sourceName);
+    if(!ent||ent.dead)continue;
+    const sx=ent.x-camX;
+    const sy=ent.y-camY-(ent.r||18)-50;
+    const alpha=clamp(Math.min(bubble.life/.32,(bubble.maxLife-bubble.life)/.18),0,1);
+    const label=bubble.label.toUpperCase();
+    ctx.font='1000 12px Arial';
+    const width=Math.min(190,Math.max(78,ctx.measureText(label).width+28));
+    const height=31;
+    const x=sx-width/2,y=sy-height/2;
+    ctx.globalAlpha=alpha;
+    ctx.fillStyle='#eef3f7';
+    ctx.strokeStyle='#101820';
+    ctx.lineWidth=3;
+    ctx.beginPath();
+    ctx.moveTo(x+8,y);
+    ctx.lineTo(x+width-8,y);
+    ctx.quadraticCurveTo(x+width,y,x+width,y+8);
+    ctx.lineTo(x+width,y+height-8);
+    ctx.quadraticCurveTo(x+width,y+height,x+width-8,y+height);
+    ctx.lineTo(sx+7,y+height);
+    ctx.lineTo(sx,y+height+9);
+    ctx.lineTo(sx-7,y+height);
+    ctx.lineTo(x+8,y+height);
+    ctx.quadraticCurveTo(x,y+height,x,y+height-8);
+    ctx.lineTo(x,y+8);
+    ctx.quadraticCurveTo(x,y,x+8,y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle='#101820';
+    ctx.fillText(label,sx,sy);
+  }
+  ctx.restore();
+}
+function renderPartyInGameHud(){
+  const box=$('partyInGameHud'),list=$('partyInGameMembers');
+  if(!box||!list)return;
+  if(ui?.hud&&box.parentElement!==ui.hud)ui.hud.appendChild(box);
+  const members=socialState.party?.members||[];
+  box.classList.toggle('hidden',state.screen!=='play'||members.length<2);
+  if(members.length<2)return;
+  list.innerHTML=members.map(m=>{
+    const ent=m.userId===cloudUser?.id?player:remotePlayers.find(r=>r.userId===m.userId);
+    const status=ent&&!ent.dead?Math.ceil(ent.hp)+' HP':m.status==='in_match'?'IN MATCH':String(m.status||'ONLINE').replace('_',' ').toUpperCase();
+    return`<div class="partyHudMember ${m.online?'online':''}"><i></i><b>${m.leader?'★ ':''}${escapeHtml(m.name)}</b><span>${escapeHtml(status)}</span></div>`;
+  }).join('');
+  const anchor=$('topLeft');
+  if(anchor){
+    const rect=anchor.getBoundingClientRect();
+    const maxTop=Math.max(12,window.innerHeight-box.offsetHeight-16);
+    box.style.left=Math.round(rect.left)+'px';
+    box.style.top=Math.round(Math.min(maxTop,rect.bottom+12))+'px';
+  }
+}
 function drawProfileIconCanvas(canvasEl,value){if(!canvasEl)return;const c=canvasEl.getContext('2d');c.clearRect(0,0,canvasEl.width,canvasEl.height);const v=String(value||'core:circle');if(v.startsWith('hat:')){drawPreviewCore(c,canvasEl.width/2,canvasEl.height*.56,'circle','#5d8cff');drawHatShape(c,canvasEl.width/2,canvasEl.height*.56,v.slice(4));}else drawPreviewCore(c,canvasEl.width/2,canvasEl.height/2,v.startsWith('core:')?v.slice(5):'circle','#5d8cff');}
 function showMatchPlayerCards(cards,mode){cards=Array.isArray(cards)?cards:[];if(!cards.length&&cloudProfile)cards=[{userId:cloudUser?.id,username:cloudProfile.username,title:cloudProfile.equipped_title,banner:cloudProfile.profile_banner,icon:cloudProfile.profile_icon,level:accountProgress?.account_level||1,favoriteEvolution:accountProgress?.stats?.favorite_evolution||'',achievementPoints:accountProgress?.achievement_points||0}];if(!cards.length)return;const overlay=$('matchPlayerCards'),grid=$('matchPlayerCardsGrid');$('matchPlayerCardsMode').textContent=netModeLabel(mode||gameMode);grid.innerHTML=cards.slice(0,6).map((c,i)=>`<article class="matchPlayerCard banner-${escapeHtml(c.banner||'default')}"><canvas width="90" height="90" data-player-card-icon="${i}"></canvas><h3>${escapeHtml(c.username||'Player')}</h3><b>${escapeHtml(c.title||'NO TITLE')}</b><span>LEVEL ${Number(c.level)||1} · ${Number(c.achievementPoints)||0} AP</span><small>${c.favoriteEvolution?'Favourite: '+escapeHtml(primaryName(c.favoriteEvolution)):'No favourite evolution yet'}</small></article>`).join('');cards.slice(0,6).forEach((c,i)=>drawProfileIconCanvas(grid.querySelector(`[data-player-card-icon="${i}"]`),c.icon));overlay.classList.remove('hidden');clearTimeout(showMatchPlayerCards.timer);showMatchPlayerCards.timer=setTimeout(()=>overlay.classList.add('hidden'),3600);}
 function renderInGameProfile(data){if(!data)return;const {profile,progress}=data,p=normalizeAccountProgress(progress);$('inGameProfileName').textContent=profile.username||'Player';$('inGameProfileTitle').textContent=profile.equipped_title||'NO TITLE';$('inGameProfileLevel').textContent=`LEVEL ${p.account_level} · ${p.achievement_points} AP`;$('inGameProfileAbout').textContent=profile.about_me||'No profile description yet.';$('inGameProfileBanner').className='inGameProfileBanner banner-'+(profile.profile_banner||'default');drawProfileIconCanvas($('inGameProfileIcon'),profile.profile_icon);const fav=p.stats.favorite_evolution;$('inGameProfileFavorite').innerHTML=fav?`<b>FAVOURITE EVOLUTION · ${escapeHtml(primaryName(fav))}</b>`:'<b>NO FAVOURITE EVOLUTION YET</b>';const s=p.stats;$('inGameProfileStats').innerHTML=[['Matches',s.matches],['Wins',s.wins],['Eliminations',s.eliminations],['Bosses',s.bosses],['Fragments',s.fragments],['High Score',s.highest_score],['BR Wins',s.br_wins],['Playtime',Math.floor((s.playtime_seconds||0)/60)+'m']].map(([k,v])=>`<div><b>${Number(v||0).toLocaleString()}</b><span>${k}</span></div>`).join('');$('inGameProfileCosmetics').innerHTML=Array.from({length:5},(_,i)=>cosmeticShowcaseCard((profile.featured_cosmetics||[])[i])).join('');const achievements=profile.featured_achievements?.length?profile.featured_achievements:p.showcased_achievements;$('inGameProfileAchievements').innerHTML=Array.from({length:5},(_,i)=>achievementShowcaseCard((achievements||[])[i])).join('');$('inGameProfileOverlay').classList.remove('hidden');}
@@ -14893,7 +15019,18 @@ const _killEntityContentPatch=killEntity;killEntity=function(target,killer){cons
 function renderClickableServerLeaderboard(){if(!ui?.serverLb||!player)return;const list=[player,...remotePlayers.filter(r=>!r.dead),...bots.filter(b=>!b.dead),...bosses.filter(b=>!b.dead)].filter(Boolean).sort((a,b)=>(b.boss?999999:b.score)-(a.boss?999999:a.score)).slice(0,10);ui.serverLb.innerHTML=list.map((x,i)=>{const userId=x===player?cloudUser?.id:(x.networkRemote?x.userId:'');const badge=x.boss?'👹 ':x.networkRemote?'🌐 ':x.team==='blue'?'🟦 ':x.team==='red'?'🟥 ':'';return`<div class="lbRow ${x===player?'lbMe':''} ${userId?'lbProfileLink':''}" ${userId?`data-profile-user-id="${escapeHtml(userId)}" title="View ${escapeHtml(x.name)} profile"`:''}><b>${i+1}</b><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${badge}${displayName(x)}${x.networkRemote?'<span class="networkTag">ONLINE</span>':''}</span><b>${Math.floor(x.score).toLocaleString()}</b></div>`;}).join('');}
 renderServerLb=renderClickableServerLeaderboard;
 const _updateHudContentPatch=updateHud;updateHud=function(){const result=_updateHudContentPatch();if(player){const b=currentAreaDescription();if($('uiAreaEffect'))$('uiAreaEffect').textContent=b.effect||'None';renderPartyInGameHud();}return result;};
-const _updateContentPatch=update;update=function(dt){const result=_updateContentPatch(dt);for(let i=partyWorldPings.length-1;i>=0;i--){partyWorldPings[i].life-=dt/1000;if(partyWorldPings[i].life<=0)partyWorldPings.splice(i,1);}return result;};
+const _updateContentPatch=update;update=function(dt){
+  const result=_updateContentPatch(dt);
+  for(let i=partyWorldPings.length-1;i>=0;i--){
+    partyWorldPings[i].life-=dt/1000;
+    if(partyWorldPings[i].life<=0)partyWorldPings.splice(i,1);
+  }
+  for(let i=partySpeechBubbles.length-1;i>=0;i--){
+    partySpeechBubbles[i].life-=dt/1000;
+    if(partySpeechBubbles[i].life<=0)partySpeechBubbles.splice(i,1);
+  }
+  return result;
+};
 const _beginGameContentPatch=beginGame;beginGame=function(){deathRecapState={damageTaken:0,lastAttack:'Unknown attack',lastSource:null,killer:null};const result=_beginGameContentPatch();if(player)player.userId=cloudUser?.id||'';showMatchPlayerCards(incomingMatchPlayerCards,gameMode);incomingMatchPlayerCards=[];renderPartyInGameHud();return result;};
 const _finishPersistentMatchContentPatch=finishPersistentMatch;finishPersistentMatch=function(outcome='left'){if(outcome==='win'&&accountProgress&&player){const root=rootEvolution(player.archetype||'starter');accountProgress.stats.wins_by_evolution=accountProgress.stats.wins_by_evolution||{};accountProgress.stats.wins_by_evolution[root]=(accountProgress.stats.wins_by_evolution[root]||0)+1;weeklyChallengeState.evolutionWins[root]=true;}const result=_finishPersistentMatchContentPatch(outcome);renderWeeklyChallenges();return result;};
 const _recordPersistentEventContentPatch=recordPersistentEvent;recordPersistentEvent=function(type,data={}){const result=_recordPersistentEventContentPatch(type,data);renderWeeklyChallenges();return result;};
@@ -14908,7 +15045,40 @@ $('togglePingBarBtn')?.addEventListener('click',()=>$('partyPingBar').classList.
 document.querySelectorAll('[data-party-ping]').forEach(btn=>btn.addEventListener('click',()=>sendPartyPing(btn.dataset.partyPing)));
 window.addEventListener('keydown',event=>{if(state.screen==='play'&&event.code==='KeyV'&&!event.repeat){event.preventDefault();$('partyPingBar')?.classList.toggle('hidden');}});
 $('deathProfileBtn')?.addEventListener('click',()=>{const uid=deathRecapState.killer?.userId;if(uid)openInGamePlayerProfile(uid);});
-$('deathSpectateBtn')?.addEventListener('click',()=>{const k=deathRecapState.killer;if(k?.networkRemote&&!k.dead){socialState.spectating=true;socialState.spectateFocusClientId=k.netClientId;ui.death.classList.add('hidden');$('spectatorHud')?.classList.remove('hidden');}});
+$('deathSpectateBtn')?.addEventListener('click',()=>{
+  const recorded=deathRecapState.killer;
+  const clientId=recorded?.netClientId;
+  const killer=clientId?multiplayer.remoteById.get(clientId):null;
+  if(!killer||killer.dead){
+    $('deathRecapHint').textContent='That player is no longer available to spectate.';
+    notify('Spectate unavailable','The killer left the match or was eliminated.');
+    return;
+  }
+  socialState.spectating=true;
+  socialState.pendingSpectator=false;
+  socialState.spectateTargetUserId=killer.userId||recorded?.userId||'';
+  socialState.spectateTargetClientId=killer.netClientId;
+  socialState.spectateFocusClientId=killer.netClientId;
+  socialState.currentMatch={mode:gameMode,joinable:false};
+  state.screen='play';
+  state.paused=false;
+  if(player){
+    player.dead=true;
+    player.human=false;
+    player.hp=0;
+    player.x=killer.x;
+    player.y=killer.y;
+  }
+  mouse.down=false;
+  ui.death.classList.add('hidden');
+  ui.hud.classList.add('hidden');
+  $('spectatorName').textContent=killer.name||'PLAYER';
+  $('spectatorMode').textContent=netModeLabel(gameMode);
+  $('spectatorJoinBtn').disabled=true;
+  $('spectatorHud')?.classList.remove('hidden');
+  updateSpectatorHud();
+  notify('Spectating '+(killer.name||'player'),'A / D changes the followed player. Esc leaves the match.');
+});
 $('deathReportBtn')?.addEventListener('click',()=>{const k=deathRecapState.killer;if(k?.userId){netSend({type:'report_player',targetUserId:k.userId,reason:'death_recap'});$('deathReportBtn').disabled=true;$('deathRecapHint').textContent='Report submitted for moderator review.';}});
 renderCosmeticPresets();renderWeeklyChallenges();
 /* ===== END SOCIAL CONTENT & RETENTION PATCH ===== */
@@ -17738,6 +17908,131 @@ body.bossRushMinimal #leaveGameBtn{
 .cursedFragmentHudList span,.cursedFragmentHudList b{font-size:9px;font-weight:1000;}
 .lbPlayerName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .botTag{display:inline-block;margin-left:5px;padding:1px 4px;border:1px solid currentColor;font-size:8px;font-weight:1000;letter-spacing:.05em;vertical-align:1px;}
+</style>
+
+
+<style id="fragment-v1-hud-spectate-chat-ping-fix">
+/* The old white fallback letter was visible through the transparent SISCON PNG. */
+.bigLogo{
+  width:70px!important;
+  height:70px!important;
+  padding:0!important;
+  overflow:hidden!important;
+  display:grid!important;
+  place-items:center!important;
+  background:#315fc9!important;
+  background-color:#315fc9!important;
+  background-image:none!important;
+}
+.bigLogo:before,
+.bigLogo:after{
+  display:none!important;
+  content:none!important;
+}
+.bigLogo .logoFallback{
+  display:none!important;
+  visibility:hidden!important;
+}
+#menuLogoImg{
+  display:block!important;
+  width:54px!important;
+  height:54px!important;
+  max-width:54px!important;
+  max-height:54px!important;
+  margin:0!important;
+  padding:0!important;
+  object-fit:contain!important;
+  object-position:center!important;
+  overflow:visible!important;
+  background:transparent!important;
+  background-color:transparent!important;
+  background-image:none!important;
+  border:0!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+  filter:none!important;
+  transform:none!important;
+  clip-path:none!important;
+}
+
+/* Party/Squad HUD now lives inside #hud and therefore follows HUD fading. */
+#partyInGameHud{
+  position:absolute!important;
+  left:14px;
+  top:330px;
+  bottom:auto!important;
+  width:220px!important;
+  max-height:min(250px,38vh)!important;
+  overflow:auto!important;
+  z-index:34!important;
+  pointer-events:auto!important;
+  transition:opacity .22s ease,filter .22s ease!important;
+}
+#hud.uiCornerFade #partyInGameHud{
+  opacity:1!important;
+}
+#hud:not(.hudActive) #partyInGameHud{
+  opacity:.68;
+}
+#hud.hudActive #partyInGameHud{
+  opacity:1;
+  filter:none;
+}
+
+/* Raise the quick-ping chooser clear of the inventory/core matrix. */
+#partyPingBar{
+  top:auto!important;
+  bottom:260px!important;
+  z-index:3900!important;
+  max-height:190px!important;
+  overflow:auto!important;
+}
+#partyPingBar button{
+  min-width:110px!important;
+}
+
+/* Scrollable chat history. */
+#chatMessages{
+  min-height:0!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  justify-content:flex-start!important;
+  overscroll-behavior:contain!important;
+  scrollbar-width:thin;
+  scrollbar-color:#526170 #d6dee6;
+  padding-right:3px!important;
+}
+#chatMessages::-webkit-scrollbar{
+  width:8px;
+}
+#chatMessages::-webkit-scrollbar-track{
+  background:#d6dee6;
+  border:1px solid #101820;
+}
+#chatMessages::-webkit-scrollbar-thumb{
+  background:#526170;
+  border:1px solid #101820;
+}
+.chatMsg{
+  flex:0 0 auto!important;
+  overflow-wrap:anywhere!important;
+}
+
+@media(max-height:760px){
+  #partyPingBar{
+    bottom:215px!important;
+  }
+}
+@media(max-width:680px){
+  #partyInGameHud{
+    width:190px!important;
+    max-height:210px!important;
+  }
+  #partyPingBar{
+    bottom:190px!important;
+    width:94vw!important;
+  }
+}
 </style>
 
 </body>
