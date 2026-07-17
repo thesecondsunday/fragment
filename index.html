@@ -4481,16 +4481,51 @@ renderGlobal();
 
 function showStartupSplash(){
   if(!ui.boot) return;
-  ui.boot.classList.remove('hidden');
+  const fill=$('bootLoadingFill');
+  const hint=$('bootHint');
+  const hints=[
+    'Initializing fragment core...',
+    'Loading account systems...',
+    'Synchronizing cosmetics...',
+    'Preparing island data...',
+    'Opening Fragment.io...'
+  ];
+
+  clearInterval(showStartupSplash._progressTimer);
   clearTimeout(showStartupSplash._timer1);
   clearTimeout(showStartupSplash._timer2);
-  showStartupSplash._timer1 = setTimeout(()=>{
+
+  ui.boot.classList.remove('hidden','fadeOut');
+  void ui.boot.offsetWidth;
+
+  if(fill){
+    fill.style.animation='none';
+    fill.style.width='0%';
+  }
+  if(hint) hint.textContent=hints[0];
+
+  let step=0;
+  requestAnimationFrame(()=>{
+    showStartupSplash._progressTimer=setInterval(()=>{
+      step++;
+      if(fill) fill.style.width=Math.min(100,step*20)+'%';
+      if(hint) hint.textContent=hints[Math.min(hints.length-1,step)];
+      if(step>=5){
+        clearInterval(showStartupSplash._progressTimer);
+      }
+    },360);
+  });
+
+  showStartupSplash._timer1=setTimeout(()=>{
+    if(fill) fill.style.width='100%';
+    if(hint) hint.textContent='Ready.';
     ui.boot.classList.add('fadeOut');
-  }, 2450);
-  showStartupSplash._timer2 = setTimeout(()=>{
+  },2350);
+
+  showStartupSplash._timer2=setTimeout(()=>{
     ui.boot.classList.add('hidden');
     ui.boot.classList.remove('fadeOut');
-  }, 3080);
+  },2980);
 }
 
 function saveScore(scoreObj){
@@ -15833,9 +15868,16 @@ installSocialHub();
   console.log('[Fragment.io] Irregular island map renderer enabled.');
 
   setTimeout(()=>{
-    ensureIslandTerrain();
-    if(state.screen==='menu'&&typeof draw==='function')draw();
-  },0);
+    const warmIslandTerrain=()=>{
+      ensureIslandTerrain();
+      if(state.screen==='menu'&&typeof draw==='function')draw();
+    };
+    if(typeof requestIdleCallback==='function'){
+      requestIdleCallback(warmIslandTerrain,{timeout:4500});
+    }else{
+      setTimeout(warmIslandTerrain,500);
+    }
+  },3350);
 })();
 /* ===== END IRREGULAR ISLAND MAP RUNTIME PATCH ===== */
 
@@ -17056,6 +17098,303 @@ body.bossRushMinimal #leaveGameBtn{
 .inGameProfileOverlay{z-index:5000!important;background:#101820cc!important}.inGameProfileCard{width:min(840px,94vw)!important;max-height:90vh;overflow:auto}.inGameProfileTop{display:flex;justify-content:space-between;align-items:flex-start}.inGameProfileBanner{width:100%;height:112px;background:#315fc9;border:3px solid #101820;display:flex;align-items:center;padding-left:18px}.inGameProfileBanner canvas{width:88px;height:88px;background:#fff;border:3px solid #101820}.inGameProfileTop button{width:44px;min-width:44px;height:44px;margin-left:8px}.inGameProfileIdentity h2{font-size:28px;margin:9px 0 0}.inGameProfileIdentity b,.inGameProfileIdentity span{display:block;font-size:10px}.inGameProfileCard>p{border:3px solid #101820;background:#eef3f7;padding:10px}.inGameProfileFavorite{border:3px solid #101820;background:#eef3f7;padding:10px}.inGameProfileStats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0}.inGameProfileStats div{border:3px solid #101820;background:#eef3f7;padding:7px;text-align:center}.inGameProfileStats b,.inGameProfileStats span{display:block}.inGameProfileStats span{font-size:8px}.inGameProfileShowcase{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.inGameProfileShowcase>div{border:2px solid #101820;background:#eef3f7;padding:6px;font-size:8px;overflow-wrap:anywhere}.lbRow.lbProfileLink{cursor:pointer}.lbRow.lbProfileLink:hover{background:#dbe7ff!important;outline:2px solid #315fc9}.lbRow.lbProfileLink span{text-decoration:underline;text-decoration-style:dotted}
 .areaWorldLabel{pointer-events:none}.partyWorldPing{pointer-events:none}
 @media(max-width:760px){.cosmeticPresetGrid,.weeklyChallengeHeader,.weeklyChallengeGrid,.deathRecapGrid{grid-template-columns:1fr}.inGameProfileStats{grid-template-columns:repeat(2,1fr)}.inGameProfileShowcase{grid-template-columns:repeat(2,1fr)}#partyInGameHud{top:auto!important;bottom:190px!important;width:190px!important}.matchPlayerCardsGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.matchPlayerCard{min-height:190px}.matchPlayerCard:nth-child(n+5){display:none}}
+</style>
+
+
+<style id="fragment-v1-intro-loading-logo-fix">
+/* Startup splash */
+#bootOverlay{
+  position:fixed!important;
+  inset:0!important;
+  z-index:10000!important;
+  display:grid!important;
+  place-items:center!important;
+  padding:18px!important;
+  overflow:hidden!important;
+  background-color:#1c252e!important;
+  background-image:
+    linear-gradient(rgba(45,57,68,.92) 2px,transparent 2px),
+    linear-gradient(90deg,rgba(45,57,68,.92) 2px,transparent 2px),
+    linear-gradient(rgba(34,48,58,.52) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(34,48,58,.52) 1px,transparent 1px)!important;
+  background-size:72px 72px,72px 72px,18px 18px,18px 18px!important;
+  animation:introGridDrift 16s linear infinite!important;
+  opacity:1!important;
+  visibility:visible!important;
+}
+#bootOverlay.hidden{
+  display:none!important;
+}
+#bootOverlay.fadeOut{
+  display:grid!important;
+  animation:introFadeFixed .62s ease forwards!important;
+}
+#bootOverlay:before{
+  content:""!important;
+  display:block!important;
+  position:absolute!important;
+  inset:0!important;
+  pointer-events:none!important;
+  background:
+    radial-gradient(circle at 50% 42%,rgba(49,95,201,.16),transparent 34%),
+    linear-gradient(135deg,rgba(255,255,255,.025),transparent 45%)!important;
+}
+.bootCard{
+  position:relative!important;
+  z-index:1!important;
+  width:min(570px,calc(100vw - 36px))!important;
+  padding:28px!important;
+  overflow:hidden!important;
+  text-align:center!important;
+  border:4px solid #101820!important;
+  border-radius:8px!important;
+  background:#dfe7ef!important;
+  color:#101820!important;
+  box-shadow:10px 10px 0 rgba(0,0,0,.34)!important;
+  animation:introCardFixed .38s cubic-bezier(.16,1.16,.28,1) both!important;
+}
+.bootCard:before{
+  display:none!important;
+  content:none!important;
+}
+.bootInner{
+  position:relative!important;
+  z-index:2!important;
+}
+#bootLogoWrap{
+  width:146px!important;
+  height:146px!important;
+  margin:0 auto 18px!important;
+  padding:8px!important;
+  display:grid!important;
+  place-items:center!important;
+  overflow:hidden!important;
+  border:4px solid #101820!important;
+  border-radius:7px!important;
+  background:#315fc9!important;
+  background-color:#315fc9!important;
+  background-image:none!important;
+  box-shadow:6px 6px 0 rgba(0,0,0,.24)!important;
+  animation:introLogoFixed 2.2s ease-in-out infinite!important;
+}
+#bootLogo{
+  width:100%!important;
+  height:100%!important;
+  padding:4px!important;
+  display:block!important;
+  object-fit:contain!important;
+  background:transparent!important;
+  background-color:transparent!important;
+  border-radius:0!important;
+  filter:drop-shadow(0 2px 0 rgba(16,24,32,.20))!important;
+}
+#bootTitle{
+  margin:4px 0 7px!important;
+  color:#101820!important;
+  font-size:clamp(40px,7vw,62px)!important;
+  font-weight:1000!important;
+  line-height:.9!important;
+  letter-spacing:-3px!important;
+  text-shadow:none!important;
+}
+#bootSub{
+  margin-bottom:18px!important;
+  color:#526170!important;
+  font-size:12px!important;
+  font-weight:1000!important;
+  letter-spacing:.16em!important;
+  text-shadow:none!important;
+}
+#bootLoading{
+  width:min(360px,86%)!important;
+  height:18px!important;
+  margin:0 auto 10px!important;
+  overflow:hidden!important;
+  border:3px solid #101820!important;
+  border-radius:5px!important;
+  background:#c8d2dc!important;
+  box-shadow:inset 0 0 0 2px #aebbc8!important;
+}
+#bootLoadingFill{
+  width:0%;
+  height:100%!important;
+  animation:none!important;
+  transition:width .22s steps(2,end)!important;
+  background:#315fc9!important;
+  background-color:#315fc9!important;
+  background-image:none!important;
+}
+#bootHint{
+  min-height:18px!important;
+  color:#344452!important;
+  font-size:12px!important;
+  font-weight:900!important;
+  text-shadow:none!important;
+}
+
+/* Arena/match loading screen */
+#loadingOverlay{
+  position:fixed!important;
+  inset:0!important;
+  z-index:9800!important;
+  display:grid!important;
+  place-items:center!important;
+  padding:18px!important;
+  overflow:hidden!important;
+  background-color:#1c252e!important;
+  background-image:
+    linear-gradient(#2d3944 2px,transparent 2px),
+    linear-gradient(90deg,#2d3944 2px,transparent 2px),
+    linear-gradient(#22303a 1px,transparent 1px),
+    linear-gradient(90deg,#22303a 1px,transparent 1px)!important;
+  background-size:72px 72px,72px 72px,18px 18px,18px 18px!important;
+  animation:introGridDrift 16s linear infinite!important;
+}
+#loadingOverlay.hidden{
+  display:none!important;
+}
+#loadingCard.arenaLoadingCard{
+  position:relative!important;
+  width:min(570px,calc(100vw - 36px))!important;
+  max-height:calc(100vh - 36px)!important;
+  padding:25px!important;
+  overflow:auto!important;
+  text-align:left!important;
+  border:4px solid #101820!important;
+  border-radius:8px!important;
+  background:#dfe7ef!important;
+  color:#101820!important;
+  box-shadow:10px 10px 0 rgba(0,0,0,.34)!important;
+  animation:loadingCardFixed .25s cubic-bezier(.16,1.12,.3,1) both!important;
+}
+#loadingCard:before{
+  display:none!important;
+  content:none!important;
+}
+.loadingTopLine{
+  display:flex!important;
+  justify-content:space-between!important;
+  gap:10px!important;
+  padding-bottom:8px!important;
+  margin-bottom:12px!important;
+  border-bottom:3px solid #101820!important;
+}
+.loadingTopLine span{
+  color:#526170!important;
+  font-size:11px!important;
+  font-weight:1000!important;
+  letter-spacing:.12em!important;
+}
+#loadingTitle{
+  margin:0 0 6px!important;
+  color:#101820!important;
+  font-size:42px!important;
+  font-weight:1000!important;
+  letter-spacing:-2px!important;
+}
+#loadingSub,#loadingTip{
+  color:#344452!important;
+  font-weight:900!important;
+}
+.loadingBits{
+  display:grid!important;
+  grid-template-columns:repeat(8,minmax(0,1fr))!important;
+  gap:6px!important;
+  margin:14px 0!important;
+}
+.loadingBits i{
+  display:block!important;
+  height:18px!important;
+  border:3px solid #101820!important;
+  background:#eef3f7!important;
+  animation:loadingBitFixed .8s steps(2,end) infinite!important;
+}
+.loadingBits i:nth-child(2n){
+  animation-delay:.12s!important;
+  background:#cbd5df!important;
+}
+.loadingBits i:nth-child(3n){
+  animation-delay:.24s!important;
+  background:#315fc9!important;
+}
+.loadingBar{
+  height:19px!important;
+  overflow:hidden!important;
+  border:3px solid #101820!important;
+  border-radius:5px!important;
+  background:#cbd5df!important;
+  box-shadow:inset 0 0 0 2px #aebbc8!important;
+}
+#loadingFill{
+  height:100%!important;
+  background:#315fc9!important;
+  background-color:#315fc9!important;
+  background-image:none!important;
+  transition:width .18s steps(3,end)!important;
+}
+
+/* SISCON logo boxes in the launcher */
+.bigLogo,
+.logoFallback,
+#menuLogoBox,
+#menuLogoWrap{
+  background:#315fc9!important;
+  background-color:#315fc9!important;
+  background-image:none!important;
+}
+.bigLogo:before,
+#menuLogoBox:before,
+#menuLogoWrap:before{
+  background:rgba(255,255,255,.08)!important;
+  background-image:none!important;
+}
+#menuLogoImg{
+  max-width:100%!important;
+  max-height:100%!important;
+  padding:7px!important;
+  object-fit:contain!important;
+  background:transparent!important;
+  background-color:transparent!important;
+  background-image:none!important;
+  border-radius:0!important;
+}
+
+@keyframes introGridDrift{
+  to{background-position:72px 36px,72px 36px,18px 18px,18px 18px}
+}
+@keyframes introCardFixed{
+  from{opacity:0;transform:translateY(18px) scale(.975)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+@keyframes introLogoFixed{
+  50%{transform:translateY(-5px)}
+}
+@keyframes introFadeFixed{
+  from{opacity:1;visibility:visible}
+  to{opacity:0;visibility:hidden}
+}
+@keyframes loadingCardFixed{
+  from{opacity:0;transform:translateY(10px) scale(.985)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+@keyframes loadingBitFixed{
+  50%{transform:translateY(-4px)}
+}
+
+@media(max-width:560px){
+  .bootCard,
+  #loadingCard.arenaLoadingCard{
+    width:calc(100vw - 24px)!important;
+    padding:20px!important;
+  }
+  #bootLogoWrap{
+    width:118px!important;
+    height:118px!important;
+  }
+  #loadingTitle{
+    font-size:34px!important;
+  }
+}
 </style>
 
 </body>
