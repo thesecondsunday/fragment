@@ -3385,6 +3385,15 @@ body.guestAccount .menuModal[data-modal="gacha"] .rollBtn,body.guestAccount .men
 @media(max-width:720px){.v3Dock{grid-template-columns:1fr 1fr!important}.threeColumnEditor,.achievementSummary{grid-template-columns:1fr!important}.achievementBrowser{grid-template-columns:1fr}.matchBotFillCard{grid-template-columns:auto 1fr}.matchBotSwitch{grid-column:1/-1;justify-self:end}}
 </style>
 
+
+<style id="fragment-v1-startup-first-paint-guard">
+html:not([data-fragment-startup-complete]) #bootOverlay{
+  display:grid!important;
+  opacity:1!important;
+  visibility:visible!important;
+}
+</style>
+
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -4525,6 +4534,7 @@ function showStartupSplash(){
   showStartupSplash._timer2=setTimeout(()=>{
     ui.boot.classList.add('hidden');
     ui.boot.classList.remove('fadeOut');
+    document.documentElement.dataset.fragmentStartupComplete='true';
   },2980);
 }
 
@@ -5626,7 +5636,17 @@ async function addPartyFromInput(){
   if(profile)inviteFriendToParty(profile.id); ui.friendName.value='';
 }
 setTimeout(loadSocial,0);
-showStartupSplash();
+
+// The game is a very large single inline script. Starting the boot timers here
+// used to let them expire while the browser was still blocked parsing and
+// initializing the rest of the game, so the first painted frame already had
+// the splash hidden. Two animation frames guarantee that the splash is painted
+// once before its progress sequence begins.
+requestAnimationFrame(()=>{
+  requestAnimationFrame(()=>{
+    showStartupSplash();
+  });
+});
 const menuLogoImg=document.getElementById('menuLogoImg');
 const bootLogoImg=document.getElementById('bootLogo');
 if(menuLogoImg && bootLogoImg && bootLogoImg.getAttribute('src')) menuLogoImg.src=bootLogoImg.src;
@@ -7459,7 +7479,7 @@ function spawnFragment(kind='xp', x=null, y=null, extra=null){
     const id = extra || abilityKeys[irand(0, abilityKeys.length)];
     fragments.push({kind:'ability', ability:id, x,y, vx:0, vy:0, r:11, color:abilities[id].color});
   } else if(kind==='evo'){
-    const id = extra || (Math.random()<0.72 ? randomCoreFragment('major') : randomCoreFragment('minor'));
+    const id = extra || (Math.random()<0.66 ? randomCoreFragment('minor') : randomCoreFragment('major'));
     const def = coreFragmentDefs[id] || coreFragmentDefs[randomCoreFragment('major')];
     fragments.push({kind:'evo', core:id, x,y, vx:0, vy:0, r:def.slot==='minor'?10:12, color:def.color});
   } else if(kind==='world'){
@@ -9331,8 +9351,7 @@ function tryCollect(ent){
         if(!world.mode && activateWorld(f.mode)){}
         else if(ent.human){ giveXP(ent, 14); notify('World fragment unstable', 'A world shift is already active'); }
       } else if(f.kind==='cursed'){
-        if(ent.human) applyCursed(ent, f.curse);
-        else { ent.damageMul*=1.08; ent.speed*=1.05; }
+        applyCursed(ent, f.curse);
       }
       if(ent.human || ent.isClone) tone(ent.isClone?520:680,0.03,'triangle',0.035);
       fragments.splice(i,1);
@@ -12125,8 +12144,12 @@ function updateAbilitySystems(dt){
     if(s.tick<=0){
       s.tick=fragments.length>850?0.24:0.18;
       const density=s.density||2;
-      for(let n=0;n<density;n++) spawnFragment(Math.random()<0.38?'natural':'xp', s.x+rand(-s.r,s.r), s.y+rand(-s.r,s.r));
-      if(fragments.length<900 && Math.random()<0.14) spawnFragment('ability', s.x+rand(-s.r*.75,s.r*.75), s.y+rand(-s.r*.75,s.r*.75));
+      if(!s.visualOnly){
+        for(let n=0;n<density;n++) spawnFragment(Math.random()<0.38?'natural':'xp', s.x+rand(-s.r,s.r), s.y+rand(-s.r,s.r));
+        if(fragments.length<900 && Math.random()<0.14) spawnFragment('ability', s.x+rand(-s.r*.75,s.r*.75), s.y+rand(-s.r*.75,s.r*.75));
+      }else{
+        for(let n=0;n<density+1;n++) particles.push({x:s.x+rand(-s.r,s.r),y:s.y+rand(-s.r,s.r),vx:rand(-.5,.5),vy:rand(1.4,3.2),dot:true,size:rand(2,5),color:n%3===0?'#84d66e':'#ffcf58',life:irand(18,34)});
+      }
     }
     if(s.life<=0) fragmentStorms.splice(i,1);
   }
@@ -15881,6 +15904,269 @@ installSocialHub();
 })();
 /* ===== END IRREGULAR ISLAND MAP RUNTIME PATCH ===== */
 
+
+
+/* ===== V1.0 BOSS / CURSE / NETWORK ABILITY / SCORE PATCH ===== */
+const V1_CURSE_DURATION=20;
+let v1NetworkBossEffects=[];
+let v1NetworkAbilityEffects=[];
+
+function v1EnsureCurseHud(){
+  let box=document.getElementById('cursedFragmentHud');
+  if(box)return box;
+  const host=document.getElementById('systemsPanel')||document.getElementById('topLeft');
+  if(!host)return null;
+  box=document.createElement('div');
+  box.id='cursedFragmentHud';
+  box.className='cursedFragmentHud hidden';
+  box.innerHTML='<div class="cursedFragmentHudTitle"><span>CURSED FRAGMENTS</span><b>0 / 2</b></div><div class="cursedFragmentHudList"></div>';
+  host.appendChild(box);
+  return box;
+}
+function v1CurseList(ent){
+  if(!ent)return[];
+  if(!Array.isArray(ent.activeCurses))ent.activeCurses=[];
+  return ent.activeCurses;
+}
+function v1CurseName(curse){
+  return ({glass:'Glass Core',greed:'Greedy Soul',speed:'Cursed Speed',boss:'Boss Signal'})[curse]||String(curse||'Curse');
+}
+function v1RenderCurseHud(){
+  const box=v1EnsureCurseHud();
+  if(!box||!player)return;
+  const active=v1CurseList(player);
+  box.classList.toggle('hidden',state.screen!=='play'||active.length===0);
+  const total=box.querySelector('b');if(total)total.textContent=active.length+' / 2';
+  const list=box.querySelector('.cursedFragmentHudList');if(!list)return;
+  list.innerHTML=active.map(entry=>`<div><span>${escapeHtml(v1CurseName(entry.curse))}</span><b>${Math.max(0,Math.ceil(entry.remaining))}s</b></div>`).join('');
+}
+function v1RemoveCurse(ent,entry,expired=true){
+  if(!ent||!entry)return;
+  if(entry.curse==='glass'){
+    ent.damageMul=Math.max(.05,(ent.damageMul||1)/(entry.damageFactor||1.35));
+    const hpRatio=ent.maxHp>0?ent.hp/ent.maxHp:1;
+    ent.maxHp=Math.max(1,ent.maxHp/(entry.hpFactor||.82));
+    ent.hp=Math.min(ent.maxHp,Math.max(1,ent.maxHp*hpRatio));
+    ent.glassCore=false;
+  }else if(entry.curse==='greed'){
+    ent.greedySoul=false;
+  }else if(entry.curse==='speed'){
+    ent.speed=Math.max(.1,(ent.speed||1)/(entry.speedFactor||1.35));
+  }
+  if(expired&&ent.human)notify('Curse expired',v1CurseName(entry.curse)+' ended after 20 seconds.');
+}
+function v1ClearCurses(ent,notifyPlayer=false){
+  if(!ent||!Array.isArray(ent.activeCurses))return;
+  for(const entry of [...ent.activeCurses])v1RemoveCurse(ent,entry,false);
+  ent.activeCurses=[];
+  if(notifyPlayer&&ent.human)notify('Cursed fragments cleared','Temporary curses were removed.');
+}
+applyCursed=function(ent,curse){
+  if(!ent||!curse)return false;
+  const active=v1CurseList(ent);
+  const existing=active.find(entry=>entry.curse===curse);
+  if(existing){
+    existing.remaining=V1_CURSE_DURATION;
+    if(ent.human)notify('Curse refreshed',v1CurseName(curse)+' reset to 20 seconds.');
+    v1RenderCurseHud();
+    return true;
+  }
+  if(active.length>=2){
+    if(ent.human){
+      giveXP(ent,10);ent.score=(ent.score||0)+18;
+      notify('Cursed capacity full','You can hold only two cursed fragments. The fragment was recycled.');
+    }
+    return false;
+  }
+  const entry={curse,remaining:V1_CURSE_DURATION};
+  if(curse==='glass'){
+    entry.damageFactor=1.35;entry.hpFactor=.82;
+    ent.glassCore=true;ent.damageMul=(ent.damageMul||1)*entry.damageFactor;
+    ent.maxHp=Math.max(1,ent.maxHp*entry.hpFactor);ent.hp=Math.min(ent.hp,ent.maxHp);
+  }else if(curse==='greed'){
+    ent.greedySoul=true;
+  }else if(curse==='speed'){
+    entry.speedFactor=1.35;ent.speed=(ent.speed||1)*entry.speedFactor;
+    ent.status=ent.status||{};ent.status.stun=Math.max(ent.status.stun||0,.35);
+  }else if(curse==='boss'){
+    if(gameMode==='br'){
+      if(ent.human)notify('Cursed Fragment','Boss Signal is suppressed in Battle Royale.');
+    }else if(ent.human){
+      spawnBoss();
+    }
+  }
+  active.push(entry);
+  if(ent.human){
+    const descriptions={glass:'More damage, less maximum HP.',greed:'More XP and larger death drops.',speed:'Higher speed with initial instability.',boss:'A boss signal has been triggered.'};
+    notify('Cursed Fragment · 20s',v1CurseName(curse)+': '+(descriptions[curse]||'Temporary effect active.'));
+    progressQuest('cursed',1);
+  }
+  v1RenderCurseHud();
+  return true;
+};
+function v1UpdateCurses(ent,dt){
+  if(!ent||!Array.isArray(ent.activeCurses)||!ent.activeCurses.length)return;
+  if(ent.dead){v1ClearCurses(ent,false);return;}
+  for(let i=ent.activeCurses.length-1;i>=0;i--){
+    const entry=ent.activeCurses[i];entry.remaining-=dt/1000;
+    if(entry.remaining<=0){v1RemoveCurse(ent,entry,true);ent.activeCurses.splice(i,1);}
+  }
+}
+
+function v1AddBossEffect(effect){
+  effect.life=Math.max(.08,Number(effect.life)||1);
+  effect.maxLife=effect.life;
+  effect.warn=Math.max(0,Number(effect.warn)||0);
+  v1NetworkBossEffects.push(effect);
+  if(v1NetworkBossEffects.length>28)v1NetworkBossEffects.splice(0,v1NetworkBossEffects.length-28);
+}
+function v1AddAbilityEffect(effect){
+  effect.life=Math.max(.08,Number(effect.life)||1);
+  effect.maxLife=effect.life;
+  v1NetworkAbilityEffects.push(effect);
+  if(v1NetworkAbilityEffects.length>24)v1NetworkAbilityEffects.splice(0,v1NetworkAbilityEffects.length-24);
+}
+function v1ReplayBossAction(msg){
+  if(msg.boss)netApplyBossSnapshots([msg.boss],true);
+  const boss=multiplayer.bossById.get(msg.bossId);
+  if(!boss)return;
+  const action=String(msg.action||'');
+  const phase=String(msg.phase||'warn');
+  const color=msg.color||boss.bossColor||'#ffcf58';
+  const warn=Math.max(0,Number(msg.warn)||0);
+  const x=Number.isFinite(Number(msg.x))?Number(msg.x):boss.x;
+  const y=Number.isFinite(Number(msg.y))?Number(msg.y):boss.y;
+  const angle=Number.isFinite(Number(msg.angle))?Number(msg.angle):boss.angle||0;
+  if(action==='laser_sweep'){
+    if(phase==='warn')lasers.push({x:boss.x,y:boss.y,angle,owner:boss,warn,life:warn+.48,beam:true,color,width:Number(msg.width)||66,range:Number(msg.range)||1000,damage:0,visualOnly:true});
+    else ring(boss.x,boss.y,color,110);
+    return;
+  }
+  if(action==='heal'){
+    ring(boss.x,boss.y,'#75ffb2',180);
+    for(let i=0;i<22;i++)particles.push({x:boss.x+rand(-90,90),y:boss.y+rand(-90,90),vx:rand(-1.2,1.2),vy:rand(-2.3,-.3),dot:true,size:rand(3,7),color:'#75ffb2',life:irand(22,42)});
+    return;
+  }
+  if(action==='shard_burst'&&phase==='fire'){
+    ring(boss.x,boss.y,color,210);
+    return;
+  }
+  const kind=action==='memory_cross'?'cross':action==='ghost_dash'||action==='blink_strike'?'dash':action==='void_well'?'well':'circle';
+  v1AddBossEffect({kind,action,phase,x,y,fromX:Number(msg.fromX)||boss.x,fromY:Number(msg.fromY)||boss.y,angle,color,r:Number(msg.radius)||240,width:Number(msg.width)||54,range:Number(msg.range)||720,warn,life:warn+Math.max(.45,Number(msg.duration)||.65),label:String(msg.label||'BOSS ATTACK')});
+}
+function v1DrawNetworkEffects(camX,camY){
+  ctx.save();ctx.textAlign='center';
+  for(const e of v1NetworkBossEffects){
+    const x=e.x-camX,y=e.y-camY,active=e.warn<=0;
+    const pulse=1+Math.sin(performance.now()/90)*.055;
+    ctx.save();ctx.globalAlpha=active?.48:.30;ctx.strokeStyle=e.color;ctx.fillStyle=hexAlpha(e.color,active?.18:.08);ctx.lineWidth=active?5:3;ctx.setLineDash(active?[]:[12,8]);
+    if(e.kind==='cross'){
+      ctx.fillRect(x-e.range,y-e.width/2,e.range*2,e.width);ctx.fillRect(x-e.width/2,y-e.range,e.width,e.range*2);
+      ctx.strokeRect(x-e.range,y-e.width/2,e.range*2,e.width);ctx.strokeRect(x-e.width/2,y-e.range,e.width,e.range*2);
+    }else if(e.kind==='dash'){
+      ctx.lineWidth=active?12:5;ctx.beginPath();ctx.moveTo(e.fromX-camX,e.fromY-camY);ctx.lineTo(x,y);ctx.stroke();ctx.beginPath();ctx.arc(x,y,(e.r||130)*pulse,0,Math.PI*2);ctx.stroke();
+    }else{
+      ctx.beginPath();ctx.arc(x,y,(e.r||230)*pulse,0,Math.PI*2);ctx.fill();ctx.stroke();
+      if(e.kind==='well'){for(let k=0;k<3;k++){ctx.globalAlpha*=.72;ctx.beginPath();ctx.arc(x,y,(e.r||230)*(.32+k*.22)*pulse,0,Math.PI*2);ctx.stroke();}}
+    }
+    ctx.setLineDash([]);ctx.globalAlpha=.95;ctx.fillStyle='#fff';ctx.strokeStyle='#101820';ctx.lineWidth=4;ctx.font='1000 13px Arial';const label=e.warn>0?e.label+' · '+Math.max(1,Math.ceil(e.warn)):'IMPACT';ctx.strokeText(label,x,y-(e.r||200)-16);ctx.fillText(label,x,y-(e.r||200)-16);ctx.restore();
+  }
+  for(const e of v1NetworkAbilityEffects){
+    const owner=e.owner; if(owner&&!owner.dead&&e.follow){e.x=owner.x;e.y=owner.y;}
+    const x=e.x-camX,y=e.y-camY,pulse=1+Math.sin(performance.now()/120)*.06;
+    ctx.save();ctx.globalAlpha=clamp(e.life/Math.max(.1,e.maxLife),.12,.72);ctx.strokeStyle=e.color||'#fff';ctx.fillStyle=hexAlpha(e.color||'#fff',.10);ctx.lineWidth=3;ctx.setLineDash([10,7]);
+    if(e.kind==='rect'){ctx.translate(x,y);ctx.rotate(e.angle||0);ctx.fillRect(-e.w/2,-e.h/2,e.w,e.h);ctx.strokeRect(-e.w/2,-e.h/2,e.w,e.h);}else{ctx.beginPath();ctx.arc(x,y,(e.r||100)*pulse,0,Math.PI*2);ctx.fill();ctx.stroke();}
+    ctx.setLineDash([]);ctx.restore();
+  }
+  ctx.restore();
+}
+function v1UpdateNetworkEffects(dt){
+  for(let i=v1NetworkBossEffects.length-1;i>=0;i--){const e=v1NetworkBossEffects[i];e.life-=dt/1000;e.warn=Math.max(0,e.warn-dt/1000);if(e.life<=0)v1NetworkBossEffects.splice(i,1);}
+  for(let i=v1NetworkAbilityEffects.length-1;i>=0;i--){const e=v1NetworkAbilityEffects[i];e.life-=dt/1000;if(e.life<=0)v1NetworkAbilityEffects.splice(i,1);}
+}
+
+const v1OriginalHandleFragmentNetworkMessage=handleFragmentNetworkMessage;
+handleFragmentNetworkMessage=function(msg){
+  if(msg?.type==='boss_action'){v1ReplayBossAction(msg);return;}
+  return v1OriginalHandleFragmentNetworkMessage(msg);
+};
+const v1OriginalNetApplyBossSnapshots=netApplyBossSnapshots;
+netApplyBossSnapshots=function(list,partial=false){
+  const before=new Set(multiplayer.bossById.keys());
+  const result=v1OriginalNetApplyBossSnapshots(list,partial);
+  for(const snap of Array.isArray(list)?list:[]){
+    const b=multiplayer.bossById.get(snap.id);if(!b)continue;
+    const remaining=Math.max(0,Number(snap.spawnRemaining)||0);
+    b.networkSpawnUntil=performance.now()+remaining*1000;b.spawnAnim=remaining;
+    b.networkAttackName=snap.attackName||'';
+    if(!before.has(snap.id)&&remaining>0)v1AddBossEffect({kind:'circle',action:'materialize',phase:'warn',x:b.x,y:b.y,color:b.bossColor||'#ffcf58',r:150,warn:remaining,life:remaining+.15,label:'BOSS MATERIALIZING'});
+  }
+  bossArenas=bossArenas.filter(a=>!a.boss?.networkBoss);
+  return result;
+};
+updateNetworkBosses=function(dt){
+  for(const [id,b] of multiplayer.bossById){
+    if(performance.now()-(b.lastNet||0)>7000){multiplayer.bossById.delete(id);const idx=bosses.indexOf(b);if(idx>=0)bosses.splice(idx,1);continue;}
+    b.x=lerp(b.x,b.tx??b.x,.18);b.y=lerp(b.y,b.ty??b.y,.18);
+    b.spawnAnim=Math.max(0,((b.networkSpawnUntil||0)-performance.now())/1000);b.bossGrace=b.spawnAnim;
+  }
+  bossArenas=bossArenas.filter(a=>!a.boss?.networkBoss);
+};
+
+const v1OriginalNetReplayAbilityEvent=netReplayAbilityEvent;
+netReplayAbilityEvent=function(msg){
+  v1OriginalNetReplayAbilityEvent(msg);
+  const owner=multiplayer.remoteById.get(msg.ownerId);if(!owner||owner.dead)return;
+  const id=String(msg.abilityId||''),evolved=!!msg.evolved,angle=Number.isFinite(Number(msg.angle))?Number(msg.angle):owner.angle||0;
+  const def=abilities[id]||{color:'#fff'};
+  if(id==='judgement_laser'){
+    lasers.push({x:owner.x,y:owner.y,angle,owner,warn:evolved?.95:1.15,life:evolved?1.75:1.95,beam:true,color:def.color,width:evolved?54:40,range:evolved?1180:920,damage:0,visualOnly:true});
+  }else if(id==='fragment_storm'){
+    fragmentStorms.push({x:owner.x,y:owner.y,owner,life:evolved?7:4,tick:0,r:evolved?300:210,density:evolved?3:2,pulse:0,visualOnly:true});
+  }else if(id==='magnet'){
+    v1AddAbilityEffect({kind:'circle',owner,follow:true,x:owner.x,y:owner.y,r:evolved?440:360,color:def.color,life:2.5});
+  }else if(id==='knockback'){
+    v1AddAbilityEffect({kind:'circle',x:owner.x,y:owner.y,r:evolved?430:350,color:def.color,life:.65});
+  }else if(id==='flare'){
+    v1AddAbilityEffect({kind:'circle',x:owner.x,y:owner.y,r:evolved?145:105,color:def.color,life:evolved?6:3.8});
+  }else if(id==='fragment_mine'){
+    v1AddAbilityEffect({kind:'circle',x:owner.x+Math.cos(angle)*55,y:owner.y+Math.sin(angle)*55,r:evolved?34:28,color:def.color,life:evolved?28:20});
+  }else if(id==='wall_drop'){
+    v1AddAbilityEffect({kind:'rect',x:owner.x+Math.cos(angle)*110,y:owner.y+Math.sin(angle)*110,w:evolved?230:160,h:24,angle:angle+Math.PI/2,color:def.color,life:evolved?12:8});
+  }
+};
+
+function v1RenderServerLeaderboard(){
+  if(!ui?.serverLb||!player)return;
+  const list=[player,...remotePlayers.filter(r=>!r.dead),...bots.filter(b=>!b.dead),...bosses.filter(b=>!b.dead)].filter(Boolean).sort((a,b)=>(b.boss?999999:(b.score||0))-(a.boss?999999:(a.score||0))).slice(0,10);
+  ui.serverLb.innerHTML=list.map((x,i)=>{
+    const userId=x===player?cloudUser?.id:(x.networkRemote?x.userId:'');
+    const isBot=!x.boss&&!x.networkRemote&&x!==player;
+    const badge=x.boss?'👹 ':x.networkRemote?'🌐 ':x.team==='blue'?'🟦 ':x.team==='red'?'🟥 ':'';
+    const botTag=isBot?'<span class="botTag">[BOT]</span>':'';
+    return`<div class="lbRow ${x===player?'lbMe':''} ${userId?'lbProfileLink':''}" ${userId?`data-profile-user-id="${escapeHtml(userId)}" title="View ${escapeHtml(x.name)} profile"`:''}><b>${i+1}</b><span class="lbPlayerName">${badge}${escapeHtml(displayName(x))}${botTag}${x.networkRemote?'<span class="networkTag">ONLINE</span>':''}</span><b>${Math.floor(x.score||0).toLocaleString()}</b></div>`;
+  }).join('');
+}
+renderServerLb=v1RenderServerLeaderboard;
+
+const v1OriginalDrawMapSystemsFinal=drawMapSystems;
+drawMapSystems=function(camX,camY,viewW,viewH){const result=v1OriginalDrawMapSystemsFinal(camX,camY,viewW,viewH);v1DrawNetworkEffects(camX,camY);return result;};
+const v1OriginalUpdateFinal=update;
+update=function(dt){
+  const result=v1OriginalUpdateFinal(dt);
+  if(state.screen==='play'&&!state.paused){v1UpdateCurses(player,dt);for(const b of bots)if(!b.networkBot)v1UpdateCurses(b,dt);v1UpdateNetworkEffects(dt);v1RenderCurseHud();}
+  return result;
+};
+
+// Keep both SISCON marks inside their blue boxes and hide the fallback when the image is ready.
+const v1MenuLogo=document.getElementById('menuLogoImg');
+const v1MenuFallback=document.querySelector('.bigLogo .logoFallback');
+if(v1MenuLogo){
+  const syncLogo=()=>{if(v1MenuFallback)v1MenuFallback.style.display=v1MenuLogo.complete&&v1MenuLogo.naturalWidth?'none':'grid';};
+  v1MenuLogo.addEventListener('load',syncLogo);v1MenuLogo.addEventListener('error',syncLogo);syncLogo();
+}
+/* ===== END V1.0 BOSS / CURSE / NETWORK ABILITY / SCORE PATCH ===== */
+
 })();
 </script>
 
@@ -17395,6 +17681,63 @@ body.bossRushMinimal #leaveGameBtn{
     font-size:34px!important;
   }
 }
+</style>
+
+
+<style id="fragment-v1-boss-curse-logo-polish">
+/* Keep the supplied logo art inside the blue tiles without clipping. */
+#bootLogoWrap{
+  padding:14px!important;
+  overflow:hidden!important;
+  background:#315fc9!important;
+}
+#bootLogo{
+  width:88%!important;
+  height:88%!important;
+  max-width:88%!important;
+  max-height:88%!important;
+  padding:0!important;
+  object-fit:contain!important;
+  object-position:center center!important;
+  transform:translateY(-7px)!important;
+  background:transparent!important;
+  background-color:transparent!important;
+  clip-path:inset(1px)!important;
+}
+.bigLogo{
+  overflow:hidden!important;
+  isolation:isolate!important;
+  padding:7px!important;
+  display:grid!important;
+  place-items:center!important;
+  background:#315fc9!important;
+}
+#menuLogoImg{
+  display:block!important;
+  width:54px!important;
+  height:54px!important;
+  max-width:calc(100% - 8px)!important;
+  max-height:calc(100% - 8px)!important;
+  margin:0!important;
+  padding:0!important;
+  object-fit:contain!important;
+  object-position:center center!important;
+  transform:translateY(-2px)!important;
+  background:transparent!important;
+  background-color:transparent!important;
+  clip-path:inset(2px)!important;
+}
+.bigLogo .logoFallback{overflow:hidden!important;}
+.cursedFragmentHud{margin-top:7px;padding-top:7px;border-top:2px solid #101820;}
+.cursedFragmentHud.hidden{display:none!important;}
+.cursedFragmentHudTitle,.cursedFragmentHudList>div{display:flex;align-items:center;justify-content:space-between;gap:9px;}
+.cursedFragmentHudTitle span{font-size:9px;font-weight:1000;letter-spacing:.08em;color:#8451a4;}
+.cursedFragmentHudTitle b{font-size:10px;}
+.cursedFragmentHudList{display:grid;gap:3px;margin-top:4px;}
+.cursedFragmentHudList>div{padding:4px 6px;border:2px solid #101820;background:#eadcf3;color:#101820;}
+.cursedFragmentHudList span,.cursedFragmentHudList b{font-size:9px;font-weight:1000;}
+.lbPlayerName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.botTag{display:inline-block;margin-left:5px;padding:1px 4px;border:1px solid currentColor;font-size:8px;font-weight:1000;letter-spacing:.05em;vertical-align:1px;}
 </style>
 
 </body>

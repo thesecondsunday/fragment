@@ -25,7 +25,7 @@ const pendingPartyInvites = new Map();
 const playerReports = [];
 
 const MODE_RULES = {
-  normal:{capacity:12, partyMax:6, targetLow:8, targetMid:10, targetHigh:12, waitMs:8000, joinMid:true, spectate:true},
+  normal:{capacity:15, partyMax:6, targetLow:8, targetMid:12, targetHigh:15, waitMs:8000, joinMid:true, spectate:true},
   duo:{capacity:12, partyMax:2, targetLow:8, targetMid:10, targetHigh:12, waitMs:9000, joinMid:true, spectate:true},
   squad:{capacity:18, partyMax:6, targetLow:8, targetMid:12, targetHigh:18, waitMs:9000, joinMid:true, spectate:true},
   teams:{capacity:20, partyMax:6, targetLow:12, targetMid:16, targetHigh:20, waitMs:10000, joinMid:true, spectate:true},
@@ -516,7 +516,6 @@ function killServerBot(room, bot, source){
   bot.dead=true;
   bot.hp=0;
   bot.respawnAt=Date.now()+(room.mode==='br'?999999999:3200);
-  bot.score=0;
   bot.lastTargetId=null;
 
   const dropCount=room.mode==='br'?8:11;
@@ -524,6 +523,8 @@ function killServerBot(room, bot, source){
 
   if(source?.kind==='player' && source.client){
     send(source.client,{type:'bot_award',botId:bot.id,botName:bot.name,xp:40,score:250});
+  }else if(source?.kind==='bot' && source.bot){
+    source.bot.score=(source.bot.score||0)+260;source.bot.frags=(source.bot.frags||0)+2;source.bot.level=1+Math.floor(source.bot.score/700);
   }
   broadcast(room.code,{
     type:'bot_killed',
@@ -547,6 +548,9 @@ function deliverBotDamage(room, attacker, target, amount, cause){
   // Mild online bot damage increase. Class identities and cooldowns stay the
   // same; only the final authoritative damage is increased.
   amount=clamp(finiteNumber(amount,0)*1.18,0,500);
+  attacker.score=(attacker.score||0)+Math.max(1,Math.round(amount*6));
+  attacker.frags=(attacker.frags||0)+(Math.random()<0.08?1:0);
+  attacker.level=1+Math.floor((attacker.score||0)/700);
   if(target.kind==='player'){
     return sendDamageToClient(target.client,{
       type:'bot_hit',
@@ -937,7 +941,7 @@ function spawnSharedFragment(room, kind='xp', x=null, y=null, extra=null){
   }else if(kind === 'ability'){
     f.ability = extra || abilityIds[irand(0, abilityIds.length)]; f.r=11;
   }else if(kind === 'evo'){
-    f.core = extra || coreIds[irand(0, coreIds.length)]; f.r=12;
+    f.core = extra || (Math.random()<0.66 ? coreIds[irand(8,coreIds.length)] : coreIds[irand(0,8)]); f.r=12;
   }else if(kind === 'world'){
     f.mode = extra || worldDefs[irand(0, worldDefs.length)]; f.r=12;
   }else if(kind === 'cursed'){
@@ -2178,4 +2182,101 @@ updateSharedWorld=function(room,dt){
 };
 
 console.log('[Fragment.io] Irregular island map synchronization enabled.');
+
+// -----------------------------------------------------------------------------
+// v1.0 online boss abilities, fragment-storm authority, and 15-player normal
+// -----------------------------------------------------------------------------
+function v1BossActionSnapshot(room,b,action,data={}){
+  broadcast(room.code,{type:'boss_action',bossId:b.id,boss:bossSnapshot(b),action,phase:data.phase||'warn',warn:finiteNumber(data.warn,0,0,5),x:finiteNumber(data.x,b.x,-HALF_W,HALF_W),y:finiteNumber(data.y,b.y,-HALF_H,HALF_H),fromX:finiteNumber(data.fromX,b.x,-HALF_W,HALF_W),fromY:finiteNumber(data.fromY,b.y,-HALF_H,HALF_H),angle:finiteNumber(data.angle,b.angle,-Math.PI*8,Math.PI*8),radius:finiteNumber(data.radius,220,0,1600),width:finiteNumber(data.width,54,0,300),range:finiteNumber(data.range,800,0,2000),duration:finiteNumber(data.duration,.6,.05,5),color:String(data.color||b.color||'#ffcf58').slice(0,24),label:String(data.label||'BOSS ATTACK').slice(0,36)});
+}
+function v1BossHitCircle(room,b,x,y,r,amount,cause){
+  for(const snap of livePlayerSnapshots(room)){if(clientIsInvincible(snap.client))continue;if(Math.hypot(snap.x-x,snap.y-y)<=r+(snap.r||18))sendDamageToClient(snap.client,{type:'boss_hit',bossId:b.id,bossName:b.name,amount,cause});}
+}
+function v1BossHitBeam(room,b,angle,range,width,amount,cause){
+  const ca=Math.cos(angle),sa=Math.sin(angle);
+  for(const snap of livePlayerSnapshots(room)){
+    if(clientIsInvincible(snap.client))continue;
+    const dx=snap.x-b.x,dy=snap.y-b.y,forward=dx*ca+dy*sa,side=Math.abs(-dx*sa+dy*ca);
+    if(forward>0&&forward<range&&side<width+(snap.r||18))sendDamageToClient(snap.client,{type:'boss_hit',bossId:b.id,bossName:b.name,amount,cause});
+  }
+}
+function v1QueueBossAttack(room,b,target){
+  const tx=target.snap.x,ty=target.snap.y,angle=Math.atan2(ty-b.y,tx-b.x),phase=b.hp< b.maxHp*.42?2:1;
+  const choose=Math.random();let attack;
+  if(b.bossKind==='elevator_authority')attack=choose<.58?{kind:'laser_sweep',warn:1.05,angle,range:1050,width:68,label:'ADMINISTRATIVE BEAM'}:{kind:'admin_pulse',warn:.78,x:b.x,y:b.y,radius:285,label:'ACCESS DENIED'};
+  else if(b.bossKind==='telomere_warden')attack=choose<.68?{kind:'bio_bloom',warn:1.0,x:tx,y:ty,radius:235,label:'TELOMERE BLOOM'}:{kind:'heal',warn:.55,x:b.x,y:b.y,radius:190,label:'REPAIR CYCLE'};
+  else if(b.bossKind==='exit_23')attack=choose<.62?{kind:'rocket_barrage',warn:.95,x:tx,y:ty,radius:250,label:'WRONG EXIT'}:{kind:'ghost_dash',warn:.72,x:tx,y:ty,fromX:b.x,fromY:b.y,radius:150,label:'GHOST RAMP'};
+  else if(b.bossKind==='black_entity')attack=choose<.64?{kind:'void_well',warn:1.05,x:tx,y:ty,radius:270,label:'NULL GRAVITY'}:{kind:'blink_strike',warn:.62,x:tx,y:ty,fromX:b.x,fromY:b.y,radius:145,label:'ENTITY SHIFT'};
+  else attack=choose<.56?{kind:'memory_cross',warn:1.0,x:tx,y:ty,range:650,width:58,label:'MEMORY CROSS'}:{kind:'shard_burst',warn:.72,x:b.x,y:b.y,radius:520,label:'REMEMBRANCE BURST'};
+  attack.phase=phase;b.pendingAttack=attack;
+  v1BossActionSnapshot(room,b,attack.kind,{...attack,phase:'warn',color:b.color,duration:.7});
+}
+function v1ExecuteBossAttack(room,b,attack){
+  if(!attack)return;
+  const kind=attack.kind;
+  if(kind==='laser_sweep')v1BossHitBeam(room,b,attack.angle,attack.range,attack.width,attack.phase===2?32:26,'administrative_beam');
+  else if(kind==='admin_pulse')v1BossHitCircle(room,b,b.x,b.y,attack.radius,attack.phase===2?25:20,'access_denied');
+  else if(kind==='bio_bloom')v1BossHitCircle(room,b,attack.x,attack.y,attack.radius,attack.phase===2?29:23,'telomere_bloom');
+  else if(kind==='heal'){b.hp=Math.min(b.maxHp,b.hp+b.maxHp*(attack.phase===2?.10:.07));}
+  else if(kind==='rocket_barrage'){
+    v1BossHitCircle(room,b,attack.x,attack.y,attack.radius,attack.phase===2?30:24,'rocket_barrage');
+    const base=Math.atan2(attack.y-b.y,attack.x-b.x);
+    for(let i=-2;i<=2;i++)broadcast(room.code,{type:'boss_projectile',bossId:b.id,boss:bossSnapshot(b),angle:base+i*.13,options:{kind:'rocket',speed:5.6,life:145,dmg:0,color:b.color,size:9,visualOnly:true,networkReplay:true,explode:true}});
+  }else if(kind==='ghost_dash'||kind==='blink_strike'){
+    const oldX=b.x,oldY=b.y,p=islandServerNearest?islandServerNearest(attack.x+rand(-75,75),attack.y+rand(-75,75),(b.r||48)+80):{x:attack.x,y:attack.y};b.x=p.x;b.y=p.y;
+    v1BossHitCircle(room,b,b.x,b.y,attack.radius,attack.phase===2?28:22,kind);
+    attack.fromX=oldX;attack.fromY=oldY;attack.x=b.x;attack.y=b.y;
+  }else if(kind==='void_well')v1BossHitCircle(room,b,attack.x,attack.y,attack.radius,attack.phase===2?31:25,'void_well');
+  else if(kind==='memory_cross'){
+    for(const snap of livePlayerSnapshots(room)){if(clientIsInvincible(snap.client))continue;const dx=Math.abs(snap.x-attack.x),dy=Math.abs(snap.y-attack.y);if((dx<attack.width||dy<attack.width)&&dx<attack.range&&dy<attack.range)sendDamageToClient(snap.client,{type:'boss_hit',bossId:b.id,bossName:b.name,amount:attack.phase===2?30:24,cause:'memory_cross'});}
+  }else if(kind==='shard_burst'){
+    const count=attack.phase===2?14:10;
+    for(let i=0;i<count;i++)broadcast(room.code,{type:'boss_projectile',bossId:b.id,boss:bossSnapshot(b),angle:i/count*Math.PI*2,options:{kind:'memory',speed:6.2,life:120,dmg:0,color:b.color,size:7,visualOnly:true,networkReplay:true}});
+    for(const snap of livePlayerSnapshots(room)){const d=Math.hypot(snap.x-b.x,snap.y-b.y),a=Math.atan2(snap.y-b.y,snap.x-b.x),step=Math.PI*2/count,error=Math.abs(((a+step/2)%step)-step/2);if(d<attack.radius&&error<.13)sendDamageToClient(snap.client,{type:'boss_hit',bossId:b.id,bossName:b.name,amount:attack.phase===2?25:19,cause:'remembrance_burst'});}
+  }
+  v1BossActionSnapshot(room,b,kind,{...attack,phase:'fire',warn:0,color:b.color,duration:.55});
+}
+
+spawnSharedBoss=function(room,forcedId=null){
+  if(['test','br','bossrush'].includes(room.mode))return null;
+  if(room.bosses.some(b=>!b.dead))return null;
+  const def=forcedId?(bossDefs.find(x=>x.id===forcedId)||bossDefs[0]):bossDefs[irand(0,bossDefs.length)];
+  const p=typeof islandServerRandomPoint==='function'?islandServerRandomPoint((def.r||48)+90,null,600):{x:rand(-HALF_W+900,HALF_W-900),y:rand(-HALF_H+700,HALF_H-700)};
+  const b={id:'boss_'+(++room.lastBossSerial)+'_'+id(3),bossKind:def.id,name:def.name,color:def.color,skin:def.skin,archetype:def.archetype,x:p.x,y:p.y,vx:0,vy:0,r:def.r,hp:def.hp,maxHp:def.hp,speed:def.speed,angle:rand(0,Math.PI*2),dead:false,fireCd:2.0,specialCd:rand(3.8,5.6),pendingAttack:null,spawnUntil:Date.now()+2400,attackName:'Materializing',desc:def.desc};
+  room.bosses.push(b);broadcast(room.code,{type:'boss_event',action:'spawn',boss:bossSnapshot(b)});return b;
+};
+bossSnapshot=function(b){return{id:b.id,bossKind:b.bossKind,name:b.name,x:Math.round(b.x*10)/10,y:Math.round(b.y*10)/10,vx:Math.round((b.vx||0)*100)/100,vy:Math.round((b.vy||0)*100)/100,r:b.r,angle:b.angle,hp:Math.max(0,Math.round(b.hp*10)/10),maxHp:b.maxHp,color:b.color,skin:b.skin,archetype:b.archetype,dead:!!b.dead,desc:b.desc,spawnRemaining:Math.max(0,((b.spawnUntil||0)-Date.now())/1000),attackName:b.pendingAttack?.label||b.attackName||''};};
+updateSharedBosses=function(room,dt){
+  if(!room.matchStarted||['test','br','bossrush'].includes(room.mode))return;
+  const now=Date.now();if(now>room.nextBossAt){spawnSharedBoss(room);room.nextBossAt=now+rand(70000,100000);}
+  for(const b of room.bosses){
+    if(b.dead)continue;
+    if(now<(b.spawnUntil||0)){b.vx*=.82;b.vy*=.82;continue;}
+    const target=nearestTargetForBoss(room,b);
+    if(!target){b.vx*=.92;b.vy*=.92;continue;}
+    const snap=target.snap,d=target.d;b.angle=Math.atan2(snap.y-b.y,snap.x-b.x);
+    if(b.pendingAttack){b.pendingAttack.warn-=dt/1000;b.vx*=.84;b.vy*=.84;if(b.pendingAttack.warn<=0){const attack=b.pendingAttack;b.pendingAttack=null;v1ExecuteBossAttack(room,b,attack);b.specialCd=rand(4.4,6.8);}continue;}
+    b.specialCd=Math.max(0,(b.specialCd||0)-dt/1000);
+    if(b.specialCd<=0&&d<1150){v1QueueBossAttack(room,b,target);continue;}
+    const tx=Math.cos(b.angle),ty=Math.sin(b.angle),desired=b.bossKind==='black_entity'?340:430;let mx=0,my=0;
+    if(d>desired+80){mx=tx;my=ty;}else if(d<desired-120){mx=-tx;my=-ty;}else{mx=-Math.sin(b.angle)*.75;my=Math.cos(b.angle)*.75;}
+    b.vx=b.vx*.90+mx*b.speed*.10;b.vy=b.vy*.90+my*b.speed*.10;b.fireCd-=dt/1000;
+    if(b.fireCd<=0&&d<780){b.fireCd=rand(1.0,1.55);const shot={kind:'boss',speed:5.2,life:135,dmg:13,color:b.color,size:9,visualOnly:true,networkReplay:true};broadcast(room.code,{type:'boss_projectile',bossId:b.id,boss:bossSnapshot(b),angle:b.angle+rand(-.16,.16),options:shot});if(d<650&&Math.random()<.34)sendDamageToClient(snap.client,{type:'boss_hit',bossId:b.id,bossName:b.name,amount:13,cause:'boss_projectile'});}
+    b.x+=b.vx*dt/16.6;b.y+=b.vy*dt/16.6;if(typeof islandServerConstrainObject==='function')islandServerConstrainObject(b,(b.r||48)+70);else{b.x=clamp(b.x,-HALF_W+80,HALF_W-80);b.y=clamp(b.y,-HALF_H+80,HALF_H-80);}
+  }
+  room.bosses=room.bosses.filter(b=>!b.removeAt||Date.now()<b.removeAt);
+};
+
+function v1UpdateSharedFragmentStorms(room){
+  const storms=room.v1FragmentStorms||[];const now=Date.now();
+  for(let i=storms.length-1;i>=0;i--){const s=storms[i];if(now>=s.expiresAt){storms.splice(i,1);continue;}if(now<s.nextAt)continue;s.nextAt=now+220;const density=s.evolved?3:2;for(let n=0;n<density;n++){const a=rand(0,Math.PI*2),r=Math.sqrt(Math.random())*s.radius;spawnSharedFragment(room,Math.random()<.35?'natural':'xp',s.x+Math.cos(a)*r,s.y+Math.sin(a)*r);}if(Math.random()<.08)spawnSharedFragment(room,'ability',s.x+rand(-s.radius*.65,s.radius*.65),s.y+rand(-s.radius*.65,s.radius*.65));}
+}
+const v1OriginalUpdateSharedWorld=updateSharedWorld;
+updateSharedWorld=function(room,dt){const result=v1OriginalUpdateSharedWorld(room,dt);v1UpdateSharedFragmentStorms(room);return result;};
+const v1OriginalHandleMessage=handleMessage;
+handleMessage=function(client,msg){
+  if(msg?.type==='ability_event'&&safeToken(msg.abilityId,48)==='fragment_storm'&&client.inMatch&&client.room){const room=rooms.get(client.room);const now=Date.now();if(room&&now-(client.v1LastFragmentStormAt||0)>1500){client.v1LastFragmentStormAt=now;const snap=client.snapshot||{};room.v1FragmentStorms=room.v1FragmentStorms||[];room.v1FragmentStorms.push({ownerId:client.id,x:finiteNumber(msg.x,snap.x||0,-HALF_W,HALF_W),y:finiteNumber(msg.y,snap.y||0,-HALF_H,HALF_H),radius:msg.evolved?300:210,evolved:!!msg.evolved,nextAt:now,expiresAt:now+(msg.evolved?7000:4000)});room.v1FragmentStorms=room.v1FragmentStorms.slice(-8);}}
+  return v1OriginalHandleMessage(client,msg);
+};
+console.log('[Fragment.io] Boss abilities, bot score, curse, and ability sync patch enabled.');
 
