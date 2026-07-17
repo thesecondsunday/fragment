@@ -15019,10 +15019,12 @@ function fillProfileStyleSelect(select,type,selected,defaultLabel){
 }
 function applyProfileBackground(element,value){
   if(!element)return;
+  const token=profileClassToken(value);
   for(const className of [...element.classList]){
     if(className.startsWith('profile-bg-'))element.classList.remove(className);
   }
-  element.classList.add('profile-bg-'+profileClassToken(value));
+  element.classList.add('profile-bg-'+token);
+  element.dataset.profileBackground=token;
 }
 
 function profileCosmeticOptions(selected=''){return'<option value="">Empty</option>'+ownedCosmetics.map(cosmeticById).filter(Boolean).map(c=>`<option value="${c.id}" ${c.id===selected?'selected':''}>${escapeHtml(c.name)} · ${escapeHtml(typeLabel(c.type))}</option>`).join('');}
@@ -15038,6 +15040,7 @@ function openProfileEditor(){
   const selectedBackground=settings.profile_background||'default';
   fillProfileStyleSelect($('profileBannerSelect'),'profilebanner',selectedBanner,'Default Banner');
   fillProfileStyleSelect($('profileBackgroundSelect'),'profilebackground',selectedBackground,'Default Panel');
+  applyProfileBackground(document.querySelector('[data-modal="profile-edit"] .profileEditWindow'),selectedBackground);
 
   const iconValue=cloudProfile.profile_icon&&cloudProfile.profile_icon!=='default'
     ? cloudProfile.profile_icon
@@ -15156,7 +15159,10 @@ function installSocialHub(){
   $('leavePartyBtn')?.addEventListener('click',()=>netSend({type:'party_leave'}));
   $('acceptPartyInviteBtn')?.addEventListener('click',()=>{const i=socialState.pendingInvite;if(i)netSend({type:'party_accept',inviteId:i.inviteId});$('partyInviteOverlay').classList.add('hidden');socialState.pendingInvite=null;});$('declinePartyInviteBtn')?.addEventListener('click',()=>{const i=socialState.pendingInvite;if(i)netSend({type:'party_decline',inviteId:i.inviteId});$('partyInviteOverlay').classList.add('hidden');socialState.pendingInvite=null;});
   $('spectatorPrevBtn')?.addEventListener('click',()=>cycleSpectator(-1));$('spectatorNextBtn')?.addEventListener('click',()=>cycleSpectator(1));$('spectatorJoinBtn')?.addEventListener('click',()=>requestJoinFriend(socialState.spectateTargetUserId));$('spectatorLeaveBtn')?.addEventListener('click',returnToTitle);
-  $('aboutMeInput')?.addEventListener('input',()=>{$('aboutCount').textContent=$('aboutMeInput').value.length+'/240';});$('saveProfileBtn')?.addEventListener('click',()=>saveProfileEditor().catch(e=>notify('Could not save profile',normalizeCloudError(e))));$('cancelProfileEditBtn')?.addEventListener('click',()=>openMenuModal('profile'));document.querySelectorAll('[data-achievement-filter]').forEach(btn=>btn.addEventListener('click',()=>{achievementBrowserFilter=btn.dataset.achievementFilter||'all';renderAchievementsBrowser();}));
+  $('aboutMeInput')?.addEventListener('input',()=>{$('aboutCount').textContent=$('aboutMeInput').value.length+'/240';});
+$('profileBackgroundSelect')?.addEventListener('change',event=>{
+  applyProfileBackground(document.querySelector('[data-modal="profile-edit"] .profileEditWindow'),event.target.value||'default');
+});$('saveProfileBtn')?.addEventListener('click',()=>saveProfileEditor().catch(e=>notify('Could not save profile',normalizeCloudError(e))));$('cancelProfileEditBtn')?.addEventListener('click',()=>openMenuModal('profile'));document.querySelectorAll('[data-achievement-filter]').forEach(btn=>btn.addEventListener('click',()=>{achievementBrowserFilter=btn.dataset.achievementFilter||'all';renderAchievementsBrowser();}));
   document.addEventListener('keydown',e=>{if(!socialState.spectating)return;if(e.key.toLowerCase()==='a'){cycleSpectator(-1);e.preventDefault();}if(e.key.toLowerCase()==='d'){cycleSpectator(1);e.preventDefault();}});
   ui.modeSel?.addEventListener('change',()=>{updateMatchButtons();const p=socialState.party;if(p?.leaderId===cloudUser?.id)netSend({type:'party_mode',mode:netCurrentSelectedMode(),fillBots:$('fillBotsToggle')?.checked!==false});});
   ui.titleSel?.addEventListener('change',()=>{
@@ -18783,6 +18789,164 @@ body.bossRushMinimal #leaveGameBtn{
 @media(max-width:650px){
   .profileCosmeticEditorGrid{grid-template-columns:1fr!important}
   #partyInGameHud{top:330px}
+}
+</style>
+
+
+<style id="fragment-v1-profile-background-party-height-fix">
+/* Remove the artificial giant party launcher height. */
+#menuCard.v3Launcher.partyDockActive{
+  height:auto!important;
+  min-height:0!important;
+  max-height:94vh!important;
+  overflow:auto!important;
+}
+#menuCard.partyDockActive .v3Home{
+  height:auto!important;
+  min-height:0!important;
+}
+#menuCard.partyDockActive .v3Hero{
+  grid-template-rows:auto minmax(185px,1fr) auto auto!important;
+}
+#menuCard.partyDockActive .v3Arena{
+  min-height:185px!important;
+}
+
+/* Slightly larger party rows while keeping the overall module compact. */
+#partyMatchDock{
+  padding:8px!important;
+  gap:6px!important;
+}
+#partyMatchReadyList{
+  max-height:68px!important;
+  gap:3px!important;
+}
+.partyMatchReadyMember{
+  min-height:27px!important;
+  padding:4px 7px!important;
+}
+.partyMatchReadyMember b{
+  font-size:10px!important;
+}
+.partyMatchReadyMember span{
+  font-size:9px!important;
+}
+.partyMatchModeField select{
+  height:34px!important;
+}
+.partyMatchDockActions button{
+  min-height:39px!important;
+}
+.partyMatchDockHint{
+  min-height:13px!important;
+  font-size:9px!important;
+}
+
+/* Full-profile background layer. */
+.profileWindow,
+.inGameProfileCard,
+.profileEditWindow{
+  position:relative!important;
+  isolation:isolate!important;
+  overflow:auto!important;
+}
+.profileWindow::before,
+.inGameProfileCard::before,
+.profileEditWindow::before{
+  content:""!important;
+  position:absolute!important;
+  inset:0!important;
+  z-index:-1!important;
+  pointer-events:none!important;
+  background-color:var(--profile-bg-color,#c7ced6)!important;
+  background-image:var(--profile-bg-image,none)!important;
+  background-size:var(--profile-bg-size,auto)!important;
+  background-position:center!important;
+}
+.profileWindow>*,
+.inGameProfileCard>*,
+.profileEditWindow>*{
+  position:relative!important;
+  z-index:1!important;
+}
+
+.profile-bg-default{
+  --profile-bg-color:#c7ced6;
+  --profile-bg-image:none;
+}
+.profile-bg-slate{
+  --profile-bg-color:#aebbc7;
+  --profile-bg-image:
+    linear-gradient(#10182022 2px,transparent 2px),
+    linear-gradient(90deg,#10182022 2px,transparent 2px);
+  --profile-bg-size:24px 24px;
+}
+.profile-bg-verdant{
+  --profile-bg-color:#bdd0c1;
+  --profile-bg-image:
+    radial-gradient(circle at 15% 20%,#9fd08e99,transparent 28%),
+    radial-gradient(circle at 85% 80%,#3f745c88,transparent 30%),
+    linear-gradient(145deg,#c9ddca,#86a790);
+}
+.profile-bg-skyglass{
+  --profile-bg-color:#b9d8e5;
+  --profile-bg-image:linear-gradient(135deg,#a8cadb 0 42%,#edf9fc 42% 49%,#8eb5ca 49% 54%,#dceef5 54%);
+}
+.profile-bg-solar{
+  --profile-bg-color:#c98e45;
+  --profile-bg-image:
+    radial-gradient(circle at 82% 12%,#fff4ad 0 8%,transparent 24%),
+    linear-gradient(145deg,#e5b85f,#9a653e);
+}
+.profile-bg-voidarchive{
+  --profile-bg-color:#211632;
+  --profile-bg-image:
+    radial-gradient(circle at 78% 13%,#9a70bd66,transparent 22%),
+    repeating-linear-gradient(0deg,#1c1428 0 34px,#342348 34px 38px);
+}
+.profile-bg-floor7{
+  --profile-bg-color:#35090d;
+  --profile-bg-image:
+    repeating-linear-gradient(90deg,#260509 0 72px,#7b111c 72px 76px),
+    linear-gradient(#35090d,#1f0407);
+}
+.profile-bg-remembrance{
+  --profile-bg-color:#d7b6ca;
+  --profile-bg-image:
+    radial-gradient(circle at 20% 15%,#ffffffaa,transparent 20%),
+    linear-gradient(145deg,#f2dce8,#b98fae);
+}
+
+/* Let the background remain visible through profile content. */
+.profileWindow[class*="profile-bg-"] .profileSection,
+.profileWindow[class*="profile-bg-"] .profileXp,
+.profileWindow[class*="profile-bg-"] .profileEvolutionCard,
+.inGameProfileCard[class*="profile-bg-"]>p,
+.inGameProfileCard[class*="profile-bg-"] .inGameProfileFavorite,
+.inGameProfileCard[class*="profile-bg-"] .inGameProfileStats div,
+.profileEditWindow[class*="profile-bg-"] .profileEditor{
+  background:rgba(238,243,247,.87)!important;
+  backdrop-filter:blur(2px);
+}
+.profileEditWindow[class*="profile-bg-"] .profileEditor{
+  padding:10px!important;
+  border:3px solid #101820!important;
+}
+
+/* Keep the party HUD lower. */
+#partyInGameHud{
+  top:380px!important;
+}
+
+@media(max-height:850px){
+  #menuCard.partyDockActive .v3Arena{
+    min-height:150px!important;
+  }
+}
+@media(max-width:650px){
+  #partyInGameHud{
+    top:350px!important;
+  }
 }
 </style>
 
