@@ -3707,9 +3707,10 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
         <div class="modalTop"><h2>Edit Profile</h2><button class="modalClose" type="button" data-close-modal>×</button></div>
         <div id="profileEditor" class="profileEditor">
           <label>About Me <span id="aboutCount">0/240</span></label><textarea id="aboutMeInput" maxlength="240" rows="4" placeholder="Write something about yourself..."></textarea>
-          <div class="profileEditorGrid threeColumnEditor">
+          <div class="profileEditorGrid profileCosmeticEditorGrid">
             <div><label>Profile Picture</label><select id="profileIconSelect"><option value="core:circle">Core · Base Circle</option></select></div>
-            <div><label>Profile Banner</label><select id="profileBannerSelect"><option value="default">Default Grid</option><option value="floor7">Floor 7 Elevator</option><option value="void">Void Storm</option><option value="azure">Azure Flame</option><option value="remembrance">Remembrance</option></select></div>
+            <div><label>Profile Banner</label><select id="profileBannerSelect"><option value="default">Default Banner</option></select></div>
+            <div><label>Profile Background</label><select id="profileBackgroundSelect"><option value="default">Default Panel</option></select></div>
             <div><label>Displayed Title</label><select id="profileTitleSelect"><option value="">No Title</option></select></div>
           </div>
           <label>Featured Cosmetics · 5 slots</label><div id="featuredCosmeticEditor" class="profileEditorSlots"></div>
@@ -5642,6 +5643,7 @@ function renderPartyMatchDock(){
   const size=members.length;
   const visible=!!party?.partyId&&size>=2;
   dock.classList.toggle('hidden',!visible);
+  $('menuCard')?.classList.toggle('partyDockActive',visible);
 
   const partyQueueButton=$('partyQueueBtn');
   if(partyQueueButton)partyQueueButton.style.display=visible?'none':'';
@@ -6868,6 +6870,21 @@ const gachaCatalog = [
   {id:'shape_immortal_seal', name:'Immortal Seal Core', type:'shape', value:'immortalseal', rarity:'mythic'},
   {id:'title_hidden_bloodline', name:'Hidden Bloodline', type:'title', value:'Hidden Bloodline', rarity:'mythic'},
 
+
+  {id:'profilebanner_alloy', name:'Alloy Stripe Banner', type:'profilebanner', value:'alloy', rarity:'common'},
+  {id:'profilebackground_slate', name:'Slate Grid Background', type:'profilebackground', value:'slate', rarity:'common'},
+  {id:'profilebanner_signal', name:'Signal Sweep Banner', type:'profilebanner', value:'signal', rarity:'rare'},
+  {id:'profilebackground_verdant', name:'Verdant Terminal Background', type:'profilebackground', value:'verdant', rarity:'rare'},
+  {id:'profilebanner_azure', name:'Azure Relay Banner', type:'profilebanner', value:'azure', rarity:'epic'},
+  {id:'profilebackground_skyglass', name:'Skyglass Chamber Background', type:'profilebackground', value:'skyglass', rarity:'epic'},
+  {id:'profilebanner_void', name:'Void Archive Banner', type:'profilebanner', value:'void', rarity:'legendary'},
+  {id:'profilebackground_solar', name:'Solar Drift Background', type:'profilebackground', value:'solar', rarity:'legendary'},
+  {id:'profilebackground_voidarchive', name:'Void Archive Background', type:'profilebackground', value:'voidarchive', rarity:'legendary'},
+  {id:'profilebanner_floor7', name:'Floor 7 Elevator Banner', type:'profilebanner', value:'floor7', rarity:'mythic'},
+  {id:'profilebanner_remembrance', name:'Remembrance Banner', type:'profilebanner', value:'remembrance', rarity:'mythic'},
+  {id:'profilebanner_memorypalace', name:'Memory Palace Banner', type:'profilebanner', value:'memorypalace', rarity:'mythic'},
+  {id:'profilebackground_floor7', name:'Floor 7 Office Background', type:'profilebackground', value:'floor7', rarity:'mythic'},
+  {id:'profilebackground_remembrance', name:'Remembrance Chamber Background', type:'profilebackground', value:'remembrance', rarity:'mythic'},
 ];
 const limitedCosmetics = [
   {id:'limited_blueflame_trail', name:'Blueflame Trail', type:'trail', value:'blueflame', rarity:'mythic', limited:true, banner:'special'},
@@ -6970,7 +6987,17 @@ function renderOwnedCosmeticOptions(){
   selectKeepValue(ui.hatSel,[{value:'none',label:'None'},...ownedItemsByType('hat').map(c=>({value:c.value,label:cosmeticOptionLabel(c)}))],'none');
   const shapeOptions=[{value:'circle',label:'Base Circle [Base]'},...ownedItemsByType('shape').map(c=>({value:c.value,label:cosmeticOptionLabel(c)}))]; if(customSkinImg) shapeOptions.push({value:'custom',label:'Custom Upload [Custom]'}); selectKeepValue(ui.skinSel,shapeOptions,'circle'); updateCosmeticPreview(false);
 }
-function typeLabel(type){ return ({trail:'Trail',aura:'Aura',hat:'Hat',shape:'Shape',title:'Title'})[type]||type; }
+function typeLabel(type){
+  return ({
+    trail:'Trail',
+    aura:'Aura',
+    hat:'Hat',
+    shape:'Shape',
+    title:'Title',
+    profilebanner:'Profile Banner',
+    profilebackground:'Profile Background'
+  })[type]||type;
+}
 function renderRarityRates(id, banner='standard'){ const el=$(id); if(!el) return; const rates = banner==='standard' ? ['80%','13%','5%','1.4%','0.6%'] : ['80%','13%','5%','1.4%','0.6%+']; el.innerHTML=gachaRarities.map((r,i)=>`<div class="rarityPill" style="border-color:#101820;background:${r.color}33"><b>${r.name}</b><br>${rates[i]}</div>`).join(''); }
 function pityText(key){ const p=gachaPity[key]||defaultPity()[key]; return `${p.pity}/${GACHA_HARD_PITY}`; }
 function renderGachaMenu(){
@@ -7018,6 +7045,20 @@ function drawMythicCutinPreview(item){
     if(item.type==='shape') drawPreviewCore(ctx,cx,cy,item.value||'circle','#ff4df3');
     else if(item.type==='hat'){drawPreviewCore(ctx,cx,cy+10,'circle','#5d8cff');drawHatShape(ctx,cx,cy+10,item.value||'none');}
     else if(item.type==='aura'){drawPreviewCore(ctx,cx,cy,'circle','#5d8cff');drawAuraEffect(ctx,cx,cy,item.value||'none',62,true);}
+    else if(item.type==='profilebanner'){
+      ctx.fillStyle='#101820';ctx.fillRect(cx-78,cy-42,156,84);
+      ctx.fillStyle=item.value==='floor7'?'#6d1018':item.value==='remembrance'?'#e9bfd3':item.value==='void'?'#35224c':'#315fc9';
+      ctx.fillRect(cx-72,cy-36,144,72);
+      ctx.strokeStyle='#fff';ctx.lineWidth=4;ctx.strokeRect(cx-72,cy-36,144,72);
+      ctx.fillStyle='#fff';ctx.font='1000 19px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('BANNER',cx,cy);
+    }
+    else if(item.type==='profilebackground'){
+      ctx.fillStyle='#101820';ctx.fillRect(cx-70,cy-72,140,144);
+      ctx.fillStyle=item.value==='floor7'?'#35090d':item.value==='remembrance'?'#ead4e1':item.value==='voidarchive'?'#211632':'#c7d1db';
+      ctx.fillRect(cx-64,cy-66,128,132);
+      ctx.fillStyle='#eef3f7';ctx.fillRect(cx-48,cy-43,96,25);ctx.fillRect(cx-48,cy-8,96,48);ctx.fillRect(cx-48,cy+50,96,9);
+      ctx.strokeStyle='#101820';ctx.lineWidth=3;ctx.strokeRect(cx-48,cy-43,96,25);ctx.strokeRect(cx-48,cy-8,96,48);
+    }
     else{
       drawPreviewCore(ctx,cx,cy,'diamond','#ff4df3');ctx.fillStyle='#fff';ctx.font='1000 32px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(item.type==='title'?'T':'◆',cx,cy);
     }
@@ -14942,7 +14983,10 @@ function renderPlayerProfile(profile,progress){
   progress=normalizeAccountProgress(progress);const own=profile.id===cloudUser?.id;const p=socialState.presence.get(profile.id)||{status:own?'online':'offline'};const title=profile.equipped_title||'';
   $('profileName').textContent=profile.username||'Player';$('profileTitle').textContent=title||'NO TITLE';$('profilePresence').textContent=socialStatusLabel(p);$('profileFriendCode').textContent=profile.friend_code||'';$('profileLevel').textContent=progress.account_level;$('profileFracture').textContent='FRACTURE '+romanNumeral(progress.stats.fracture_rank||0);$('profileAchievementScore').textContent=progress.achievement_points+' AP';$('profileAbout').textContent=profile.about_me||'No profile description yet.';
   const need=xpNeededForAccountLevel(progress.account_level);$('profileXpText').textContent=progress.account_xp+' / '+need+(progress.account_level===100&&progress.stats.fracture_rank<7?' XP TO FRACTURE':' XP');$('profileXpFill').style.width=clamp(progress.account_xp/need*100,0,100)+'%';$('profileDockLevel').textContent=(accountProgress?.stats?.fracture_rank?'F'+romanNumeral(accountProgress.stats.fracture_rank)+' · ':'')+'Level '+(accountProgress?.account_level||1);
-  const banner=$('profileBanner');banner.className='profileBanner banner-'+(profile.profile_banner||'default');renderProfileCosmeticIcon(profile.profile_icon||'core:circle');
+  const banner=$('profileBanner');
+  banner.className='profileBanner banner-'+profileClassToken(profile.profile_banner||'default');
+  applyProfileBackground(banner.closest('.profileWindow'),profile.profile_settings?.profile_background||'default');
+  renderProfileCosmeticIcon(profile.profile_icon||'core:circle');
   const mastery=progress.stats.evolution_mastery||{};const favoriteId=(progress.stats.favorite_evolution&&mastery[progress.stats.favorite_evolution])?progress.stats.favorite_evolution:Object.entries(mastery).sort((a,b)=>normalizedMasteryEntry(b[1]).level-normalizedMasteryEntry(a[1]).level||normalizedMasteryEntry(b[1]).xp-normalizedMasteryEntry(a[1]).xp)[0]?.[0];const favorite=normalizedMasteryEntry(favoriteId?mastery[favoriteId]:null);$('profileFavoriteEvolution').innerHTML=favoriteId?`<div><b>${escapeHtml(primaryName(favoriteId))}</b><span>${favorite.matches} matches · ${favorite.wins} wins · ${favorite.eliminations} eliminations</span></div><small>MASTERY ${favorite.level}<br>${favorite.xp}/${masteryNeed(favorite.level)} XP</small>`:'<div><b>NO MASTERY YET</b><span>Finish matches with an evolution to build mastery.</span></div><small>MASTERY 0</small>';
   const featured=Array.isArray(profile.featured_cosmetics)?profile.featured_cosmetics:[];$('profileFeaturedCosmetics').innerHTML=Array.from({length:5},(_,i)=>cosmeticShowcaseCard(featured[i])).join('');
   const ach=Array.isArray(profile.featured_achievements)&&profile.featured_achievements.length?profile.featured_achievements:(progress.showcased_achievements||[]);$('profileFeaturedAchievements').innerHTML=Array.from({length:5},(_,i)=>achievementShowcaseCard(ach[i])).join('');
@@ -14950,19 +14994,113 @@ function renderPlayerProfile(profile,progress){
   $('editProfileBtn').style.display=own?'':'none';$('profileInviteBtn').style.display=!own&&(p.status==='online'||p.status==='in_party')?'':'none';$('profileSpectateBtn').style.display=!own&&p.spectatable?'':'none';$('profileJoinBtn').style.display=!own&&p.joinable?'':'none';
   $('profileInviteBtn').onclick=()=>inviteFriendToParty(profile.id);$('profileSpectateBtn').onclick=()=>requestSpectateFriend(profile.id);$('profileJoinBtn').onclick=()=>requestJoinFriend(profile.id);$('editProfileBtn').onclick=()=>openProfileEditor();
 }
+
+function profileClassToken(value){
+  return String(value||'default').toLowerCase().replace(/[^a-z0-9_-]/g,'').slice(0,32)||'default';
+}
+function profileStyleOptions(type,selected,defaultLabel){
+  const options=[{value:'default',label:defaultLabel+' [Base]'}];
+  for(const cosmetic of ownedItemsByType(type)){
+    if(!options.some(option=>option.value===cosmetic.value)){
+      options.push({value:cosmetic.value,label:cosmeticOptionLabel(cosmetic)});
+    }
+  }
+  const current=String(selected||'default');
+  if(current!=='default'&&!options.some(option=>option.value===current)){
+    options.push({value:current,label:current.replaceAll('_',' ').toUpperCase()+' [Legacy Equipped]'});
+  }
+  return options;
+}
+function fillProfileStyleSelect(select,type,selected,defaultLabel){
+  if(!select)return;
+  const options=profileStyleOptions(type,selected,defaultLabel);
+  select.innerHTML=options.map(option=>`<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join('');
+  select.value=options.some(option=>option.value===selected)?selected:'default';
+}
+function applyProfileBackground(element,value){
+  if(!element)return;
+  for(const className of [...element.classList]){
+    if(className.startsWith('profile-bg-'))element.classList.remove(className);
+  }
+  element.classList.add('profile-bg-'+profileClassToken(value));
+}
+
 function profileCosmeticOptions(selected=''){return'<option value="">Empty</option>'+ownedCosmetics.map(cosmeticById).filter(Boolean).map(c=>`<option value="${c.id}" ${c.id===selected?'selected':''}>${escapeHtml(c.name)} · ${escapeHtml(typeLabel(c.type))}</option>`).join('');}
 function profileAchievementOptions(selected=''){const unlocked=Object.keys(accountProgress?.achievements||{});return'<option value="">Empty</option>'+unlocked.map(id=>`<option value="${id}" ${id===selected?'selected':''}>${escapeHtml(ACHIEVEMENTS[id]?.name||id)}</option>`).join('');}
 function openProfileEditor(){
   if(!cloudProfile)return;
-  $('aboutMeInput').value=cloudProfile.about_me||'';$('aboutCount').textContent=$('aboutMeInput').value.length+'/240';$('profileBannerSelect').value=cloudProfile.profile_banner||'default';
-  const iconValue=cloudProfile.profile_icon&&cloudProfile.profile_icon!=='default'?cloudProfile.profile_icon:'core:'+(ui.skinSel?.value||'circle');$('profileIconSelect').innerHTML=profileIconOptions(iconValue);$('profileIconSelect').value=iconValue;
-  const titles=[{value:'',label:'No Title'},...ownedItemsByType('title').map(c=>({value:c.value,label:c.name}))];$('profileTitleSelect').innerHTML=titles.map(o=>`<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('');$('profileTitleSelect').value=cloudProfile.equipped_title||ui.titleSel?.value||'';
-  const fc=Array.isArray(cloudProfile.featured_cosmetics)?cloudProfile.featured_cosmetics:[];$('featuredCosmeticEditor').innerHTML=Array.from({length:5},(_,i)=>`<select data-feature-cosmetic="${i}">${profileCosmeticOptions(fc[i])}</select>`).join('');const fa=Array.isArray(cloudProfile.featured_achievements)?cloudProfile.featured_achievements:(accountProgress?.showcased_achievements||[]);$('featuredAchievementEditor').innerHTML=Array.from({length:5},(_,i)=>`<select data-feature-achievement="${i}">${profileAchievementOptions(fa[i])}</select>`).join('');
-  const settings=cloudProfile.profile_settings||{};$('allowSpectateSelect').value=settings.allow_spectate||'friends';$('allowJoinSelect').value=settings.allow_join||'friends';openMenuModal('profile-edit');
+
+  $('aboutMeInput').value=cloudProfile.about_me||'';
+  $('aboutCount').textContent=$('aboutMeInput').value.length+'/240';
+
+  const settings=cloudProfile.profile_settings||{};
+  const selectedBanner=cloudProfile.profile_banner||'default';
+  const selectedBackground=settings.profile_background||'default';
+  fillProfileStyleSelect($('profileBannerSelect'),'profilebanner',selectedBanner,'Default Banner');
+  fillProfileStyleSelect($('profileBackgroundSelect'),'profilebackground',selectedBackground,'Default Panel');
+
+  const iconValue=cloudProfile.profile_icon&&cloudProfile.profile_icon!=='default'
+    ? cloudProfile.profile_icon
+    : 'core:'+(ui.skinSel?.value||'circle');
+  $('profileIconSelect').innerHTML=profileIconOptions(iconValue);
+  $('profileIconSelect').value=iconValue;
+
+  const titles=[
+    {value:'',label:'No Title'},
+    ...ownedItemsByType('title').map(cosmetic=>({value:cosmetic.value,label:cosmetic.name}))
+  ];
+  $('profileTitleSelect').innerHTML=titles.map(option=>`<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join('');
+  $('profileTitleSelect').value=cloudProfile.equipped_title||ui.titleSel?.value||'';
+
+  const featured=Array.isArray(cloudProfile.featured_cosmetics)?cloudProfile.featured_cosmetics:[];
+  $('featuredCosmeticEditor').innerHTML=Array.from(
+    {length:5},
+    (_,index)=>`<select data-feature-cosmetic="${index}">${profileCosmeticOptions(featured[index])}</select>`
+  ).join('');
+
+  const achievements=Array.isArray(cloudProfile.featured_achievements)
+    ? cloudProfile.featured_achievements
+    : (accountProgress?.showcased_achievements||[]);
+  $('featuredAchievementEditor').innerHTML=Array.from(
+    {length:5},
+    (_,index)=>`<select data-feature-achievement="${index}">${profileAchievementOptions(achievements[index])}</select>`
+  ).join('');
+
+  $('allowSpectateSelect').value=settings.allow_spectate||'friends';
+  $('allowJoinSelect').value=settings.allow_join||'friends';
+  openMenuModal('profile-edit');
 }
 async function saveProfileEditor(){
-  if(!cloudProfile)return;const featured=[...document.querySelectorAll('[data-feature-cosmetic]')].map(s=>s.value).filter(Boolean);const achievements=[...document.querySelectorAll('[data-feature-achievement]')].map(s=>s.value).filter(Boolean);cloudProfile.about_me=String($('aboutMeInput').value||'').trim().slice(0,240);cloudProfile.profile_icon=$('profileIconSelect').value||'core:circle';cloudProfile.profile_banner=$('profileBannerSelect').value||'default';cloudProfile.equipped_title=$('profileTitleSelect').value||'';cloudProfile.featured_cosmetics=[...new Set(featured)].slice(0,5);cloudProfile.featured_achievements=[...new Set(achievements)].slice(0,5);cloudProfile.profile_settings={...(cloudProfile.profile_settings||{}),show_status:'friends',show_match:'friends',allow_spectate:$('allowSpectateSelect').value,allow_join:$('allowJoinSelect').value};accountProgress.showcased_achievements=cloudProfile.featured_achievements;
-  if(ui.titleSel&&[...ui.titleSel.options].some(o=>o.value===cloudProfile.equipped_title))ui.titleSel.value=cloudProfile.equipped_title;await saveCloudProgress();renderPlayerProfile(cloudProfile,accountProgress);openMenuModal('profile');notify('Profile saved','Profile picture, About Me, title, showcase, and privacy updated.');netSend({type:'social_refresh'});
+  if(!cloudProfile)return;
+
+  const featured=[...document.querySelectorAll('[data-feature-cosmetic]')].map(select=>select.value).filter(Boolean);
+  const achievements=[...document.querySelectorAll('[data-feature-achievement]')].map(select=>select.value).filter(Boolean);
+
+  cloudProfile.about_me=String($('aboutMeInput').value||'').trim().slice(0,240);
+  cloudProfile.profile_icon=$('profileIconSelect').value||'core:circle';
+  cloudProfile.profile_banner=$('profileBannerSelect').value||'default';
+  cloudProfile.equipped_title=$('profileTitleSelect').value||'';
+  cloudProfile.featured_cosmetics=[...new Set(featured)].slice(0,5);
+  cloudProfile.featured_achievements=[...new Set(achievements)].slice(0,5);
+  cloudProfile.profile_settings={
+    ...(cloudProfile.profile_settings||{}),
+    profile_background:$('profileBackgroundSelect').value||'default',
+    show_status:'friends',
+    show_match:'friends',
+    allow_spectate:$('allowSpectateSelect').value,
+    allow_join:$('allowJoinSelect').value
+  };
+
+  accountProgress.showcased_achievements=cloudProfile.featured_achievements;
+  if(ui.titleSel&&[...ui.titleSel.options].some(option=>option.value===cloudProfile.equipped_title)){
+    ui.titleSel.value=cloudProfile.equipped_title;
+  }
+
+  await saveCloudProgress();
+  renderPlayerProfile(cloudProfile,accountProgress);
+  openMenuModal('profile');
+  notify('Profile saved','Picture, banner, background, title, showcase, and privacy updated.');
+  netSend({type:'social_refresh'});
 }
 function inviteFriendToParty(userId){if(!cloudUser){openMenuModal('account');return;}ensureSocialConnection().then(()=>netSend({type:'party_invite',targetUserId:userId}));}
 function requestSpectateFriend(userId){if(!cloudUser)return;ensureSocialConnection().then(()=>netSend({type:'spectate_friend',friendUserId:userId}));}
@@ -15207,15 +15345,58 @@ function renderPartyInGameHud(){
     }
     const contentBottom=Math.max(...rectangles.map(rect=>rect.bottom));
     const left=Math.min(...rectangles.map(rect=>rect.left));
-    const desiredTop=contentBottom+58;
-    const maxTop=Math.max(12,window.innerHeight-box.offsetHeight-18);
+    const desiredTop=Math.max(350,contentBottom+105);
     box.style.left=Math.round(Math.max(12,left))+'px';
-    box.style.top=Math.round(Math.min(maxTop,desiredTop))+'px';
+    box.style.top=Math.round(desiredTop)+'px';
   }
 }
 function drawProfileIconCanvas(canvasEl,value){if(!canvasEl)return;const c=canvasEl.getContext('2d');c.clearRect(0,0,canvasEl.width,canvasEl.height);const v=String(value||'core:circle');if(v.startsWith('hat:')){drawPreviewCore(c,canvasEl.width/2,canvasEl.height*.56,'circle','#5d8cff');drawHatShape(c,canvasEl.width/2,canvasEl.height*.56,v.slice(4));}else drawPreviewCore(c,canvasEl.width/2,canvasEl.height/2,v.startsWith('core:')?v.slice(5):'circle','#5d8cff');}
 function showMatchPlayerCards(cards,mode){cards=Array.isArray(cards)?cards:[];if(!cards.length&&cloudProfile)cards=[{userId:cloudUser?.id,username:cloudProfile.username,title:cloudProfile.equipped_title,banner:cloudProfile.profile_banner,icon:cloudProfile.profile_icon,level:accountProgress?.account_level||1,favoriteEvolution:accountProgress?.stats?.favorite_evolution||'',achievementPoints:accountProgress?.achievement_points||0}];if(!cards.length)return;const overlay=$('matchPlayerCards'),grid=$('matchPlayerCardsGrid');$('matchPlayerCardsMode').textContent=netModeLabel(mode||gameMode);grid.innerHTML=cards.slice(0,6).map((c,i)=>`<article class="matchPlayerCard banner-${escapeHtml(c.banner||'default')}"><canvas width="90" height="90" data-player-card-icon="${i}"></canvas><h3>${escapeHtml(c.username||'Player')}</h3><b>${escapeHtml(c.title||'NO TITLE')}</b><span>LEVEL ${Number(c.level)||1} · ${Number(c.achievementPoints)||0} AP</span><small>${c.favoriteEvolution?'Favourite: '+escapeHtml(primaryName(c.favoriteEvolution)):'No favourite evolution yet'}</small></article>`).join('');cards.slice(0,6).forEach((c,i)=>drawProfileIconCanvas(grid.querySelector(`[data-player-card-icon="${i}"]`),c.icon));overlay.classList.remove('hidden');clearTimeout(showMatchPlayerCards.timer);showMatchPlayerCards.timer=setTimeout(()=>overlay.classList.add('hidden'),3600);}
-function renderInGameProfile(data){if(!data)return;const {profile,progress}=data,p=normalizeAccountProgress(progress);$('inGameProfileName').textContent=profile.username||'Player';$('inGameProfileTitle').textContent=profile.equipped_title||'NO TITLE';$('inGameProfileLevel').textContent=`LEVEL ${p.account_level} · ${p.achievement_points} AP`;$('inGameProfileAbout').textContent=profile.about_me||'No profile description yet.';$('inGameProfileBanner').className='inGameProfileBanner banner-'+(profile.profile_banner||'default');drawProfileIconCanvas($('inGameProfileIcon'),profile.profile_icon);const fav=p.stats.favorite_evolution;$('inGameProfileFavorite').innerHTML=fav?`<b>FAVOURITE EVOLUTION · ${escapeHtml(primaryName(fav))}</b>`:'<b>NO FAVOURITE EVOLUTION YET</b>';const s=p.stats;$('inGameProfileStats').innerHTML=[['Matches',s.matches],['Wins',s.wins],['Eliminations',s.eliminations],['Bosses',s.bosses],['Fragments',s.fragments],['High Score',s.highest_score],['BR Wins',s.br_wins],['Playtime',Math.floor((s.playtime_seconds||0)/60)+'m']].map(([k,v])=>`<div><b>${Number(v||0).toLocaleString()}</b><span>${k}</span></div>`).join('');$('inGameProfileCosmetics').innerHTML=Array.from({length:5},(_,i)=>cosmeticShowcaseCard((profile.featured_cosmetics||[])[i])).join('');const achievements=profile.featured_achievements?.length?profile.featured_achievements:p.showcased_achievements;$('inGameProfileAchievements').innerHTML=Array.from({length:5},(_,i)=>achievementShowcaseCard((achievements||[])[i])).join('');$('inGameProfileOverlay').classList.remove('hidden');}
+function renderInGameProfile(data){
+  if(!data)return;
+  const {profile,progress}=data,p=normalizeAccountProgress(progress);
+
+  $('inGameProfileName').textContent=profile.username||'Player';
+  $('inGameProfileTitle').textContent=profile.equipped_title||'NO TITLE';
+  $('inGameProfileLevel').textContent=`LEVEL ${p.account_level} · ${p.achievement_points} AP`;
+  $('inGameProfileAbout').textContent=profile.about_me||'No profile description yet.';
+
+  $('inGameProfileBanner').className='inGameProfileBanner banner-'+profileClassToken(profile.profile_banner||'default');
+  applyProfileBackground($('inGameProfileOverlay')?.querySelector('.inGameProfileCard'),profile.profile_settings?.profile_background||'default');
+  drawProfileIconCanvas($('inGameProfileIcon'),profile.profile_icon);
+
+  const favorite=p.stats.favorite_evolution;
+  $('inGameProfileFavorite').innerHTML=favorite
+    ? `<b>FAVOURITE EVOLUTION · ${escapeHtml(primaryName(favorite))}</b>`
+    : '<b>NO FAVOURITE EVOLUTION YET</b>';
+
+  const stats=p.stats;
+  $('inGameProfileStats').innerHTML=[
+    ['Matches',stats.matches],
+    ['Wins',stats.wins],
+    ['Eliminations',stats.eliminations],
+    ['Bosses',stats.bosses],
+    ['Fragments',stats.fragments],
+    ['High Score',stats.highest_score],
+    ['BR Wins',stats.br_wins],
+    ['Playtime',Math.floor((stats.playtime_seconds||0)/60)+'m']
+  ].map(([key,value])=>`<div><b>${Number(value||0).toLocaleString()}</b><span>${key}</span></div>`).join('');
+
+  $('inGameProfileCosmetics').innerHTML=Array.from(
+    {length:5},
+    (_,index)=>cosmeticShowcaseCard((profile.featured_cosmetics||[])[index])
+  ).join('');
+
+  const achievements=profile.featured_achievements?.length
+    ? profile.featured_achievements
+    : p.showcased_achievements;
+  $('inGameProfileAchievements').innerHTML=Array.from(
+    {length:5},
+    (_,index)=>achievementShowcaseCard((achievements||[])[index])
+  ).join('');
+
+  $('inGameProfileOverlay').classList.remove('hidden');
+}
 async function openInGamePlayerProfile(userId){if(!userId||!cloudUser)return;try{const data=userId===cloudUser.id?{profile:cloudProfile,progress:accountProgress}:await fetchPlayerProfile(userId);if(!data)throw new Error('Profile not found.');renderInGameProfile(data);}catch(error){notify('Profile unavailable',normalizeCloudError(error));}}
 function recordIncomingDamage(amount,source,attack){if(!player||state.screen!=='play')return;deathRecapState.damageTaken+=Math.max(0,Number(amount)||0);deathRecapState.lastAttack=String(attack||'Unknown attack');deathRecapState.lastSource=source||null;}
 function buildDeathRecap(killer){deathRecapState.killer=killer||deathRecapState.lastSource||null;const k=deathRecapState.killer,userId=k?.userId||'';$('deathKillerName').textContent=k?.name||'THE ARENA';$('deathKillerBuild').textContent=k?(primaryName(k.archetype||'starter')+' · '+deathRecapState.lastAttack):deathRecapState.lastAttack;$('deathKillerHp').textContent=k&&Number.isFinite(k.hp)?Math.ceil(k.hp)+' HP':'— HP';$('deathStats').innerHTML=[['Damage received',Math.round(deathRecapState.damageTaken)],['Final attack',deathRecapState.lastAttack],['Final level',player?.level||1],['Score',Math.floor(player?.score||0).toLocaleString()],['Fragments',player?.frags||0],['Area',currentAreaDescription().name]].map(([k2,v])=>`<div class="deathStat"><b>${escapeHtml(String(v))}</b><span>${escapeHtml(k2)}</span></div>`).join('');$('deathProfileBtn').disabled=!userId;$('deathReportBtn').disabled=!userId;$('deathSpectateBtn').disabled=!(k?.networkRemote&&!k.dead);$('deathRecapHint').textContent=userId?'This is a real player account. You can view their profile or submit a report.':'Bots and bosses do not have public profiles.';}
@@ -18485,6 +18666,123 @@ body.bossRushMinimal #leaveGameBtn{
 .partyMatchReadyMember b,
 .partyMatchReadyMember span{
   line-height:1.05!important;
+}
+</style>
+
+
+<style id="fragment-v1-profile-cosmetics-layout-fix">
+#menuCard.v3Launcher.partyDockActive{
+  width:min(1120px,96vw)!important;
+  height:min(940px,96vh)!important;
+  max-height:96vh!important;
+  overflow:auto!important;
+}
+#menuCard.partyDockActive .v3Home{
+  min-height:0!important;
+  height:auto!important;
+  align-items:stretch!important;
+}
+#menuCard.partyDockActive .v3Hero{
+  grid-template-rows:auto minmax(175px,1fr) auto auto!important;
+  overflow:visible!important;
+}
+#menuCard.partyDockActive .v3Arena{
+  min-height:175px!important;
+}
+#partyMatchDock{
+  max-height:none!important;
+  padding:7px!important;
+  gap:5px!important;
+  overflow:hidden!important;
+}
+.partyMatchDockHead{padding-bottom:4px!important}
+.partyMatchModeField{gap:6px!important}
+.partyMatchModeField select{height:32px!important}
+#partyMatchReadyList{
+  max-height:52px!important;
+  gap:2px!important;
+  overflow-y:auto!important;
+}
+.partyMatchReadyMember{
+  min-height:22px!important;
+  padding:2px 5px!important;
+}
+.partyMatchDockActions button{min-height:36px!important}
+.partyMatchDockHint{
+  min-height:12px!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+#partyInGameHud{top:350px}
+.profileCosmeticEditorGrid{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:9px!important;
+}
+.profileCosmeticEditorGrid>div{min-width:0!important}
+.profileCosmeticEditorGrid select{
+  width:100%!important;
+  min-width:0!important;
+}
+.profileBanner.banner-alloy,.inGameProfileBanner.banner-alloy{
+  color:#101820;
+  background:linear-gradient(115deg,transparent 0 43%,rgba(255,255,255,.44) 43% 49%,transparent 49%),#aab7c2!important;
+}
+.profileBanner.banner-signal,.inGameProfileBanner.banner-signal{
+  color:#101820;
+  background:repeating-linear-gradient(135deg,#dce8ee 0 18px,#bfd4dd 18px 23px),#dce8ee!important;
+}
+.profileBanner.banner-azure,.inGameProfileBanner.banner-azure{
+  color:#101820;
+  background:radial-gradient(circle at 78% 30%,rgba(255,255,255,.8),transparent 18%),linear-gradient(120deg,#8adfff,#d9f7ff)!important;
+}
+.profileBanner.banner-void,.inGameProfileBanner.banner-void{
+  color:#fff;
+  background:radial-gradient(circle at 80% 20%,#7b5ba055,transparent 26%),linear-gradient(135deg,#171020,#3a2852)!important;
+}
+.profileBanner.banner-floor7,.inGameProfileBanner.banner-floor7{
+  color:#fff;
+  background:repeating-linear-gradient(90deg,transparent 0 64px,#ff42501c 64px 67px),linear-gradient(135deg,#220407,#7d1420)!important;
+}
+.profileBanner.banner-remembrance,.inGameProfileBanner.banner-remembrance{
+  color:#101820;
+  background:radial-gradient(circle at 18% 35%,#fff9,transparent 14%),linear-gradient(125deg,#f6d6e6,#d8b2d0)!important;
+}
+.profileBanner.banner-memorypalace,.inGameProfileBanner.banner-memorypalace{
+  color:#101820;
+  background:repeating-linear-gradient(45deg,#efe4cf 0 16px,#d8c5a4 16px 19px),#efe4cf!important;
+}
+.profileWindow,.inGameProfileCard{background-color:#c7ced6!important}
+.profile-bg-slate{
+  background:linear-gradient(#10182018 2px,transparent 2px),linear-gradient(90deg,#10182018 2px,transparent 2px),#aebbc7!important;
+  background-size:24px 24px!important;
+}
+.profile-bg-verdant{
+  background:radial-gradient(circle at 15% 22%,#9fd08e66,transparent 28%),radial-gradient(circle at 85% 80%,#3f745c66,transparent 30%),#bdd0c1!important;
+}
+.profile-bg-skyglass{background:linear-gradient(135deg,#b9d8e5 0 45%,#e7f4f8 45% 50%,#a8c8da 50%)!important}
+.profile-bg-solar{background:radial-gradient(circle at 82% 12%,#fff2a8,transparent 20%),linear-gradient(145deg,#e3b65d,#8f5f3d)!important}
+.profile-bg-voidarchive{background:radial-gradient(circle at 75% 12%,#8c67b044,transparent 22%),repeating-linear-gradient(0deg,#1c1428 0 34px,#2b1e3c 34px 37px)!important}
+.profile-bg-floor7{background:repeating-linear-gradient(90deg,#260509 0 74px,#5f0c14 74px 77px),#35090d!important}
+.profile-bg-remembrance{background:radial-gradient(circle at 20% 16%,#fff8,transparent 20%),linear-gradient(145deg,#ead4e1,#b78fac)!important}
+.profileWindow[class*="profile-bg-"] .profileSection,
+.profileWindow[class*="profile-bg-"] .profileXp,
+.profileWindow[class*="profile-bg-"] .profileEvolutionCard,
+.inGameProfileCard[class*="profile-bg-"]>p,
+.inGameProfileCard[class*="profile-bg-"] .inGameProfileFavorite,
+.inGameProfileCard[class*="profile-bg-"] .inGameProfileStats div{
+  box-shadow:3px 3px 0 rgba(16,24,32,.14)!important;
+}
+@media(max-width:900px){
+  #menuCard.v3Launcher.partyDockActive{
+    height:auto!important;
+    max-height:96vh!important;
+  }
+}
+@media(max-width:650px){
+  .profileCosmeticEditorGrid{grid-template-columns:1fr!important}
+  #partyInGameHud{top:330px}
 }
 </style>
 
