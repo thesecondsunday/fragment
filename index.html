@@ -4879,7 +4879,7 @@ function netApplyWorldState(msg){
   if(data.hotZone){
     hotZone={id:data.hotZone.id, biome:data.hotZone.biome, timer:Math.max(0,(Number(data.hotZone.timer)||0)/1000), pulse:data.hotZone.pulse||0};
   }else if('hotZone' in data){ hotZone=null; }
-  updateHud();
+  if(player && state.screen==='play') updateHud();
 }
 function netApplyWorldEvent(msg){
   if(msg.action==='clear'){
@@ -8025,6 +8025,11 @@ function allTargets(owner){
 
 function hitEntity(target, dmg, source){
   if(target && source && sameTeam(target, source)) return;
+  // Local/offline bots had become too harmless after the previous balance pass.
+  // A small 18% bump keeps them threatening without restoring the old burst damage.
+  if(source && !source.human && !source.boss && !source.isClone && !source.networkBot){
+    dmg*=1.18;
+  }
   if(target && (target.spawnInvincible||0)>0){
     target.spawnShieldPulse = Math.max(target.spawnShieldPulse||0, .35);
     if(target.human && Math.random()<0.22) floatText(target.x,target.y-target.r-36,'INVINCIBLE','#8ae4ff');
@@ -8122,6 +8127,41 @@ function playFinalEvoDeathEffect(target,killer){
   return true;
 }
 
+function spawnOfflineDeathFragments(target, count){
+  if(!target || netUsesServerWorld()) return 0;
+  const total=clamp(Math.floor(Number(count)||0),0,70);
+  let spawned=0;
+  for(let i=0;i<total;i++){
+    const a=rand(0,Math.PI*2);
+    const radius=Math.sqrt(Math.random())*rand(28,105);
+    const x=clamp(target.x+Math.cos(a)*radius,-HALF_W+24,HALF_W-24);
+    const y=clamp(target.y+Math.sin(a)*radius,-HALF_H+24,HALF_H-24);
+    if(i>0 && i%9===0){
+      const biome=getBiomeAt(x,y);
+      fragments.push({
+        kind:'natural',x,y,vx:rand(-.16,.16),vy:rand(-.16,.16),r:9,
+        color:biome.name.includes('Forest')||biome.name==='Meadow'?'#84d66e':'#b2d88a',
+        spawnPulse:1
+      });
+    }else{
+      const roll=Math.random();
+      const rar=roll<.70?rarity[0]:roll<.90?rarity[1]:roll<.98?rarity[2]:rarity[3];
+      fragments.push({
+        kind:'xp',x,y,vx:rand(-.28,.28),vy:rand(-.28,.28),
+        r:8+(rar===rarity[3]?3:rar===rarity[2]?2:rar===rarity[1]?1:0),
+        rarity:rar,spawnPulse:1
+      });
+    }
+    spawned++;
+  }
+  trimFragments();
+  if(spawned){
+    ring(target.x,target.y,'#ffcf58',82);
+    floatText(target.x,target.y-36,spawned+' FRAGMENTS','#ffcf58');
+  }
+  return spawned;
+}
+
 function killEntity(target, killer){
   target.dead = true;
   if(gameMode==='duo' && target.duoId && !killEntity._linking){
@@ -8134,10 +8174,17 @@ function killEntity(target, killer){
     }
     killEntity._linking = false;
   }
-  const serverDrops = multiplayer.connected && multiplayer.matchStarted && target===player && netUsesServerWorld();
-  const dropCount = clamp(12 + target.frags*1.2, 12, 42);
-  if(!serverDrops){
-    for(let i=0;i<dropCount;i++) spawnFragment('xp', target.x + rand(-40,40), target.y + rand(-40,40));
+  const serverDrops=netUsesServerWorld() && (target===player || target.networkBot || target.networkRemote || target.networkBoss);
+  const carried=Math.max(0,Number(target.frags)||0);
+  const dropCount=target.boss
+    ? 0
+    : target.human
+      ? clamp(Math.floor(16+carried*.72),16,46)
+      : target.isClone
+        ? 0
+        : clamp(Math.floor(10+carried*.45),10,28);
+  if(!serverDrops && dropCount>0){
+    spawnOfflineDeathFragments(target,dropCount);
   }
   if(target.isClone){
     burstAt(target.x,target.y,'#66d98b',1.3);
@@ -11438,6 +11485,7 @@ function update(dt){
 }
 
 function renderServerLb(){
+  if(!ui || !ui.serverLb) return;
   const list = [player, ...remotePlayers.filter(r=>!r.dead), ...bots.filter(b=>!b.dead), ...bosses.filter(b=>!b.dead)].filter(Boolean).sort((a,b)=>(b.boss?999999:b.score)-(a.boss?999999:a.score)).slice(0,10);
   ui.serverLb.innerHTML = list.map((x,i)=>{
     const badge = x.boss ? '👹 ' : x.networkRemote ? '🌐 ' : x.team==='blue' ? '🟦 ' : x.team==='red' ? '🟥 ' : '';
@@ -11467,6 +11515,9 @@ function updateCornerUiFade(focus){
 }
 
 function updateHud(){
+  // World/bot snapshots can arrive while the client is still in the lobby.
+  // Do not try to read player.level, HP, abilities, etc. until a match entity exists.
+  if(!player || !ui || !ui.hud) return;
   renderRemnantBadges();
   const focus=controlledEntity(); updateCornerUiFade(focus); ui.level.textContent = player.level; ui.xp.textContent = Math.floor(player.xp); ui.need.textContent = player.need; ui.hp.textContent = Math.ceil(focus.hp)+' / '+Math.ceil(focus.maxHp); ui.score.textContent = Math.floor(player.score).toLocaleString(); ui.frags.textContent = player.frags; ui.world.textContent = gameMode==='bossrush' ? 'Boss Rush' : gameMode==='br' ? 'Void Storm' : (world.mode ? world.mode.name : 'Stable'); ui.evo.innerHTML = iconSpan(evoIcon(player.archetype),'evoIcon') + entityEvoSpan(player); ui.biome.textContent = getBiomeAt(focus.x, focus.y).name; ui.worldTimer.textContent = gameMode==='bossrush' ? (bossRush.dimension?.active ? 'VII '+Math.ceil(bossRush.dimension.timer)+'s' : ((bossRush.countdown||0)>0 ? Math.ceil(bossRush.countdown)+'s' : ((bossRush.wave+1)+' / '+(bossRush.sequence?.length||1)))) : gameMode==='br' ? (br.stormActive ? Math.ceil(br.nextShrink)+'s' : 'forms '+Math.ceil(br.stormAppear)+'s') : (world.mode ? Math.ceil(world.timer)+'s' : '—'); ui.worldDesc.textContent = gameMode==='bossrush' ? (bossRush.dimension?.active?'Admin Dimension minigame':(bossRush.complete?'Raid cleared':((bossRush.countdown||0)>0?'Starting countdown':'Boss arena · '+bossDefById(bossRush.selectedBoss||'elevator_authority').name))) : gameMode==='br' ? (br.stormActive ? `${brAlive().length}/50 alive · safe radius ${Math.round(br.radius)}` : `${brAlive().length}/50 alive · Void Storm hidden`) : (world.mode ? world.mode.desc : 'No active shift.');
   ui.xpFill.style.width = clamp(player.xp/player.need*100,0,100)+'%'; ui.hpFill.style.width = clamp(focus.hp/focus.maxHp*100,0,100)+'%';
@@ -13123,7 +13174,6 @@ function draw(){
   }
 }
 
-let loopRecoveryNoticeAt=0;
 function loop(t){
   // Queue first so one bad frame cannot permanently stop the game.
   requestAnimationFrame(loop);
@@ -13138,11 +13188,8 @@ function loop(t){
     projectiles=projectiles.filter(p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.vx)&&Number.isFinite(p.vy));
     bots=bots.filter(b=>b&&Number.isFinite(b.x)&&Number.isFinite(b.y));
     remotePlayers=remotePlayers.filter(r=>r&&Number.isFinite(r.x)&&Number.isFinite(r.y));
-    const now=performance.now();
-    if(now-loopRecoveryNoticeAt>4500){
-      loopRecoveryNoticeAt=now;
-      notify('Recovered a game error','The match kept running; check the console for details.');
-    }
+    // Keep the recovery in the console for debugging, but do not interrupt
+    // players with a popup during combat.
   }
 }
 requestAnimationFrame(loop);

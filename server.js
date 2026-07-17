@@ -451,6 +451,9 @@ function damageServerBot(room, bot, amount, source){
 }
 function deliverBotDamage(room, attacker, target, amount, cause){
   if(!target || !botCanTarget(attacker,target)) return false;
+  // Mild online bot damage increase. Class identities and cooldowns stay the
+  // same; only the final authoritative damage is increased.
+  amount=clamp(finiteNumber(amount,0)*1.18,0,500);
   if(target.kind==='player'){
     return sendDamageToClient(target.client,{
       type:'bot_hit',
