@@ -1346,6 +1346,24 @@ function serveFile(req, res){
     return;
   }
 
+  if(pathname==='/account-config-status'){
+    const supabaseUrl=String(process.env.SUPABASE_URL||'').trim();
+    const publishableKey=String(process.env.SUPABASE_PUBLISHABLE_KEY||'').trim();
+    const body={
+      configured:!!supabaseUrl && !!publishableKey,
+      urlConfigured:!!supabaseUrl,
+      keyConfigured:!!publishableKey,
+      urlLooksValid:/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(supabaseUrl),
+      keyLooksValid:publishableKey.startsWith('sb_publishable_') || publishableKey.startsWith('eyJ')
+    };
+    res.writeHead(body.configured?200:503,{
+      'Content-Type':'application/json; charset=utf-8',
+      'Cache-Control':'no-store'
+    });
+    res.end(JSON.stringify(body));
+    return;
+  }
+
   if(pathname==='/') pathname='/index.html';
   const filePath=path.resolve(ROOT,'.'+pathname);
   if(filePath!==ROOT && !filePath.startsWith(ROOT+path.sep)){
