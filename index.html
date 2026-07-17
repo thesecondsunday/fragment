@@ -3964,6 +3964,7 @@ body.guestAccount .menuModal[data-modal="gacha"] .rollBtn,body.guestAccount .men
   <div class="debugResizeHandle ne" data-debug-resize="ne" title="Resize debug window"></div>
   <div class="debugResizeHandle sw" data-debug-resize="sw" title="Resize debug window"></div>
   <div class="debugResizeHandle se" data-debug-resize="se" title="Resize debug window"></div>
+  <div id="globalList" class="hidden" aria-hidden="true"></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
@@ -14398,7 +14399,6 @@ function showLoadingThenStart(){
     }
   }, 260);
 }
-installSocialHub();
 ui.startBtn.onclick = ()=>openMenuModal('play');
 ui.retryBtn.onclick = showLoadingThenStart;
 function returnToTitle(){
@@ -14509,7 +14509,7 @@ function profileIconOptions(selected=''){const options=[{value:'core:circle',lab
 function renderProfileCosmeticIcon(value){const canvas=$('profileIconCanvas');if(!canvas)return;const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);ctx.save();const icon=String(value||'core:circle');if(icon.startsWith('hat:')){drawPreviewCore(ctx,45,51,'circle','#5d8cff');drawHatShape(ctx,45,51,icon.slice(4)||'none');}else drawPreviewCore(ctx,45,45,icon.startsWith('core:')?icon.slice(5):'circle','#5d8cff');ctx.restore();}
 
 function xpNeededForAccountLevel(level){return Math.floor(320+(level-1)*115+Math.pow(level,1.28)*28);}
-function renderProfileDock(){const el=$('profileDockLevel');if(el){const rank=accountProgress?.stats?.fracture_rank||0;el.textContent=(rank?'F'+romanNumeral(rank)+' · ':'')+'Level '+(accountProgress?.account_level||1);}renderAchievementDock();}
+function renderProfileDock(){const el=$('profileDockLevel');if(el){const rank=accountProgress?.stats?.fracture_rank||0;el.textContent=(rank?'F'+romanNumeral(rank)+' · ':'')+'Level '+(accountProgress?.account_level||1);}}
 function unlockAchievement(id){
   if(!cloudUser||!ACHIEVEMENTS[id])return false;
   accountProgress=normalizeAccountProgress(accountProgress);
@@ -14657,6 +14657,7 @@ function installSocialHub(){
   renderQueueState();renderSocial();updateMatchButtons();renderProfileDock();renderAchievementsBrowser();
   if(cloudUser)ensureSocialConnection();
 }
+installSocialHub();
 /* ===== END SOCIAL, PROFILE, MATCHMAKING & PROGRESSION PATCH ===== */
 
 
