@@ -1646,7 +1646,7 @@ function handleMessage(client, msg){
   if(msg.type === 'party_ping'){
     if(!client.authenticated || !client.room || !client.inMatch) return;
     const party=partyForClient(client); if(!party || party.members.size<2) return;
-    const kind=safeToken(msg.kind,24); if(!['enemy','fragment','boss','retreat','group'].includes(kind)) return;
+    const kind=safeToken(msg.kind,24); if(!['enemy','fragment','boss','retreat','group','solarbum'].includes(kind)) return;
     const room=rooms.get(client.room); if(!room) return;
     const payload={type:'party_ping',kind,x:finiteNumber(msg.x,client.snapshot?.x||0,-HALF_W,HALF_W),y:finiteNumber(msg.y,client.snapshot?.y||0,-HALF_H,HALF_H),sourceName:client.name,userId:client.userId};
     for(const uid of party.members) for(const member of allOnlineClientsForUser(uid)) if(member.room===room.code) send(member,payload);

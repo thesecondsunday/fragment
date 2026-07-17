@@ -3447,6 +3447,29 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
           <div class="miniFrag fragThree"></div>
         </div>
         <button class="primary v3Start" id="startBtn">DEPLOY</button>
+        <section id="partyMatchDock" class="partyMatchDock hidden" aria-label="Party match controls">
+          <div class="partyMatchDockHead">
+            <div><small>PARTY MATCH</small><b id="partyMatchDockTitle">2 PLAYERS</b></div>
+            <span id="partyMatchDockState">WAITING</span>
+          </div>
+          <label class="partyMatchModeField">
+            <span>GAME MODE</span>
+            <select id="partyMatchModeSelect">
+              <option value="normal">Normal</option>
+              <option value="duo">Duo</option>
+              <option value="squad">Squad</option>
+              <option value="teams">Teams 10v10</option>
+              <option value="br">Battle Royale</option>
+              <option value="bossrush">Boss Rush</option>
+            </select>
+          </label>
+          <div id="partyMatchReadyList" class="partyMatchReadyList"></div>
+          <div class="partyMatchDockActions">
+            <button id="partyMatchReadyBtn" type="button">READY UP</button>
+            <button id="partyMatchStartBtn" class="primary" type="button">START MATCHMAKING</button>
+          </div>
+          <small id="partyMatchDockHint" class="partyMatchDockHint">Everyone must ready before the leader can start.</small>
+        </section>
       </section>
 
       <aside class="v3Dock">
@@ -3758,7 +3781,7 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
         <div class="modalTop"><h2>Friends & Party</h2><button class="modalClose" type="button" data-close-modal>×</button></div>
         <div class="partyControlBar">
           <div><b id="partyStateTitle">YOUR PARTY · 1/6</b><span id="partyLeaderHint">You are not currently in a party.</span></div>
-          <button id="partyReadyBtn" type="button">READY</button>
+          <button id="partyReadyBtn" class="legacyPartyReady" type="button">READY</button>
           <button id="leavePartyBtn" type="button">LEAVE</button>
         </div>
         <div class="partyList socialPartyList" id="partyList"></div>
@@ -3915,11 +3938,12 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
   <button id="togglePingBarBtn" type="button">V · Quick Ping</button>
 </div>
 <div id="partyPingBar" class="hidden" aria-label="Party ping menu">
-  <button type="button" data-party-ping="enemy">Enemy Here</button>
-  <button type="button" data-party-ping="fragment">Rare Fragment</button>
-  <button type="button" data-party-ping="boss">Boss</button>
-  <button type="button" data-party-ping="retreat">Retreat</button>
-  <button type="button" data-party-ping="group">Group Up</button>
+  <button type="button" data-party-ping="enemy"><kbd>1</kbd><span>Enemy Here</span></button>
+  <button type="button" data-party-ping="fragment"><kbd>2</kbd><span>Rare Fragment</span></button>
+  <button type="button" data-party-ping="boss"><kbd>3</kbd><span>Boss</span></button>
+  <button type="button" data-party-ping="retreat"><kbd>4</kbd><span>Retreat</span></button>
+  <button type="button" data-party-ping="group"><kbd>5</kbd><span>Group Up</span></button>
+  <button type="button" data-party-ping="solarbum"><kbd>6</kbd><span>SOLAR BUM</span></button>
 </div>
 
 <div id="notice"></div>
@@ -5574,6 +5598,95 @@ function socialStatusLabel(p){
   if(s==='online') return 'ONLINE';
   return 'OFFLINE';
 }
+
+function partyModeLimit(mode){
+  return mode==='duo'?2:mode==='br'?4:6;
+}
+function renderPartyMatchDock(){
+  const dock=$('partyMatchDock');
+  if(!dock)return;
+  const party=socialState.party;
+  const members=party?.members||[];
+  const size=members.length;
+  const visible=!!party?.partyId&&size>=2;
+  dock.classList.toggle('hidden',!visible);
+
+  const partyQueueButton=$('partyQueueBtn');
+  if(partyQueueButton)partyQueueButton.style.display=visible?'none':'';
+
+  if(!visible)return;
+
+  const me=members.find(member=>member.userId===cloudUser?.id);
+  const leader=party.leaderId===cloudUser?.id;
+  const queued=!!party.queued;
+  const mode=party.mode||'normal';
+  const allOnline=members.every(member=>member.online);
+  const allReady=members.every(member=>member.leader||member.ready);
+  const select=$('partyMatchModeSelect');
+  const readyButton=$('partyMatchReadyBtn');
+  const startButton=$('partyMatchStartBtn');
+
+  $('partyMatchDockTitle').textContent=size+' PLAYER'+(size===1?'':'S');
+  $('partyMatchDockState').textContent=queued?'SEARCHING':allReady?'ALL READY':'READY CHECK';
+  $('partyMatchDockState').classList.toggle('ready',allReady&&!queued);
+  $('partyMatchDockState').classList.toggle('searching',queued);
+
+  if(select){
+    for(const option of select.options){
+      option.disabled=size>partyModeLimit(option.value);
+    }
+    if([...select.options].some(option=>option.value===mode&&!option.disabled)){
+      select.value=mode;
+    }else{
+      const fallback=[...select.options].find(option=>!option.disabled)?.value||'normal';
+      select.value=fallback;
+      if(leader&&!queued)netSend({type:'party_mode',mode:fallback,fillBots:$('fillBotsToggle')?.checked!==false});
+    }
+    select.disabled=!leader||queued;
+  }
+
+  $('partyMatchReadyList').innerHTML=members.map(member=>`
+    <div class="partyMatchReadyMember ${member.leader||member.ready?'ready':''} ${member.online?'online':'offline'}">
+      <i></i>
+      <b>${member.leader?'★ ':''}${escapeHtml(member.name)}${member.userId===cloudUser?.id?' (YOU)':''}</b>
+      <span>${member.leader?'LEADER · READY':member.ready?'READY':'NOT READY'}</span>
+    </div>
+  `).join('');
+
+  if(readyButton){
+    readyButton.classList.toggle('hidden',leader);
+    readyButton.disabled=queued||!me?.online;
+    readyButton.textContent=me?.ready?'UNREADY':'READY UP';
+    readyButton.classList.toggle('readyOn',!!me?.ready);
+  }
+
+  if(startButton){
+    startButton.classList.toggle('hidden',!leader);
+    startButton.disabled=!queued&&(!allReady||!allOnline);
+    startButton.textContent=queued?'CANCEL SEARCH':'START MATCHMAKING';
+  }
+
+  const hint=$('partyMatchDockHint');
+  if(hint){
+    hint.textContent=queued
+      ? 'Searching for '+netModeLabel(mode)+'…'
+      : !allOnline
+        ? 'Every party member must be online.'
+        : leader
+          ? allReady
+            ? 'Party ready. Start '+netModeLabel(select?.value||mode)+'.'
+            : 'Waiting for every party member to ready up.'
+          : me?.ready
+            ? 'Ready. Waiting for the party leader.'
+            : 'Press READY UP when you are prepared.';
+  }
+
+  if(ui.modeSel&&leader&&ui.modeSel.value!==select?.value){
+    ui.modeSel.value=select?.value||mode;
+    updateMatchButtons();
+  }
+}
+
 function renderSocial(){
   if(!ui.friendList || !ui.partyList) return;
   const party=socialState.party;
@@ -5585,8 +5698,8 @@ function renderSocial(){
   if(partyTitle) partyTitle.textContent='YOUR PARTY · '+size+'/6';
   const me=members.find(m=>m.userId===cloudUser?.id);
   const leader=party?.leaderId===cloudUser?.id || (!party?.partyId);
-  if(leaderHint) leaderHint.textContent=party?.queued?'Searching for '+netModeLabel(party.mode)+'…':leader?'You are party leader. Choose a mode and queue from Play.':'Party leader chooses the mode.';
-  if(readyBtn){ readyBtn.disabled=!party?.partyId||leader||party.queued; readyBtn.textContent=me?.ready?'UNREADY':'READY'; readyBtn.classList.toggle('readyOn',!!me?.ready); }
+  if(leaderHint) leaderHint.textContent=party?.queued?'Searching for '+netModeLabel(party.mode)+'…':'Ready controls and game mode are below DEPLOY on the main screen.';
+  if(readyBtn){readyBtn.classList.add('hidden');readyBtn.disabled=true;}
   if(leaveBtn) leaveBtn.disabled=!party?.partyId;
   ui.partyList.innerHTML=members.map(m=>`<div class="socialPartyMember ${m.ready?'ready':''}"><div><b>${m.leader?'★ ':''}${escapeHtml(m.name)}${m.userId===cloudUser?.id?' (You)':''}</b><small>${m.online?'ONLINE':'OFFLINE'}</small></div><span>${m.leader?'LEADER':m.ready?'READY':'NOT READY'}</span></div>`).join('');
   ui.friendList.innerHTML=friends.length?friends.map(code=>{
@@ -5603,6 +5716,7 @@ function renderSocial(){
     const code=cleanFriendCode(el.dataset.removeFriend);
     try{await removeCloudFriend(code);netSend({type:'social_refresh'});renderSocial();}catch(error){notify('Could not remove friend',normalizeCloudError(error));}
   });
+  renderPartyMatchDock();
 }
 async function addFriendFromInput(){
   const code=cleanFriendCode(ui.friendName.value);
@@ -14837,7 +14951,33 @@ function startOfflineSelected(){socialState.queue=null;renderQueueState();multip
 function installSocialHub(){
   multiplayer.room='';multiplayer.pendingRoomFromUrl='';localStorage.removeItem('fragmentio_room_code');
   $('soloDeployBtn')?.addEventListener('click',startOfflineSelected);$('quickPlayBtn')?.addEventListener('click',()=>queueSelectedMode(false));$('partyQueueBtn')?.addEventListener('click',()=>queueSelectedMode(true));$('bossSoloBtn')?.addEventListener('click',startOfflineSelected);$('bossPartyQueueBtn')?.addEventListener('click',()=>queueSelectedMode(true));$('cancelQueueBtn')?.addEventListener('click',()=>{socialState.queue=null;renderQueueState();netSend({type:'queue_cancel'});});$('fillBotsToggle')?.addEventListener('change',()=>{socialState.autoFill=$('fillBotsToggle').checked;updateMatchButtons();});
-  $('partyReadyBtn')?.addEventListener('click',()=>{const me=socialState.party?.members?.find(m=>m.userId===cloudUser?.id);netSend({type:'party_ready',ready:!me?.ready});});$('leavePartyBtn')?.addEventListener('click',()=>netSend({type:'party_leave'}));
+  $('partyReadyBtn')?.addEventListener('click',()=>{const me=socialState.party?.members?.find(m=>m.userId===cloudUser?.id);netSend({type:'party_ready',ready:!me?.ready});});
+  $('partyMatchReadyBtn')?.addEventListener('click',()=>{
+    const me=socialState.party?.members?.find(member=>member.userId===cloudUser?.id);
+    if(me&&!me.leader)netSend({type:'party_ready',ready:!me.ready});
+  });
+  $('partyMatchModeSelect')?.addEventListener('change',event=>{
+    const party=socialState.party;
+    if(!party||party.leaderId!==cloudUser?.id||party.queued)return;
+    const mode=event.target.value||'normal';
+    if(ui.modeSel)ui.modeSel.value=mode;
+    updateMatchButtons();
+    netSend({type:'party_mode',mode,fillBots:$('fillBotsToggle')?.checked!==false});
+  });
+  $('partyMatchStartBtn')?.addEventListener('click',()=>{
+    const party=socialState.party;
+    if(!party||party.leaderId!==cloudUser?.id)return;
+    if(party.queued){
+      socialState.queue=null;
+      renderQueueState();
+      netSend({type:'queue_cancel'});
+      return;
+    }
+    const mode=$('partyMatchModeSelect')?.value||party.mode||'normal';
+    if(ui.modeSel)ui.modeSel.value=mode;
+    ensureSocialConnection().then(()=>netSend({type:'queue_join',mode,asParty:true,fillBots:$('fillBotsToggle')?.checked!==false}));
+  });
+  $('leavePartyBtn')?.addEventListener('click',()=>netSend({type:'party_leave'}));
   $('acceptPartyInviteBtn')?.addEventListener('click',()=>{const i=socialState.pendingInvite;if(i)netSend({type:'party_accept',inviteId:i.inviteId});$('partyInviteOverlay').classList.add('hidden');socialState.pendingInvite=null;});$('declinePartyInviteBtn')?.addEventListener('click',()=>{const i=socialState.pendingInvite;if(i)netSend({type:'party_decline',inviteId:i.inviteId});$('partyInviteOverlay').classList.add('hidden');socialState.pendingInvite=null;});
   $('spectatorPrevBtn')?.addEventListener('click',()=>cycleSpectator(-1));$('spectatorNextBtn')?.addEventListener('click',()=>cycleSpectator(1));$('spectatorJoinBtn')?.addEventListener('click',()=>requestJoinFriend(socialState.spectateTargetUserId));$('spectatorLeaveBtn')?.addEventListener('click',returnToTitle);
   $('aboutMeInput')?.addEventListener('input',()=>{$('aboutCount').textContent=$('aboutMeInput').value.length+'/240';});$('saveProfileBtn')?.addEventListener('click',()=>saveProfileEditor().catch(e=>notify('Could not save profile',normalizeCloudError(e))));$('cancelProfileEditBtn')?.addEventListener('click',()=>openMenuModal('profile'));document.querySelectorAll('[data-achievement-filter]').forEach(btn=>btn.addEventListener('click',()=>{achievementBrowserFilter=btn.dataset.achievementFilter||'all';renderAchievementsBrowser();}));
@@ -14860,7 +15000,14 @@ const WEEKLY_CHALLENGES={
   friends:{name:'Together We Fracture',description:'Play 5 matches with at least one friend in your party.',stat:'matches_with_friends',target:5,remnant:300,xp:350},
   diversity:{name:'Evolution Rotation',description:'Win with 3 different evolution paths.',stat:'evolution_diversity',target:3,remnant:600,xp:650}
 };
-const PARTY_PING_TYPES={enemy:{label:'ENEMY HERE',color:'#ff5d67'},fragment:{label:'RARE FRAGMENT',color:'#ffcf58'},boss:{label:'BOSS',color:'#c37bff'},retreat:{label:'RETREAT',color:'#8ae4ff'},group:{label:'GROUP UP',color:'#66d98b'}};
+const PARTY_PING_TYPES={
+  enemy:{label:'ENEMY HERE',color:'#ff5d67'},
+  fragment:{label:'RARE FRAGMENT',color:'#ffcf58'},
+  boss:{label:'BOSS',color:'#c37bff'},
+  retreat:{label:'RETREAT',color:'#8ae4ff'},
+  group:{label:'GROUP UP',color:'#66d98b'},
+  solarbum:{label:'SOLAR BUM',color:'#ff9d3d'}
+};
 function currentWeekKey(date=new Date()){const d=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()));const day=(d.getUTCDay()+6)%7;d.setUTCDate(d.getUTCDate()-day);return d.toISOString().slice(0,10);}
 function nextWeeklyReset(){const d=new Date();const day=(d.getUTCDay()+6)%7;const monday=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()-day+7));return monday;}
 function sanitizeCosmeticPresets(value){return Array.from({length:3},(_,i)=>{const p=Array.isArray(value)?value[i]:null;if(!p||typeof p!=='object')return null;return{name:String(p.name||('Preset '+(i+1))).slice(0,20),shape:String(p.shape||'circle').slice(0,40),trail:String(p.trail||'none').slice(0,40),aura:String(p.aura||'none').slice(0,40),hat:String(p.hat||'none').slice(0,40),title:String(p.title||'').slice(0,40)};});}
@@ -15005,7 +15152,7 @@ function renderPartyInGameHud(){
     const rect=anchor.getBoundingClientRect();
     const maxTop=Math.max(12,window.innerHeight-box.offsetHeight-16);
     box.style.left=Math.round(rect.left)+'px';
-    box.style.top=Math.round(Math.min(maxTop,rect.bottom+12))+'px';
+    box.style.top=Math.round(Math.min(maxTop,rect.bottom+34))+'px';
   }
 }
 function drawProfileIconCanvas(canvasEl,value){if(!canvasEl)return;const c=canvasEl.getContext('2d');c.clearRect(0,0,canvasEl.width,canvasEl.height);const v=String(value||'core:circle');if(v.startsWith('hat:')){drawPreviewCore(c,canvasEl.width/2,canvasEl.height*.56,'circle','#5d8cff');drawHatShape(c,canvasEl.width/2,canvasEl.height*.56,v.slice(4));}else drawPreviewCore(c,canvasEl.width/2,canvasEl.height/2,v.startsWith('core:')?v.slice(5):'circle','#5d8cff');}
@@ -15043,7 +15190,27 @@ $('closeInGameProfileBtn')?.addEventListener('click',()=>$('inGameProfileOverlay
 $('matchPlayerCards')?.addEventListener('click',()=>$('matchPlayerCards').classList.add('hidden'));
 $('togglePingBarBtn')?.addEventListener('click',()=>$('partyPingBar').classList.toggle('hidden'));
 document.querySelectorAll('[data-party-ping]').forEach(btn=>btn.addEventListener('click',()=>sendPartyPing(btn.dataset.partyPing)));
-window.addEventListener('keydown',event=>{if(state.screen==='play'&&event.code==='KeyV'&&!event.repeat){event.preventDefault();$('partyPingBar')?.classList.toggle('hidden');}});
+window.addEventListener('keydown',event=>{
+  if(state.screen!=='play'||event.repeat)return;
+  const active=document.activeElement;
+  if(active&&(active.tagName==='INPUT'||active.tagName==='TEXTAREA'||active.tagName==='SELECT'||active.isContentEditable))return;
+  const bar=$('partyPingBar');
+  if(event.code==='KeyV'){
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    bar?.classList.toggle('hidden');
+    return;
+  }
+  if(!bar||bar.classList.contains('hidden'))return;
+  const match=/^(?:Digit|Numpad)([1-9])$/.exec(event.code);
+  if(!match)return;
+  const index=Number(match[1])-1;
+  const buttons=[...bar.querySelectorAll('[data-party-ping]')];
+  if(!buttons[index])return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  sendPartyPing(buttons[index].dataset.partyPing);
+},{capture:true});
 $('deathProfileBtn')?.addEventListener('click',()=>{const uid=deathRecapState.killer?.userId;if(uid)openInGamePlayerProfile(uid);});
 $('deathSpectateBtn')?.addEventListener('click',()=>{
   const recorded=deathRecapState.killer;
@@ -18031,6 +18198,178 @@ body.bossRushMinimal #leaveGameBtn{
   #partyPingBar{
     bottom:190px!important;
     width:94vw!important;
+  }
+}
+</style>
+
+
+<style id="fragment-v1-party-ready-numbered-pings">
+.partyMatchDock{
+  margin-top:10px;
+  padding:10px;
+  display:grid;
+  gap:8px;
+  border:3px solid #101820;
+  border-radius:6px;
+  background:#c7ced6;
+  color:#101820;
+  box-shadow:4px 4px 0 rgba(0,0,0,.17);
+}
+.partyMatchDockHead{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:center;
+  padding-bottom:7px;
+  border-bottom:3px solid #101820;
+}
+.partyMatchDockHead small,
+.partyMatchDockHead b{
+  display:block;
+}
+.partyMatchDockHead small{
+  font-size:8px;
+  font-weight:1000;
+  letter-spacing:.12em;
+  color:#526170;
+}
+.partyMatchDockHead b{
+  margin-top:2px;
+  font-size:14px;
+}
+#partyMatchDockState{
+  padding:6px 8px;
+  border:2px solid #101820;
+  background:#eef3f7;
+  font-size:9px;
+  font-weight:1000;
+}
+#partyMatchDockState.ready{
+  background:#d8f3df;
+}
+#partyMatchDockState.searching{
+  background:#ffeba3;
+}
+.partyMatchModeField{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:9px;
+  align-items:center;
+}
+.partyMatchModeField>span{
+  font-size:9px;
+  font-weight:1000;
+}
+.partyMatchModeField select{
+  min-width:0;
+  width:100%;
+  height:36px;
+  border:3px solid #101820;
+  background:#eef3f7;
+  color:#101820;
+  font-weight:1000;
+}
+.partyMatchReadyList{
+  display:grid;
+  gap:4px;
+  max-height:132px;
+  overflow:auto;
+}
+.partyMatchReadyMember{
+  display:grid;
+  grid-template-columns:8px minmax(0,1fr) auto;
+  gap:6px;
+  align-items:center;
+  padding:5px 6px;
+  border:2px solid #101820;
+  background:#eef3f7;
+}
+.partyMatchReadyMember i{
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:#7d8792;
+}
+.partyMatchReadyMember.online i{
+  background:#4dbd74;
+}
+.partyMatchReadyMember.ready{
+  background:#dff4e6;
+}
+.partyMatchReadyMember b,
+.partyMatchReadyMember span{
+  min-width:0;
+  font-size:8px;
+  overflow-wrap:anywhere;
+}
+.partyMatchReadyMember span{
+  color:#526170;
+  text-align:right;
+}
+.partyMatchDockActions{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:7px;
+}
+.partyMatchDockActions button{
+  min-height:38px;
+  border:3px solid #101820;
+  background:#eef3f7;
+  color:#101820;
+  font-weight:1000;
+}
+.partyMatchDockActions button.primary,
+.partyMatchDockActions button.readyOn{
+  background:#315fc9;
+  color:#fff;
+}
+.partyMatchDockHint{
+  display:block;
+  min-height:20px;
+  color:#526170;
+  font-size:8px;
+  font-weight:900;
+  line-height:1.3;
+}
+.legacyPartyReady{
+  display:none!important;
+}
+
+/* Lower than the previous build so it does not touch the top-left panel. */
+#partyInGameHud{
+  top:354px;
+}
+
+/* Numbered quick-ping slots. */
+#partyPingBar button{
+  display:grid!important;
+  grid-template-columns:25px minmax(0,1fr)!important;
+  gap:7px!important;
+  align-items:center!important;
+  text-align:left!important;
+}
+#partyPingBar button kbd{
+  width:25px;
+  height:25px;
+  display:grid;
+  place-items:center;
+  border:2px solid #101820;
+  border-radius:4px;
+  background:#315fc9;
+  color:#fff;
+  font:1000 11px Arial;
+  box-shadow:2px 2px 0 rgba(0,0,0,.18);
+}
+#partyPingBar button span{
+  min-width:0;
+  font-size:10px;
+  font-weight:1000;
+  overflow-wrap:anywhere;
+}
+
+@media(max-width:900px){
+  .partyMatchDock{
+    margin-bottom:8px;
   }
 }
 </style>
