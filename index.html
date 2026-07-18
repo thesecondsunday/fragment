@@ -3394,6 +3394,576 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
 }
 </style>
 
+
+<style id="fragment-v1-free-beta-legal-center-style">
+/* Free beta market lock */
+.freeBetaShopNotice,
+.marketRemnantLocked{
+  border:4px solid #101820!important;
+  background:#eef3f7!important;
+  color:#101820!important;
+  padding:12px!important;
+}
+.freeBetaShopNotice{
+  display:grid;
+  gap:5px;
+}
+.freeBetaShopNotice b,
+.marketRemnantLocked small{
+  color:#8b2638!important;
+  font-size:11px!important;
+  font-weight:1000!important;
+  letter-spacing:.11em!important;
+}
+.freeBetaShopNotice span,
+.marketRemnantLocked p{
+  color:#526170!important;
+  font-size:11px!important;
+  font-weight:900!important;
+  line-height:1.45!important;
+}
+.marketRemnantLocked{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  align-items:center!important;
+  gap:12px!important;
+}
+.marketBetaSeal{
+  min-width:112px;
+  min-height:72px;
+  display:grid;
+  place-items:center;
+  align-content:center;
+  padding:8px;
+  border:4px solid #101820;
+  background:#ffcf58;
+  color:#101820;
+  text-align:center;
+}
+.marketBetaSeal b{
+  font-size:23px;
+  line-height:1;
+}
+.marketBetaSeal span{
+  margin-top:5px;
+  font-size:8px;
+  font-weight:1000;
+  letter-spacing:.08em;
+}
+
+/* Registration legal acceptance */
+.legalRegistrationCheck{
+  display:grid!important;
+  grid-template-columns:22px minmax(0,1fr)!important;
+  align-items:start!important;
+  gap:8px!important;
+  margin:9px 0 4px!important;
+  padding:9px!important;
+  border:3px solid #101820!important;
+  background:#eef3f7!important;
+  color:#101820!important;
+  cursor:pointer!important;
+}
+.legalRegistrationCheck input{
+  width:18px!important;
+  height:18px!important;
+  margin:1px 0 0!important;
+  accent-color:#315fc9;
+}
+.legalRegistrationCheck span{
+  font-size:10px!important;
+  font-weight:900!important;
+  line-height:1.45!important;
+}
+.legalRegistrationCheck button{
+  display:inline!important;
+  width:auto!important;
+  min-height:0!important;
+  margin:0!important;
+  padding:0!important;
+  border:0!important;
+  background:transparent!important;
+  color:#315fc9!important;
+  font:inherit!important;
+  text-decoration:underline!important;
+  box-shadow:none!important;
+  cursor:pointer!important;
+}
+
+/* Bottom-corner legal access */
+.legalCorner{
+  position:absolute;
+  left:14px;
+  bottom:12px;
+  z-index:14;
+  display:flex;
+  align-items:flex-end;
+  gap:8px;
+  max-width:calc(100% - 28px);
+  pointer-events:auto;
+}
+.legalBetaStatus{
+  display:grid;
+  gap:1px;
+  padding:6px 8px;
+  border:3px solid #101820;
+  background:#ffcf58;
+  color:#101820;
+  box-shadow:3px 3px 0 rgba(0,0,0,.2);
+}
+.legalBetaStatus b{
+  font-size:8px;
+  line-height:1;
+  letter-spacing:.09em;
+}
+.legalBetaStatus span{
+  font-size:6px;
+  font-weight:1000;
+  letter-spacing:.06em;
+}
+.legalCornerLinks{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+}
+.legalCornerLinks button{
+  min-height:28px;
+  padding:4px 7px;
+  border:3px solid #101820;
+  background:#eef3f7;
+  color:#101820;
+  font-size:8px;
+  font-weight:1000;
+  text-transform:uppercase;
+  box-shadow:2px 2px 0 rgba(0,0,0,.18);
+}
+.legalCornerLinks button:hover,
+.legalCornerLinks button:focus-visible{
+  background:#315fc9;
+  color:#fff;
+}
+
+/* Legal center */
+.legalMenuModal{
+  padding:12px!important;
+}
+.legalWindow{
+  width:min(1060px,96vw)!important;
+  height:min(850px,94vh)!important;
+  max-height:none!important;
+  display:grid!important;
+  grid-template-rows:auto auto minmax(0,1fr)!important;
+  overflow:hidden!important;
+  padding:0!important;
+  border:5px solid #101820!important;
+  background:#c7d0da!important;
+  color:#101820!important;
+  box-shadow:10px 10px 0 rgba(0,0,0,.32)!important;
+}
+.legalTop{
+  min-height:70px!important;
+  align-items:center!important;
+  padding:10px 12px!important;
+  border-bottom:4px solid #101820!important;
+  background:#8b2638!important;
+  color:#fff!important;
+}
+.legalTop>div{
+  min-width:0;
+}
+.legalTop small{
+  display:block;
+  margin-bottom:3px;
+  color:#ffcf58;
+  font-size:8px;
+  font-weight:1000;
+  letter-spacing:.13em;
+}
+.legalTop h2{
+  margin:0!important;
+  color:#fff!important;
+  font-size:25px!important;
+  line-height:1!important;
+}
+.legalTop .modalClose{
+  flex:0 0 auto;
+  background:#eef3f7!important;
+  color:#101820!important;
+}
+.legalTabs{
+  display:flex;
+  gap:5px;
+  padding:8px;
+  overflow-x:auto;
+  border-bottom:4px solid #101820;
+  background:#aebac6;
+}
+.legalTabs button{
+  flex:1 0 auto;
+  min-height:36px;
+  padding:5px 9px;
+  border:3px solid #101820;
+  background:#eef3f7;
+  color:#101820;
+  font-size:9px;
+  font-weight:1000;
+  text-transform:uppercase;
+  box-shadow:2px 2px 0 rgba(0,0,0,.14);
+}
+.legalTabs button.active{
+  background:#315fc9;
+  color:#fff;
+}
+.legalScroll{
+  min-height:0;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+  padding:12px;
+  background:#d8e0e8;
+}
+.legalPanel{
+  display:none;
+}
+.legalPanel.active{
+  display:block;
+}
+.legalSectionHeading{
+  margin-bottom:10px;
+  padding:12px;
+  border:4px solid #101820;
+  background:#eef3f7;
+}
+.legalSectionHeading small{
+  display:block;
+  color:#8b2638;
+  font-size:8px;
+  font-weight:1000;
+  letter-spacing:.12em;
+}
+.legalSectionHeading h3{
+  margin:4px 0 5px;
+  color:#101820;
+  font-size:26px;
+  line-height:1;
+}
+.legalSectionHeading p{
+  margin:0;
+  color:#526170;
+  font-size:11px;
+  font-weight:900;
+  line-height:1.4;
+}
+.legalHero{
+  display:grid;
+  grid-template-columns:90px minmax(0,1fr);
+  align-items:center;
+  gap:12px;
+  margin-bottom:10px;
+  padding:14px;
+  border:5px solid #101820;
+  background:#eef3f7;
+}
+.legalHeroStamp{
+  width:84px;
+  height:84px;
+  display:grid;
+  place-items:center;
+  border:5px solid #101820;
+  background:#ffcf58;
+  color:#101820;
+  font-size:23px;
+  font-weight:1000;
+  transform:rotate(-2deg);
+}
+.legalHero small{
+  color:#8b2638;
+  font-size:8px;
+  font-weight:1000;
+  letter-spacing:.1em;
+}
+.legalHero h3{
+  margin:4px 0 6px;
+  color:#101820;
+  font-size:25px;
+  line-height:1.05;
+}
+.legalHero p{
+  margin:0;
+  color:#526170;
+  font-size:11px;
+  font-weight:900;
+  line-height:1.45;
+}
+.legalStatusGrid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+  margin-bottom:10px;
+}
+.legalStatusGrid article{
+  min-width:0;
+  padding:10px;
+  border:4px solid #101820;
+  background:#eef3f7;
+}
+.legalStatusGrid span{
+  display:block;
+  color:#526170;
+  font-size:7px;
+  font-weight:1000;
+  letter-spacing:.08em;
+}
+.legalStatusGrid b{
+  display:block;
+  margin:5px 0;
+  color:#8b2638;
+  font-size:17px;
+}
+.legalStatusGrid small{
+  display:block;
+  color:#526170;
+  font-size:8px;
+  font-weight:900;
+  line-height:1.35;
+}
+.legalCallout{
+  margin:10px 0;
+  padding:11px;
+  border:4px solid #101820;
+  background:#ffcf58;
+  color:#101820;
+}
+.legalCallout b{
+  display:block;
+  margin-bottom:3px;
+  font-size:11px;
+  letter-spacing:.06em;
+}
+.legalCallout p{
+  margin:0;
+  font-size:10px;
+  font-weight:900;
+  line-height:1.45;
+}
+.legalDocumentMeta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+.legalDocumentMeta span{
+  padding:6px 8px;
+  border:3px solid #101820;
+  background:#eef3f7;
+  color:#526170;
+  font-size:8px;
+  font-weight:900;
+}
+.legalDocumentMeta b{
+  color:#101820;
+}
+.legalDefinitionList{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:7px;
+  margin:0 0 10px;
+}
+.legalDefinitionList>div{
+  min-width:0;
+  padding:10px;
+  border:4px solid #101820;
+  background:#eef3f7;
+}
+.legalDefinitionList dt{
+  margin-bottom:4px;
+  color:#526170;
+  font-size:8px;
+  font-weight:1000;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.legalDefinitionList dd{
+  margin:0;
+  color:#101820;
+  font-size:11px;
+  font-weight:1000;
+  overflow-wrap:anywhere;
+}
+.legalWindow a{
+  color:#315fc9;
+  font-weight:1000;
+}
+.legalTextBlock{
+  padding:12px 14px;
+  border:4px solid #101820;
+  background:#eef3f7;
+  color:#101820;
+}
+.legalTextBlock h4{
+  margin:15px 0 5px;
+  color:#8b2638;
+  font-size:12px;
+  letter-spacing:.04em;
+}
+.legalTextBlock h4:first-child{
+  margin-top:0;
+}
+.legalTextBlock p,
+.legalTextBlock li{
+  color:#344452;
+  font-size:11px;
+  font-weight:800;
+  line-height:1.55;
+}
+.legalTextBlock p{
+  margin:0 0 7px;
+}
+.legalTextBlock ul{
+  margin:5px 0 10px;
+  padding-left:20px;
+}
+.legalTextBlock li{
+  margin-bottom:5px;
+}
+.ruleGrid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+}
+.ruleGrid article{
+  min-width:0;
+  padding:11px;
+  border:4px solid #101820;
+  background:#eef3f7;
+}
+.ruleGrid b{
+  display:block;
+  margin-bottom:5px;
+  color:#8b2638;
+  font-size:11px;
+  letter-spacing:.03em;
+}
+.ruleGrid p{
+  margin:0;
+  color:#344452;
+  font-size:10px;
+  font-weight:800;
+  line-height:1.5;
+}
+.legalActionGrid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+  margin-bottom:10px;
+}
+.legalActionGrid article{
+  min-width:0;
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr) auto;
+  gap:7px;
+  padding:11px;
+  border:4px solid #101820;
+  background:#eef3f7;
+}
+.legalActionGrid b{
+  color:#101820;
+  font-size:12px;
+}
+.legalActionGrid p{
+  margin:0;
+  color:#526170;
+  font-size:10px;
+  font-weight:900;
+  line-height:1.45;
+}
+.legalActionGrid button{
+  min-height:38px;
+  border:3px solid #101820;
+  background:#315fc9;
+  color:#fff;
+  font-size:9px;
+  font-weight:1000;
+}
+.legalActionGrid article:nth-child(2) button{
+  background:#8b2638;
+}
+.legalDataFeedback{
+  display:none;
+  margin-bottom:10px;
+  padding:9px;
+  border:3px solid #101820;
+  background:#ffcf58;
+  color:#101820;
+  font-size:10px;
+  font-weight:1000;
+  line-height:1.4;
+}
+.legalDataFeedback.active{
+  display:block;
+}
+
+@media(max-width:900px){
+  .legalStatusGrid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+@media(max-width:700px){
+  .legalCorner{
+    left:8px;
+    right:8px;
+    bottom:7px;
+    justify-content:space-between;
+    align-items:center;
+  }
+  .legalBetaStatus{
+    display:none;
+  }
+  .legalCornerLinks{
+    width:100%;
+    justify-content:center;
+  }
+  .legalCornerLinks button{
+    flex:1 1 auto;
+    max-width:94px;
+  }
+  .legalWindow{
+    width:calc(100vw - 12px)!important;
+    height:calc(100vh - 12px)!important;
+  }
+  .legalTop h2{
+    font-size:20px!important;
+  }
+  .legalStatusGrid,
+  .legalDefinitionList,
+  .ruleGrid,
+  .legalActionGrid{
+    grid-template-columns:1fr;
+  }
+  .legalHero{
+    grid-template-columns:58px minmax(0,1fr);
+    padding:10px;
+  }
+  .legalHeroStamp{
+    width:54px;
+    height:54px;
+    border-width:4px;
+    font-size:16px;
+  }
+  .legalHero h3{
+    font-size:19px;
+  }
+  .legalScroll{
+    padding:8px;
+  }
+  .marketRemnantLocked{
+    grid-template-columns:1fr!important;
+  }
+  .marketBetaSeal{
+    width:100%;
+  }
+}
+</style>
+
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -3648,6 +4218,14 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
           <label>Username <span style="font-weight:900;color:#526170;letter-spacing:0;text-transform:none;">(can be changed later)</span></label><input id="registerUser" minlength="3" maxlength="18" placeholder="make username" />
           <label>Email</label><input id="registerEmail" type="email" required maxlength="80" placeholder="email required" />
           <label>Password</label><input id="registerPass" type="password" minlength="6" maxlength="32" placeholder="minimum 6 letters" />
+          <label class="legalRegistrationCheck" for="registerLegalAccept">
+            <input id="registerLegalAccept" type="checkbox" />
+            <span>
+              I accept the <button type="button" data-open-modal="legal" data-legal-target="terms">Terms of Use</button>,
+              confirm that I have read the <button type="button" data-open-modal="legal" data-legal-target="privacy">Privacy Notice</button>,
+              and confirm that I am at least 14 years old or have permission from a parent or legal guardian.
+            </span>
+          </label>
           <button class="accountPrimary" id="registerBtn" type="button">Create Account</button>
         </div>
         <button class="accountSecondary accountManageBtn" id="accountManageBtn" type="button" data-open-modal="account-edit">Edit Account</button>
@@ -3770,9 +4348,11 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
 
     <div class="menuModal" data-modal="shop">
       <div class="modalCard compactWindow smallWindow">
-        <div class="modalTop"><h2>Shop</h2><div style="display:flex;gap:8px;align-items:center;"><span class="remnantBadge"><span class="remnantSymbol">◆</span><span class="remnantValue">0</span></span><button class="modalClose" type="button" data-close-modal>×</button></div></div>
-        <div class="shopPackGrid"><div class="shopPack"><b><span class="remnantSymbol">◆</span>100</b><span>1 single</span><button type="button" data-buy-remnant="100">€0.99</button></div><div class="shopPack"><b><span class="remnantSymbol">◆</span>1000</b><span>10 pull</span><button type="button" data-buy-remnant="1000">€8.99</button></div><div class="shopPack"><b><span class="remnantSymbol">◆</span>2200</b><span>22 pulls</span><button type="button" data-buy-remnant="2200">€17.99</button></div></div>
-        <div class="lockedHint" id="shopHint">Prototype shop: buttons add ◆ Remnant locally.</div>
+        <div class="modalTop"><h2>Daily Cosmetic Market</h2><div style="display:flex;gap:8px;align-items:center;"><span class="remnantBadge"><span class="remnantSymbol">◆</span><span class="remnantValue">0</span></span><button class="modalClose" type="button" data-close-modal>×</button></div></div>
+        <div class="freeBetaShopNotice">
+          <b>FREE PUBLIC BETA</b>
+          <span>Real-money top-ups are disabled. Remnant has no cash value and cannot be purchased, transferred, exchanged, or withdrawn.</span>
+        </div>
       </div>
     </div>
 
@@ -3796,6 +4376,287 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
 
     
 
+
+    <div class="menuModal legalMenuModal" data-modal="legal">
+      <div class="modalCard legalWindow" role="dialog" aria-modal="true" aria-labelledby="legalCenterTitle">
+        <div class="modalTop legalTop">
+          <div>
+            <small>FRAGMENT.IO · FREE PUBLIC BETA</small>
+            <h2 id="legalCenterTitle">Legal & Privacy Center</h2>
+          </div>
+          <button class="modalClose" type="button" data-close-modal aria-label="Close legal center">×</button>
+        </div>
+
+        <nav class="legalTabs" aria-label="Legal sections">
+          <button class="active" type="button" data-legal-tab="overview">Overview</button>
+          <button type="button" data-legal-tab="notice">Legal Notice</button>
+          <button type="button" data-legal-tab="privacy">Privacy</button>
+          <button type="button" data-legal-tab="terms">Terms</button>
+          <button type="button" data-legal-tab="rules">Rules</button>
+          <button type="button" data-legal-tab="data">Your Data</button>
+        </nav>
+
+        <div class="legalScroll" id="legalScroll">
+          <section class="legalPanel active" data-legal-panel="overview">
+            <div class="legalHero">
+              <div class="legalHeroStamp">BETA</div>
+              <div>
+                <small>STATUS</small>
+                <h3>Fragment.io is currently free and non-commercial.</h3>
+                <p>No advertisements, donations, subscriptions, paid early access, affiliate links, or real-money top-ups are enabled in this build.</p>
+              </div>
+            </div>
+
+            <div class="legalStatusGrid">
+              <article><span>REAL-MONEY PAYMENTS</span><b>DISABLED</b><small>No Stripe or other payment processor is connected.</small></article>
+              <article><span>ADVERTISING</span><b>NONE</b><small>No behavioural advertising or advertising SDK is intentionally used.</small></article>
+              <article><span>REMNANT</span><b>IN-GAME ONLY</b><small>No cash value, transfer, withdrawal, or exchange.</small></article>
+              <article><span>SERVICE PHASE</span><b>PUBLIC BETA</b><small>Progress, balance, and features may be adjusted for testing.</small></article>
+            </div>
+
+            <div class="legalCallout">
+              <b>Important</b>
+              <p>These documents are tailored to the current free beta. They must be reviewed and updated before adding payments, advertising, analytics, sponsorships, subscriptions, or other monetization.</p>
+            </div>
+
+            <div class="legalDocumentMeta">
+              <span>Effective date: <b data-legal-effective-date>18 July 2026</b></span>
+              <span>Terms version: <b data-legal-terms-version>2026-07-18</b></span>
+              <span>Privacy version: <b data-legal-privacy-version>2026-07-18</b></span>
+            </div>
+          </section>
+
+          <section class="legalPanel" data-legal-panel="notice">
+            <div class="legalSectionHeading">
+              <small>PROJECT INFORMATION</small>
+              <h3>About & Contact</h3>
+              <p>Project information and contact details for Fragment.io.</p>
+            </div>
+
+            <dl class="legalDefinitionList">
+              <div><dt>Project name</dt><dd>Fragment.io</dd></div>
+              <div><dt>Made by</dt><dd>SISCON Studio</dd></div>
+              <div><dt>Contact</dt><dd><a data-legal-email-link href="mailto:sisconteam@proton.me" data-legal-email>sisconteam@proton.me</a></dd></div>
+              <div><dt>Website</dt><dd data-legal-site-url>Current deployment URL</dd></div>
+            </dl>
+
+            <article class="legalTextBlock">
+              <h4>Basic direction of the website</h4>
+              <p>The website provides access to Fragment.io, information about its development, player accounts, multiplayer functions, community features, and support for the free public beta. It is not intended to influence political opinion.</p>
+
+              <h4>Commercial status</h4>
+              <p>This version is operated as a free public beta. It does not offer real-money purchases, advertisements, paid subscriptions, donations, sponsorships, or affiliate marketing. If the service becomes commercial, this legal notice and all required business information must be updated before monetization begins.</p>
+
+              <h4>Copyright and trademarks</h4>
+              <p>Unless otherwise indicated, the game code, original visual design, original text, and original game assets are protected by copyright. Third-party trademarks, libraries, and services remain the property of their respective owners. No rights are granted beyond the limited permission needed to access and play the service.</p>
+
+              <h4>Contact and content reports</h4>
+              <p>Questions concerning this website, legal notices, intellectual-property claims, or unlawful content should be sent to sisconteam@proton.me. Player conduct should normally be reported through the in-game report system.</p>
+            </article>
+          </section>
+
+          <section class="legalPanel" data-legal-panel="privacy">
+            <div class="legalSectionHeading">
+              <small>GDPR INFORMATION</small>
+              <h3>Privacy Notice</h3>
+              <p>This notice explains how personal data is processed when you use Fragment.io.</p>
+            </div>
+
+            <article class="legalTextBlock">
+              <h4>1. Privacy contact</h4>
+              <p>Fragment.io is made by SISCON Studio. Questions, privacy requests, and account-deletion requests may be sent to <a data-legal-email-link href="mailto:sisconteam@proton.me" data-legal-email>sisconteam@proton.me</a>.</p>
+
+              <h4>2. Data processed</h4>
+              <ul>
+                <li><strong>Account data:</strong> email address, Supabase user ID, username, authentication/session information, confirmation status, and account metadata. Passwords are handled by Supabase authentication and are not stored by Fragment.io as readable text.</li>
+                <li><strong>Profile and game data:</strong> friend code, profile description, equipped title, banners, icons, featured cosmetics and achievements, settings, progress, statistics, currency balances, owned cosmetics, pity state, weekly challenges, and similar game-save information.</li>
+                <li><strong>Social data:</strong> friendships, friend requests, party membership, presence, public profile information, and invitations.</li>
+                <li><strong>Multiplayer data:</strong> player name, user ID, role badge, room, match state, movement, attacks, health, score, class/evolution, cosmetic display, and temporary network identifiers required to synchronize matches.</li>
+                <li><strong>Communication and safety data:</strong> live chat messages sent to match participants, player reports, moderation actions, warnings, sanctions, reasons, timestamps, and related identifiers. Live chat is generally transmitted in real time rather than kept as a permanent chat archive, although relevant material may be retained for abuse investigation or legal claims.</li>
+                <li><strong>Technical data:</strong> IP address, browser and device information, request and connection metadata, error information, security events, and hosting logs that may be processed by the hosting and database providers.</li>
+                <li><strong>Local browser data:</strong> authentication session, settings, keybinds, audio levels, guest progress, local room code, cosmetic state, and other Fragment.io values stored in localStorage so requested features work.</li>
+              </ul>
+
+              <h4>3. Purposes and legal bases</h4>
+              <ul>
+                <li>Providing accounts, cloud saves, multiplayer, profiles, friends, parties, matchmaking, game progression, and requested features: performance of the service agreement and steps requested before entering it.</li>
+                <li>Preventing cheating, spam, abuse, unauthorized access, and technical disruption; operating moderation and reports; diagnosing faults; protecting players and the service: legitimate interests in secure and reliable operation.</li>
+                <li>Complying with valid legal obligations and official requests: compliance with legal obligations.</li>
+                <li>Optional future features that legally require consent will not be activated without a separate choice.</li>
+              </ul>
+
+              <h4>4. Public visibility</h4>
+              <p>Usernames, friend codes, equipped titles, profile text, selected cosmetics, showcased achievements, game statistics, presence, and multiplayer actions may be visible to other players. Do not put private information in your username, profile, or chat.</p>
+
+              <h4>5. Service providers and recipients</h4>
+              <ul>
+                <li><strong>Supabase:</strong> authentication, database, account profiles, saves, friendships, reports, roles, and moderation records.</li>
+                <li><strong>Render:</strong> hosting of the game server and WebSocket multiplayer service for the current deployment.</li>
+                <li><strong>jsDelivr:</strong> delivery of the Supabase JavaScript library used by the browser build.</li>
+                <li><strong>Other players:</strong> public profile fields, chat messages, match information, and social information as required by the game.</li>
+                <li><strong>Authorities or advisers:</strong> only where required by law or reasonably necessary to establish, exercise, or defend legal claims.</li>
+              </ul>
+              <p>Depending on provider configuration and infrastructure, processing may occur inside or outside the European Economic Area. Provider contractual safeguards and lawful transfer mechanisms must be maintained where required.</p>
+
+              <h4>6. Retention</h4>
+              <ul>
+                <li>Account, profile, save, friendship, and inventory data is generally retained while the account exists and until deletion is completed.</li>
+                <li>Pending friend requests are retained until accepted, declined, cancelled, or otherwise removed.</li>
+                <li>Reports, sanctions, and moderation records are retained for as long as reasonably necessary for safety, repeat-abuse prevention, dispute handling, and legal claims, then deleted or anonymized when no longer needed.</li>
+                <li>Technical logs follow the operational and security retention periods of the relevant provider and are retained only as long as needed for those purposes.</li>
+                <li>Local browser data remains on the device until the user clears it, signs out where applicable, or uses the local-data control in this Legal Center.</li>
+              </ul>
+
+              <h4>7. No advertising profiles or data sale</h4>
+              <p>Fragment.io does not intentionally use advertising trackers, behavioural advertising, or data brokers in this free beta, and does not sell personal data. No non-essential analytics are intentionally enabled in this build.</p>
+
+              <h4>8. Cookies and local storage</h4>
+              <p>The build uses technically necessary browser storage for login sessions, preferences, saves, keybinds, and requested game functions. No separate advertising-cookie consent banner is shown because no non-essential advertising or analytics storage is intentionally enabled. This must be reassessed before adding analytics, advertising, embedded media, or other optional tracking.</p>
+
+              <h4>9. Security</h4>
+              <p>Reasonable technical and organizational safeguards are used, including authenticated account access, server-side role validation, restricted database credentials, moderation controls, and encrypted HTTPS/WSS transport provided by the deployment infrastructure. No online system can guarantee absolute security.</p>
+
+              <h4>10. Your rights</h4>
+              <p>Subject to applicable law, you may request access, correction, deletion, restriction, objection, and data portability, and may withdraw consent where processing is based on consent. Contact Fragment.io at sisconteam@proton.me. Identity verification may be required before acting on a request.</p>
+
+              <h4>11. Complaint</h4>
+              <p>You may complain to the Austrian Data Protection Authority or another competent supervisory authority. Austrian authority: Österreichische Datenschutzbehörde, Barichgasse 40–42, 1030 Vienna, Austria.</p>
+
+              <h4>12. Children</h4>
+              <p>Players should be at least 14 years old. A person under 14 may create an account only with permission from a parent or legal guardian where legally required. Privacy information should be reviewed together with a guardian when appropriate.</p>
+
+              <h4>13. Changes</h4>
+              <p>This notice may be updated when the service, providers, legal requirements, or data processing changes. Material changes will receive a new version date and should be communicated inside the game.</p>
+            </article>
+          </section>
+
+          <section class="legalPanel" data-legal-panel="terms">
+            <div class="legalSectionHeading">
+              <small>SERVICE AGREEMENT</small>
+              <h3>Terms of Use</h3>
+              <p>These terms apply to access and use of the Fragment.io free public beta.</p>
+            </div>
+
+            <article class="legalTextBlock">
+              <h4>1. Project and agreement</h4>
+              <p>Fragment.io is made by SISCON Studio. By creating an account or continuing to use the service, you agree to these Terms of Use. The current terms version is <strong data-legal-terms-version>2026-07-18</strong>.</p>
+
+              <h4>2. Eligibility</h4>
+              <p>You should be at least 14 years old. If you are under the age at which you can validly agree to these terms in your country, a parent or legal guardian must permit your use. You must provide accurate registration information and use an email address you are authorized to use.</p>
+
+              <h4>3. Free public beta</h4>
+              <p>The service is currently free. It contains no real-money top-ups, advertising, donations, paid subscriptions, or cash prizes. Beta features may contain defects and may be changed, rebalanced, suspended, reset, or removed. Reasonable efforts will be made to avoid unnecessary loss, but uninterrupted availability and permanent retention of beta progress are not guaranteed.</p>
+
+              <h4>4. Accounts and security</h4>
+              <p>You are responsible for protecting your login credentials and for activity performed through your account. Do not share passwords, sell accounts, impersonate another person, or use an account obtained without authorization. Notify the Fragment.io team promptly if you believe the account has been compromised.</p>
+
+              <h4>5. Virtual currency and items</h4>
+              <p>Remnant, cosmetics, titles, achievements, fragments, progression, and all other virtual items are game features only. They have no monetary value, cannot be purchased with real money in this build, and cannot be sold, transferred for value, exchanged, withdrawn, or redeemed for money or property. The Fragment.io team may correct balances, reverse exploit-generated items, rebalance content, or reset beta data where reasonably necessary.</p>
+
+              <h4>6. Acceptable use</h4>
+              <p>You must follow the Community Rules. In particular, you must not cheat, exploit vulnerabilities, manipulate network traffic, automate gameplay, harass others, share unlawful material, evade sanctions, interfere with servers, scrape accounts, or attempt unauthorized access to another account, the server, database, or Developer tools.</p>
+
+              <h4>7. User content</h4>
+              <p>User content includes usernames, profile text, chat messages, reports, and other material you submit. You retain any rights you have in your content. You grant SISCON Studio a non-exclusive, worldwide, royalty-free license to host, reproduce, display, transmit, moderate, and remove that content only as reasonably necessary to operate, secure, and improve Fragment.io. You must have the right to submit the content and must not include unlawful, infringing, or private information belonging to others.</p>
+
+              <h4>8. Moderation</h4>
+              <p>The Fragment.io team may warn, mute, remove, suspend, restrict, or terminate accounts or sessions where reasonably believed necessary to enforce these terms, protect users, investigate abuse, comply with law, or protect the service. Actions may be temporary or permanent depending on severity and history. Reports do not guarantee a particular outcome. Appeals may be submitted to sisconteam@proton.me.</p>
+
+              <h4>9. Developer access and security testing</h4>
+              <p>Developer and moderation privileges are restricted to accounts verified by the server. Attempting to obtain, imitate, bypass, or misuse privileged functions is prohibited. Responsible security reports should be sent privately to SISCON Studio and must not involve damaging systems, accessing unnecessary personal data, or disrupting players.</p>
+
+              <h4>10. Intellectual property</h4>
+              <p>The service and its original code, designs, text, graphics, music, sound, and game systems are protected by applicable intellectual-property laws. You receive a personal, limited, revocable, non-transferable permission to access and play the service. You may not redistribute the game, remove notices, commercially exploit assets, or create misleading copies without permission, except where mandatory law or an applicable open-source license allows it.</p>
+
+              <h4>11. Availability and updates</h4>
+              <p>SISCON Studio may maintain, modify, limit, or discontinue any part of the service. Planned downtime or major changes may be announced where practical. The service may depend on third-party hosting and database providers outside SISCON Studio’s direct control.</p>
+
+              <h4>12. Liability</h4>
+              <p>Nothing in these terms excludes liability that cannot legally be excluded, including mandatory consumer rights. Subject to that, the free beta is provided without a promise that it will always be uninterrupted, error-free, secure, or compatible with every device. Users should not rely on beta progress as having financial value.</p>
+
+              <h4>13. Ending use</h4>
+              <p>You may stop using the service at any time and may request account deletion through the Your Data section. The Fragment.io team may end or restrict access in accordance with these terms. Provisions concerning intellectual property, lawful moderation records, liability, and dispute handling may continue where necessary after account closure.</p>
+
+              <h4>14. Changes to terms</h4>
+              <p>These terms may be changed to reflect new features, safety needs, provider changes, or legal requirements. Material changes should be communicated with a revised date. Continued use after an effective update may constitute acceptance where legally permitted; additional express acceptance will be requested where required.</p>
+
+              <h4>15. Law and disputes</h4>
+              <p>Austrian law applies, without depriving consumers of mandatory protections available under the law of their habitual residence. Mandatory consumer jurisdiction rules remain unaffected. Contact SISCON Studio first so that problems can be investigated and resolved informally.</p>
+            </article>
+          </section>
+
+          <section class="legalPanel" data-legal-panel="rules">
+            <div class="legalSectionHeading">
+              <small>PLAYER SAFETY</small>
+              <h3>Community Rules</h3>
+              <p>These rules apply to chat, profiles, usernames, parties, matches, reports, and other community features.</p>
+            </div>
+
+            <div class="ruleGrid">
+              <article><b>1 · Respect players</b><p>No harassment, hate speech, discriminatory abuse, targeted humiliation, sexual harassment, threats, stalking, or encouragement of self-harm.</p></article>
+              <article><b>2 · Protect privacy</b><p>No doxxing, sharing private communications without permission, requesting sensitive information, or exposing another player’s identity or location.</p></article>
+              <article><b>3 · Keep content lawful</b><p>No unlawful material, sexual content involving minors, credible threats, extremist recruitment, scams, malware, intellectual-property infringement, or instructions intended to harm people or systems.</p></article>
+              <article><b>4 · Play fairly</b><p>No cheats, bots, macros, unauthorized automation, packet manipulation, exploit abuse, modified clients used to gain an advantage, or coordination intended to manipulate public matches.</p></article>
+              <article><b>5 · Do not attack the service</b><p>No denial-of-service activity, credential attacks, scraping private data, bypassing access controls, probing unrelated systems, or misuse of Developer and moderation functions.</p></article>
+              <article><b>6 · No impersonation</b><p>Do not impersonate another player, Developer, moderator, company, public authority, or organization. Developer badges are assigned only by the server.</p></article>
+              <article><b>7 · No spam or manipulation</b><p>No repeated flooding, misleading links, fake giveaways, account trading, real-money trading, vote manipulation, or coordinated report abuse.</p></article>
+              <article><b>8 · Do not evade enforcement</b><p>Do not use alternate accounts or technical workarounds to bypass mutes, suspensions, kicks, restrictions, or account actions.</p></article>
+              <article><b>9 · Report responsibly</b><p>Use reports for genuine safety or rule concerns. False or retaliatory reporting may itself result in moderation.</p></article>
+              <article><b>10 · Security reports</b><p>Report vulnerabilities privately. Do not access more data than necessary, retain personal data, disrupt matches, or publicly disclose an unfixed issue.</p></article>
+              <article><b>11 · Serious legal offenses</b><p>Serious suspected criminal conduct—including doxxing, credible threats, unauthorized account or system access, extortion, DDoS attacks, or similar offenses—may be documented, preserved, and reported to the competent local or national authorities where appropriate or legally required.</p></article>
+            </div>
+
+            <div class="legalCallout">
+              <b>Possible actions</b>
+              <p>Warnings, chat mutes, kicks, temporary suspensions, feature restrictions, progress corrections, and account termination may be used depending on severity, evidence, repetition, and risk. Serious suspected crimes may also be referred to competent authorities.</p>
+            </div>
+          </section>
+
+          <section class="legalPanel" data-legal-panel="data">
+            <div class="legalSectionHeading">
+              <small>PRIVACY CONTROLS</small>
+              <h3>Your Data & Account</h3>
+              <p>Use these controls for local browser information or to prepare a formal account request.</p>
+            </div>
+
+            <div class="legalActionGrid">
+              <article>
+                <b>Export local browser data</b>
+                <p>Downloads Fragment.io localStorage entries from this browser as JSON. This does not include every cloud database record.</p>
+                <button id="legalExportLocalBtn" type="button">EXPORT LOCAL DATA</button>
+              </article>
+              <article>
+                <b>Clear local browser data</b>
+                <p>Removes Fragment.io localStorage entries from this browser, including local preferences and authentication storage. Cloud account records are not deleted.</p>
+                <button id="legalClearLocalBtn" type="button">CLEAR LOCAL DATA</button>
+              </article>
+              <article>
+                <b>Request account deletion</b>
+                <p>Creates an email template requesting deletion of the account and associated personal data, subject to lawful retention requirements.</p>
+                <button id="legalDeleteRequestBtn" type="button">PREPARE DELETION REQUEST</button>
+              </article>
+              <article>
+                <b>Other privacy request</b>
+                <p>Prepare an access, correction, restriction, objection, or portability request for Fragment.io.</p>
+                <button id="legalPrivacyRequestBtn" type="button">PREPARE PRIVACY REQUEST</button>
+              </article>
+            </div>
+
+            <div id="legalDataFeedback" class="legalDataFeedback" aria-live="polite"></div>
+
+            <article class="legalTextBlock">
+              <h4>Account deletion</h4>
+              <p>Deleting local browser data is not the same as deleting a cloud account. To request cloud-account deletion, contact <a data-legal-email-link href="mailto:sisconteam@proton.me" data-legal-email>sisconteam@proton.me</a> from the account email where possible and include the username and friend code. The Fragment.io team may request reasonable identity verification.</p>
+
+              <h4>What may remain</h4>
+              <p>Data may be retained where necessary to comply with law, investigate fraud or abuse, protect other players, resolve disputes, or establish, exercise, or defend legal claims. Where possible, retained data should be limited, restricted, or anonymized.</p>
+            </article>
+          </section>
+        </div>
+      </div>
+    </div>
+
+
     <div class="menuModal" data-modal="settings">
       <div class="modalCard compactWindow smallWindow settingsWindow">
         <div class="modalTop"><h2>Settings</h2><button class="modalClose" type="button" data-close-modal>×</button></div>
@@ -3813,6 +4674,17 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
 
     
   </div>
+
+    <div id="legalCorner" class="legalCorner" aria-label="Legal and privacy links">
+      <div class="legalBetaStatus"><b>FREE PUBLIC BETA</b></div>
+      <div class="legalCornerLinks">
+        <button type="button" data-open-modal="legal" data-legal-target="notice">Legal</button>
+        <button type="button" data-open-modal="legal" data-legal-target="privacy">Privacy</button>
+        <button type="button" data-open-modal="legal" data-legal-target="terms">Terms</button>
+        <button type="button" data-open-modal="legal" data-legal-target="rules">Rules</button>
+      </div>
+    </div>
+
 </div>
 
 
@@ -6538,7 +7410,13 @@ async function registerCloudAccount(username,email,password){
   const {data,error}=await fragmentSupabase.auth.signUp({
     email,
     password,
-    options:{data:{username},emailRedirectTo:window.location.origin}
+    options:{data:{
+      username,
+      terms_version:'2026-07-18',
+      terms_accepted_at:new Date().toISOString(),
+      privacy_notice_version:'2026-07-18',
+      minimum_age_confirmation:'14_or_guardian_permission'
+    },emailRedirectTo:window.location.origin}
   });
   if(error) throw error;
 
@@ -6594,6 +7472,10 @@ function initAccounts(){
     if(username.length<3){ accountHint('Username must be at least 3 characters.',true); return; }
     if(!validEmail(email)){ accountHint('Enter a valid email address.',true); return; }
     if(password.length<6){ accountHint('Password must be at least 6 characters.',true); return; }
+    if(!$('registerLegalAccept')?.checked){
+      accountHint('Accept the Terms of Use and confirm that you read the Privacy Notice before creating an account.',true);
+      return;
+    }
     if(!fragmentSupabase){ accountHint('Supabase did not load. Check the deployment configuration.',true); return; }
 
     setAccountBusy(registerBtn,true,'Creating…');
@@ -7139,7 +8021,7 @@ function rollBanner(key, count=1){
 }
 document.querySelectorAll('[data-roll-banner]').forEach(btn=>btn.addEventListener('click',()=>rollBanner(btn.dataset.rollBanner,Number(btn.dataset.rollCount)||1)));
 const rollStd=$('rollStandardBtn'), rollLim=$('rollLimitedBtn'); if(rollStd) rollStd.onclick=()=>rollBanner('standard',1); if(rollLim) rollLim.onclick=()=>rollBanner('limitedSpecial',1);
-document.querySelectorAll('[data-buy-remnant]').forEach(btn=>btn.addEventListener('click',()=>{ if(isGuestAccount()){ tone(120,0.08,'square',0.025); notify('Account required','Login or register to use the shop. Guest mode cannot buy Remnant.'); openMenuModal('account'); return; } initAudio(); addRemnant(Number(btn.dataset.buyRemnant)||0,'Shop purchase'); renderGachaMenu(); renderAccountStatus(); }));
+document.querySelectorAll('[data-buy-remnant]').forEach(btn=>{btn.disabled=true;btn.textContent='TOP-UPS LOCKED';});
 initAccounts();
 loadGacha();
 function drawPreviewCore(ctx, x, y, kind, color='#5d8cff'){
@@ -17081,7 +17963,7 @@ if(v1MenuLogo){
     return current;
   }
   function priceFor(item){return MARKET_PRICES[item?.rarity]||250;}
-  function euroEquivalent(price){return `≈ €${(price/100).toFixed(2)}`;}
+  function euroEquivalent(){return 'IN-GAME CURRENCY';}
   function refreshCountdown(){
     const next=new Date();next.setUTCHours(24,0,0,0);
     const remaining=Math.max(0,next-Date.now());
@@ -17139,7 +18021,7 @@ if(v1MenuLogo){
         <b>${escapeHtml(item.name)}</b>
         <small>${escapeHtml(typeLabel(item.type))}${owned?' · ALREADY OWNED':''}</small>
       </div>
-      <div class="marketPrice"><strong><span class="remnantSymbol">◆</span>${price.toLocaleString()}</strong><small>${euroEquivalent(price)}</small></div>
+      <div class="marketPrice"><strong><span class="remnantSymbol">◆</span>${price.toLocaleString()}</strong><small>IN-GAME CURRENCY</small></div>
       <button type="button" data-market-buy="${escapeHtml(item.id)}" ${disabled}>${label}</button>
     </article>`;
   }
@@ -17158,21 +18040,17 @@ if(v1MenuLogo){
     <div class="dailyMarket">
       <section class="marketIntro">
         <div><small>DAILY ROTATION</small><h3>Three account-specific deals</h3><p>The selection changes every day. Profile banners and full profile backgrounds can appear alongside normal cosmetics.</p></div>
-        <div class="marketFacts"><b>${refreshCountdown()} until refresh</b><b>${state.bought.length}/3 cosmetic deals bought</b><b>100 Remnant = €1.00</b></div>
+        <div class="marketFacts"><b>${refreshCountdown()} until refresh</b><b>${state.bought.length}/3 cosmetic deals redeemed</b><b>NO REAL-MONEY PURCHASES</b></div>
       </section>
       <section class="marketGrid">${offers.map(item=>marketCard(item,state)).join('')}</section>
       <section class="minorMatterShop">
         <div class="matterIcon">◆</div>
         <div class="matterCopy"><small>ONE-USE UTILITY</small><h3>Minor Core Matter</h3><p>Consume this during a match to instantly fuse one random Minor Core Fragment into an empty Minor slot.</p><b>Account inventory: ${ownedMatter}</b></div>
-        <div class="matterBuy"><strong><span class="remnantSymbol">◆</span>${MINOR_MATTER_PRICE}</strong><small>${euroEquivalent(MINOR_MATTER_PRICE)} · one purchase per day</small><button type="button" data-buy-minor-matter ${isGuestAccount()||state.matterBought||remnant<MINOR_MATTER_PRICE?'disabled':''}>${state.matterBought?'BOUGHT TODAY':isGuestAccount()?'ACCOUNT REQUIRED':remnant<MINOR_MATTER_PRICE?'NOT ENOUGH':'BUY CORE MATTER'}</button></div>
+        <div class="matterBuy"><strong><span class="remnantSymbol">◆</span>${MINOR_MATTER_PRICE}</strong><small>IN-GAME CURRENCY · one redemption per day</small><button type="button" data-buy-minor-matter ${isGuestAccount()||state.matterBought||remnant<MINOR_MATTER_PRICE?'disabled':''}>${state.matterBought?'REDEEMED TODAY':isGuestAccount()?'ACCOUNT REQUIRED':remnant<MINOR_MATTER_PRICE?'NOT ENOUGH':'REDEEM CORE MATTER'}</button></div>
       </section>
-      <section class="marketRemnant">
-        <div><small>REMNANT TOP-UP</small><h3>Currency packs</h3><p>These buttons use the game’s existing test-credit purchase behavior; no payment processor is connected.</p></div>
-        <div class="marketPackGrid">
-          <button type="button" data-market-remnant="100"><b>◆100</b><span>€0.99</span></button>
-          <button type="button" data-market-remnant="1000"><b>◆1,000</b><span>€8.99</span></button>
-          <button type="button" data-market-remnant="2200"><b>◆2,200</b><span>€17.99</span></button>
-        </div>
+      <section class="marketRemnant marketRemnantLocked" aria-label="Real-money top-ups disabled">
+        <div><small>FREE PUBLIC BETA</small><h3>Top-ups are locked</h3><p>Fragment.io currently has no advertisements, donations, subscriptions, or real-money purchases. Remnant is an in-game reward with no monetary value.</p></div>
+        <div class="marketBetaSeal"><b>NO €</b><span>GAMEPLAY ONLY</span></div>
       </section>
       <div class="marketFootnote">Daily prices: Common ◆50 · Rare ◆180 · Epic ◆550 · Legendary ◆1,800 · Mythic ◆12,500. Mythics are deliberately extremely expensive because their base roll rate is 0.6%.</div>
     </div>`;
@@ -17220,11 +18098,6 @@ if(v1MenuLogo){
     if(cosmetic){buyMarketCosmetic(cosmetic.dataset.marketBuy);return;}
     const matter=event.target.closest('[data-buy-minor-matter]');
     if(matter){buyMinorMatter();return;}
-    const pack=event.target.closest('[data-market-remnant]');
-    if(pack){
-      if(isGuestAccount()){openMenuModal('account');notify('Account required','Login or register to use the shop.');return;}
-      initAudio();addRemnant(Number(pack.dataset.marketRemnant)||0,'Shop test credit');renderDailyMarket();
-    }
   });
 
   const baseCoreMatrixMiniHTML=coreMatrixMiniHTML;
@@ -26048,6 +26921,213 @@ body:not(.verifiedDeveloperAccount) #debugGui{
 }
 </style>
 
+
+<script id="fragment-v1-free-beta-legal-center-script">
+(() => {
+  'use strict';
+
+  const FRAGMENT_LEGAL_CONFIG = Object.freeze({
+    projectName: 'Fragment.io',
+    studioName: 'SISCON Studio',
+    contactEmail: 'sisconteam@proton.me',
+    effectiveDate: '18 July 2026',
+    termsVersion: '2026-07-18',
+    privacyVersion: '2026-07-18'
+  });
+
+  window.FRAGMENT_LEGAL_CONFIG = FRAGMENT_LEGAL_CONFIG;
+  const isConfigured = true;
+
+  function all(selector) {
+    return [...document.querySelectorAll(selector)];
+  }
+
+  function applyLegalConfig() {
+    all('[data-legal-email]').forEach(element => {
+      element.textContent = FRAGMENT_LEGAL_CONFIG.contactEmail;
+    });
+    all('[data-legal-email-link]').forEach(element => {
+      element.setAttribute('href', `mailto:${FRAGMENT_LEGAL_CONFIG.contactEmail}`);
+    });
+    all('[data-legal-effective-date]').forEach(element => {
+      element.textContent = FRAGMENT_LEGAL_CONFIG.effectiveDate;
+    });
+    all('[data-legal-terms-version]').forEach(element => {
+      element.textContent = FRAGMENT_LEGAL_CONFIG.termsVersion;
+    });
+    all('[data-legal-privacy-version]').forEach(element => {
+      element.textContent = FRAGMENT_LEGAL_CONFIG.privacyVersion;
+    });
+    all('[data-legal-site-url]').forEach(element => {
+      element.textContent = window.location.origin || window.location.href;
+    });
+
+  }
+
+  function showLegalPanel(name) {
+    const target = all('[data-legal-panel]').some(panel => panel.dataset.legalPanel === name)
+      ? name
+      : 'overview';
+
+    all('[data-legal-tab]').forEach(button => {
+      button.classList.toggle('active', button.dataset.legalTab === target);
+    });
+    all('[data-legal-panel]').forEach(panel => {
+      panel.classList.toggle('active', panel.dataset.legalPanel === target);
+    });
+
+    const scroller = document.getElementById('legalScroll');
+    if (scroller) scroller.scrollTop = 0;
+  }
+
+  document.addEventListener('click', event => {
+    const opener = event.target.closest('[data-legal-target]');
+    if (opener) {
+      showLegalPanel(opener.dataset.legalTarget || 'overview');
+    }
+
+    const tab = event.target.closest('[data-legal-tab]');
+    if (tab) {
+      showLegalPanel(tab.dataset.legalTab || 'overview');
+    }
+  });
+
+  function setFeedback(message) {
+    const feedback = document.getElementById('legalDataFeedback');
+    if (!feedback) return;
+    feedback.textContent = message;
+    feedback.classList.add('active');
+  }
+
+  document.getElementById('legalExportLocalBtn')?.addEventListener('click', () => {
+    const data = {};
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key && key.toLowerCase().includes('fragmentio')) {
+        data[key] = localStorage.getItem(key);
+      }
+    }
+
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      source: window.location.origin || window.location.href,
+      note: 'Local browser storage only. This is not a complete cloud-account export.',
+      data
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `fragmentio-local-data-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setFeedback('Local Fragment.io browser data was exported. Cloud records are not included.');
+  });
+
+  document.getElementById('legalClearLocalBtn')?.addEventListener('click', () => {
+    const confirmed = window.confirm(
+      'Clear all Fragment.io local browser data on this device? This may sign you out and remove local preferences or guest progress. Cloud-account records are not deleted.'
+    );
+    if (!confirmed) return;
+
+    const keys = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key && key.toLowerCase().includes('fragmentio')) keys.push(key);
+    }
+    keys.forEach(key => localStorage.removeItem(key));
+    setFeedback('Local Fragment.io data was cleared. Reloading the game…');
+    window.setTimeout(() => window.location.reload(), 900);
+  });
+
+  function currentVisibleAccountLabel() {
+    const status = document.getElementById('accountStatusName')?.textContent?.trim();
+    const friendCode = document.getElementById('accountFriendCode')?.textContent?.trim();
+    return {
+      account: status || 'Please identify my account by the email sending this request.',
+      friendCode: friendCode && friendCode !== 'GUEST' ? friendCode : 'Not available'
+    };
+  }
+
+  function openRequestEmail(kind) {
+    const identity = currentVisibleAccountLabel();
+    const subject = kind === 'deletion'
+      ? 'Fragment.io account deletion request'
+      : 'Fragment.io privacy rights request';
+
+    const body = kind === 'deletion'
+      ? `Hello,
+
+I request deletion of my Fragment.io account and associated personal data, subject to any data that must lawfully be retained.
+
+Account display:
+${identity.account}
+
+Friend code:
+${identity.friendCode}
+
+Account email:
+[ENTER THE EMAIL USED FOR THE ACCOUNT]
+
+Please confirm receipt, tell me if further identity verification is required, and confirm when the request is completed.
+
+Regards,
+[YOUR NAME]`
+      : `Hello,
+
+I would like to exercise the following privacy right concerning my Fragment.io account:
+[ACCESS / CORRECTION / RESTRICTION / OBJECTION / PORTABILITY / OTHER]
+
+Account display:
+${identity.account}
+
+Friend code:
+${identity.friendCode}
+
+Account email:
+[ENTER THE EMAIL USED FOR THE ACCOUNT]
+
+Details of my request:
+[DESCRIBE THE REQUEST]
+
+Regards,
+[YOUR NAME]`;
+
+    window.location.href =
+      `mailto:${encodeURIComponent(FRAGMENT_LEGAL_CONFIG.contactEmail)}`
+      + `?subject=${encodeURIComponent(subject)}`
+      + `&body=${encodeURIComponent(body)}`;
+  }
+
+  document.getElementById('legalDeleteRequestBtn')?.addEventListener('click', () => {
+    openRequestEmail('deletion');
+  });
+  document.getElementById('legalPrivacyRequestBtn')?.addEventListener('click', () => {
+    openRequestEmail('privacy');
+  });
+
+  // Keep every real-money element disabled even if a legacy renderer creates it.
+  function lockRealMoneyUi() {
+    all('[data-buy-remnant],[data-market-remnant]').forEach(button => {
+      button.disabled = true;
+      button.setAttribute('aria-disabled', 'true');
+      button.removeAttribute('data-buy-remnant');
+      button.removeAttribute('data-market-remnant');
+      button.textContent = 'TOP-UPS LOCKED';
+    });
+  }
+
+  const observer = new MutationObserver(lockRealMoneyUi);
+  observer.observe(document.body, { childList: true, subtree: true });
+  lockRealMoneyUi();
+  applyLegalConfig();
+  showLegalPanel('overview');
+})();
+</script>
+
 </body>
 </html>
 
@@ -26058,5 +27138,16 @@ body:not(.verifiedDeveloperAccount) #debugGui{
 }
 #brSpawnCard{
   padding-bottom:10px!important;
+}
+</style>
+
+<style id="fragment-v1-private-contact-legal-center-style">
+.legalBetaStatus{
+  display:flex!important;
+  align-items:center!important;
+  min-height:30px!important;
+}
+.legalBetaStatus b{
+  font-size:9px!important;
 }
 </style>
