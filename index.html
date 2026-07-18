@@ -3770,21 +3770,10 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
     </div>
 
     <div class="menuModal" data-modal="shop">
-      <div class="modalCard compactWindow shopWindowPlus">
+      <div class="modalCard compactWindow smallWindow">
         <div class="modalTop"><h2>Shop</h2><div style="display:flex;gap:8px;align-items:center;"><span class="remnantBadge"><span class="remnantSymbol">◆</span><span class="remnantValue">0</span></span><button class="modalClose" type="button" data-close-modal>×</button></div></div>
-        <section class="shopSection">
-          <div class="shopSectionTop"><b>Remnant Packs</b><span>100 Remnants = €1 of value</span></div>
-          <div class="shopPackGrid"><div class="shopPack"><b><span class="remnantSymbol">◆</span>100</b><span>1 single</span><button type="button" data-buy-remnant="100">€0.99</button></div><div class="shopPack"><b><span class="remnantSymbol">◆</span>1000</b><span>10 pull</span><button type="button" data-buy-remnant="1000">€8.99</button></div><div class="shopPack"><b><span class="remnantSymbol">◆</span>2200</b><span>22 pulls</span><button type="button" data-buy-remnant="2200">€17.99</button></div></div>
-        </section>
-        <section class="shopSection dailyCosmeticShopSection">
-          <div class="shopSectionTop"><b>Daily Cosmetic Rotation</b><span id="dailyCosmeticResetText">Refreshes in --</span></div>
-          <div id="dailyCosmeticShopGrid" class="dailyCosmeticShopGrid"></div>
-        </section>
-        <section class="shopSection matterShopSection">
-          <div class="shopSectionTop"><b>Run Utility</b><span id="minorCoreMatterCountLabel">0 in storage</span></div>
-          <div id="minorCoreMatterStore" class="minorCoreMatterStore"></div>
-        </section>
-        <div class="lockedHint" id="shopHint">Buy Remnant, grab a daily cosmetic, or stock up on One-Use Minor Core Matter.</div>
+        <div class="shopPackGrid"><div class="shopPack"><b><span class="remnantSymbol">◆</span>100</b><span>1 single</span><button type="button" data-buy-remnant="100">€0.99</button></div><div class="shopPack"><b><span class="remnantSymbol">◆</span>1000</b><span>10 pull</span><button type="button" data-buy-remnant="1000">€8.99</button></div><div class="shopPack"><b><span class="remnantSymbol">◆</span>2200</b><span>22 pulls</span><button type="button" data-buy-remnant="2200">€17.99</button></div></div>
+        <div class="lockedHint" id="shopHint">Prototype shop: buttons add ◆ Remnant locally.</div>
       </div>
     </div>
 
@@ -3938,11 +3927,6 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
     <div class="sysLine"><span>Radar</span><b id="uiRadar">Off</b></div>
     <div class="sysLine"><span>Mutation</span><b id="uiMutation">None</b></div>
     <div id="coreMatrixMini"></div>
-    <div id="minorCoreMatterDock" class="minorCoreMatterDock hidden">
-      <div class="minorCoreMatterDockTop"><span>Minor Core Matter</span><b id="minorCoreMatterHudCount">0</b></div>
-      <button id="useMinorCoreMatterBtn" type="button">Use 1 · Random Minor Fragment</button>
-      <small>Grants one random minor fragment reserve for this run.</small>
-    </div>
     <h3 style="margin-top:10px;">Map Events</h3>
     <div class="sysLine"><span>Hot Zone</span><b id="uiHotZone">None</b></div>
     <div class="sysLine"><span>Terrain</span><b id="uiTerrain">Stable</b></div>
@@ -18967,185 +18951,603 @@ body.bossRushMinimal #leaveGameBtn{
 </style>
 
 
-<style id="fragment-v1-profile-shop-achievement-profile-polish">
-.shopWindowPlus{width:min(980px,calc(100vw - 36px))!important;max-height:92vh!important;overflow:auto!important}
-.shopWindowPlus .shopSection{border:4px solid #101820;background:#eef3f7;padding:12px;margin-top:10px}
-.shopSectionTop{display:flex;justify-content:space-between;gap:8px;align-items:end;margin-bottom:10px}
-.shopSectionTop b{font-size:13px;letter-spacing:.08em}.shopSectionTop span{font-size:10px;font-weight:1000;color:#526170}
-.dailyCosmeticShopGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-.dailyCosmeticCard{border:3px solid #101820;background:#fff;padding:10px;display:flex;flex-direction:column;gap:8px;min-height:178px;box-shadow:4px 4px 0 rgba(0,0,0,.14)}
-.dailyCosmeticCardTop{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.dailyCosmeticCardTop b,.dailyCosmeticCardTop span{display:block}.dailyCosmeticCardTop b{font-size:13px}.dailyCosmeticCardTop span{font-size:10px;color:#526170;margin-top:3px}.dailyCosmeticCard .dailyCosmeticType{font-size:10px;font-weight:1000;letter-spacing:.08em;color:#526170;text-transform:uppercase}.dailyCosmeticPrice{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:auto;font-size:10px;font-weight:1000}.dailyCosmeticPrice b{font-size:16px}.dailyCosmeticCard button{height:38px;border:3px solid #101820;background:#315fc9;color:#fff;font-weight:1000}.dailyCosmeticCard button[disabled]{background:#d5dce4;color:#6b7884}
-.dailyRarityTag{padding:4px 7px;border:2px solid #101820;background:#eef3f7;font-size:9px;font-weight:1000;text-transform:uppercase;white-space:nowrap}
-.minorCoreMatterStore{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
-.minorCoreMatterCard{border:3px solid #101820;background:linear-gradient(145deg,#fff,#e8edf5);padding:11px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;box-shadow:4px 4px 0 rgba(0,0,0,.14)}
-.minorCoreMatterCard b,.minorCoreMatterCard span,.minorCoreMatterCard small{display:block}.minorCoreMatterCard span{font-size:10px;color:#526170;margin-top:4px}.minorCoreMatterCard small{font-size:10px;font-weight:1000;color:#315fc9;margin-top:4px}.minorCoreMatterCard button{height:38px;border:3px solid #101820;background:#315fc9;color:#fff;font-weight:1000;padding:0 12px}
-.minorCoreMatterDock{margin:10px 0 8px;border:3px solid #101820;background:#eef3f7;padding:10px;display:grid;gap:8px}
-.minorCoreMatterDockTop{display:flex;justify-content:space-between;gap:8px;align-items:center}.minorCoreMatterDockTop span{font-size:10px;font-weight:1000;letter-spacing:.08em}.minorCoreMatterDockTop b{font-size:16px}.minorCoreMatterDock button{height:34px;border:3px solid #101820;background:#315fc9;color:#fff;font-weight:1000}.minorCoreMatterDock button[disabled]{background:#d5dce4;color:#6b7884}.minorCoreMatterDock small{font-size:10px;color:#526170}
-.profileWindow,.inGameProfileCard,.profileEditWindow{--profile-line:#101820;--profile-surface:rgba(238,243,247,.88);--profile-surface-strong:rgba(255,255,255,.90);--profile-name-glow:#6e96ff;--profile-name-color:#eef3f7;--profile-soft-text:#324252}
-.profile-bg-default{--profile-line:#101820;--profile-surface:rgba(238,243,247,.88);--profile-surface-strong:rgba(255,255,255,.92);--profile-name-glow:#6e96ff;--profile-name-color:#eef3f7;--profile-soft-text:#324252}
-.profile-bg-slate{--profile-line:#223444;--profile-surface:rgba(239,245,249,.88);--profile-surface-strong:rgba(255,255,255,.92);--profile-name-glow:#8cc9ff;--profile-name-color:#f7fbff;--profile-soft-text:#304150}
-.profile-bg-verdant{--profile-line:#234533;--profile-surface:rgba(243,248,242,.84);--profile-surface-strong:rgba(255,255,255,.90);--profile-name-glow:#8effb9;--profile-name-color:#fbfffc;--profile-soft-text:#32453a}
-.profile-bg-skyglass{--profile-line:#254a59;--profile-surface:rgba(243,251,255,.82);--profile-surface-strong:rgba(255,255,255,.90);--profile-name-glow:#87ebff;--profile-name-color:#f8fdff;--profile-soft-text:#2c4652}
-.profile-bg-solar{--profile-line:#5e3512;--profile-surface:rgba(255,247,234,.82);--profile-surface-strong:rgba(255,255,255,.90);--profile-name-glow:#ffd766;--profile-name-color:#fffdf6;--profile-soft-text:#5d3d20}
-.profile-bg-voidarchive{--profile-line:#cdb6ff;--profile-surface:rgba(21,18,34,.46);--profile-surface-strong:rgba(41,31,63,.62);--profile-name-glow:#b586ff;--profile-name-color:#faf2ff;--profile-soft-text:#dfd1ff}
-.profile-bg-floor7{--profile-line:#ffb2c1;--profile-surface:rgba(54,8,16,.52);--profile-surface-strong:rgba(74,14,23,.64);--profile-name-glow:#ff738f;--profile-name-color:#fff5f7;--profile-soft-text:#ffd1db}
-.profile-bg-remembrance{--profile-line:#7f3f67;--profile-surface:rgba(255,245,250,.80);--profile-surface-strong:rgba(255,255,255,.90);--profile-name-glow:#ffaddc;--profile-name-color:#fffafe;--profile-soft-text:#68425d}
-.profileWindow .modalTop,.profileWindow .profileXp,.profileWindow .profileSection,.profileWindow .profileEvolutionCard,.profileWindow .profileActions button,.profileWindow .profileStat,.profileWindow .profileCosmeticCard,.profileWindow .achievementCard,.profileWindow .profileLevelBadge,.profileWindow .profileEditor,.inGameProfileCard .inGameProfileFavorite,.inGameProfileCard .inGameProfileStats div,.inGameProfileCard .profileCosmeticCard,.inGameProfileCard .achievementCard,.inGameProfileCard>p{border-color:var(--profile-line)!important}
-.profileWindow .modalTop,.profileWindow .profileXp,.profileWindow .profileSection,.profileWindow .profileEvolutionCard,.profileWindow .profileEditor,.profileWindow .profileLevelBadge,.profileWindow .profileStat,.profileWindow .profileCosmeticCard,.profileWindow .achievementCard,.inGameProfileCard .inGameProfileFavorite,.inGameProfileCard .inGameProfileStats div,.inGameProfileCard .profileCosmeticCard,.inGameProfileCard .achievementCard,.inGameProfileCard>p{background:var(--profile-surface)!important;color:inherit}
-.profileWindow .profileCosmeticCard,.profileWindow .achievementCard,.profileWindow .profileStat,.inGameProfileCard .profileCosmeticCard,.inGameProfileCard .achievementCard,.inGameProfileCard .inGameProfileStats div{background:var(--profile-surface-strong)!important}
-.profileWindow .profileIdentity h3,.inGameProfileIdentity h2{text-shadow:0 0 10px var(--profile-name-glow),0 0 18px color-mix(in srgb,var(--profile-name-glow) 58%, transparent);color:var(--profile-name-color)!important;letter-spacing:.04em}
-.profileWindow .profileIdentity b,.profileWindow .profileIdentity span,.profileWindow .profileIdentity small,.inGameProfileIdentity b,.inGameProfileIdentity span,.profileWindow .profileStat span,.profileWindow .profileCosmeticCard span,.profileWindow .achievementCard span,.profileWindow .profileSection p,.profileWindow .profileEvolutionCard span,.inGameProfileCard .inGameProfileFavorite,.inGameProfileCard .inGameProfileStats span,.inGameProfileCard .profileCosmeticCard span,.inGameProfileCard .achievementCard span{color:var(--profile-soft-text)!important}
-.profileWindow .profileBanner,.inGameProfileCard .inGameProfileBanner{border-color:var(--profile-line)!important;box-shadow:0 0 0 2px rgba(255,255,255,.12) inset}
-.profileWindow.profile-bg-floor7 .profileBanner,.profileWindow.profile-bg-voidarchive .profileBanner,.inGameProfileCard.profile-bg-floor7 .inGameProfileBanner,.inGameProfileCard.profile-bg-voidarchive .inGameProfileBanner{box-shadow:0 0 0 2px rgba(255,255,255,.24) inset,0 0 24px rgba(0,0,0,.16)}
-.profileWindow.profile-bg-floor7 .profileCoreIcon,.profileWindow.profile-bg-voidarchive .profileCoreIcon{border-color:var(--profile-line)!important;box-shadow:0 0 20px rgba(255,255,255,.10)}
-.profileWindow.profile-bg-floor7 .profileLevelBadge,.profileWindow.profile-bg-voidarchive .profileLevelBadge,.profileWindow.profile-bg-floor7 .profileSection,.profileWindow.profile-bg-voidarchive .profileSection,.profileWindow.profile-bg-floor7 .profileXp,.profileWindow.profile-bg-voidarchive .profileXp,.profileWindow.profile-bg-floor7 .profileEditor,.profileWindow.profile-bg-voidarchive .profileEditor,.profileWindow.profile-bg-floor7 .profileStat,.profileWindow.profile-bg-voidarchive .profileStat,.profileWindow.profile-bg-floor7 .profileCosmeticCard,.profileWindow.profile-bg-voidarchive .profileCosmeticCard,.profileWindow.profile-bg-floor7 .achievementCard,.profileWindow.profile-bg-voidarchive .achievementCard,.inGameProfileCard.profile-bg-floor7 .inGameProfileStats div,.inGameProfileCard.profile-bg-voidarchive .inGameProfileStats div,.inGameProfileCard.profile-bg-floor7 .profileCosmeticCard,.inGameProfileCard.profile-bg-voidarchive .profileCosmeticCard,.inGameProfileCard.profile-bg-floor7 .achievementCard,.inGameProfileCard.profile-bg-voidarchive .achievementCard,.inGameProfileCard.profile-bg-floor7>p,.inGameProfileCard.profile-bg-voidarchive>p,.inGameProfileCard.profile-bg-floor7 .inGameProfileFavorite,.inGameProfileCard.profile-bg-voidarchive .inGameProfileFavorite{box-shadow:0 0 0 1px rgba(255,255,255,.12) inset}
-.profileWindow .profileActions button{background:var(--profile-surface)!important;color:#101820!important}.profileWindow.profile-bg-floor7 .profileActions button,.profileWindow.profile-bg-voidarchive .profileActions button{color:#f4f6f8!important}
-.profileStat span{line-height:1.15}
-.profileStat.profileStatWide span{font-size:8px;letter-spacing:.05em}
-@media(max-width:900px){.dailyCosmeticShopGrid{grid-template-columns:1fr}.minorCoreMatterCard{grid-template-columns:1fr}}
+<style id="fragment-v1-profile-shop-achievements-ui-fix">
+.profileWindow,.profileEditWindow,.inGameProfileCard,.modalCard[class*="profile-bg-"]{
+  --pf-shell:#d7dee6;
+  --pf-border:#101820;
+  --pf-panel:rgba(238,243,247,.88);
+  --pf-panel-strong:rgba(255,255,255,.92);
+  --pf-card:rgba(255,255,255,.9);
+  --pf-text:#101820;
+  --pf-muted:#526170;
+  --pf-glow:rgba(74,122,255,.35);
+  color:var(--pf-text)!important;
+}
+.profile-bg-default{--pf-shell:#d7dee6;--pf-border:#101820;--pf-panel:rgba(238,243,247,.88);--pf-panel-strong:rgba(255,255,255,.94);--pf-card:rgba(255,255,255,.92);--pf-text:#101820;--pf-muted:#526170;--pf-glow:rgba(74,122,255,.35)}
+.profile-bg-slate{--pf-shell:#b5c0cb;--pf-border:#101820;--pf-panel:rgba(241,246,250,.8);--pf-panel-strong:rgba(255,255,255,.9);--pf-card:rgba(255,255,255,.88);--pf-text:#101820;--pf-muted:#4f5d6f;--pf-glow:rgba(158,205,255,.42)}
+.profile-bg-verdant{--pf-shell:#8ea896;--pf-border:#163125;--pf-panel:rgba(236,244,238,.84);--pf-panel-strong:rgba(247,252,248,.92);--pf-card:rgba(248,252,248,.9);--pf-text:#122317;--pf-muted:#325041;--pf-glow:rgba(142,226,145,.48)}
+.profile-bg-skyglass{--pf-shell:#9fc2d6;--pf-border:#16384c;--pf-panel:rgba(239,248,252,.82);--pf-panel-strong:rgba(252,254,255,.92);--pf-card:rgba(250,253,255,.92);--pf-text:#12273a;--pf-muted:#47667d;--pf-glow:rgba(149,223,255,.48)}
+.profile-bg-solar{--pf-shell:#b8723a;--pf-border:#40210f;--pf-panel:rgba(255,245,228,.86);--pf-panel-strong:rgba(255,251,243,.94);--pf-card:rgba(255,248,237,.92);--pf-text:#3a200f;--pf-muted:#7e5030;--pf-glow:rgba(255,208,90,.55)}
+.profile-bg-voidarchive{--pf-shell:#1e132f;--pf-border:#efdfff;--pf-panel:rgba(42,29,64,.82);--pf-panel-strong:rgba(51,36,77,.9);--pf-card:rgba(55,39,84,.9);--pf-text:#f7f0ff;--pf-muted:#d3bee9;--pf-glow:rgba(176,116,255,.72)}
+.profile-bg-floor7{--pf-shell:#220509;--pf-border:#ffd6df;--pf-panel:rgba(62,11,19,.82);--pf-panel-strong:rgba(74,15,24,.88);--pf-card:rgba(84,18,29,.9);--pf-text:#fff5f7;--pf-muted:#ffd4dc;--pf-glow:rgba(255,104,137,.82)}
+.profile-bg-remembrance{--pf-shell:#d7b4c8;--pf-border:#5b2949;--pf-panel:rgba(255,244,250,.82);--pf-panel-strong:rgba(255,250,252,.94);--pf-card:rgba(255,247,251,.92);--pf-text:#442238;--pf-muted:#78506a;--pf-glow:rgba(255,159,211,.68)}
+
+.modalCard[class*="profile-bg-"]{background:var(--pf-shell)!important;border-color:var(--pf-border)!important;color:var(--pf-text)!important}
+.modalCard[class*="profile-bg-"] .modalTop{background:var(--pf-panel)!important;border-bottom:4px solid var(--pf-border)!important;color:var(--pf-text)!important}
+.modalCard[class*="profile-bg-"] .modalTop h2,.modalCard[class*="profile-bg-"] .modalTop span{color:var(--pf-text)!important}
+.modalCard[class*="profile-bg-"] .modalClose{border-color:var(--pf-border)!important;background:var(--pf-panel-strong)!important;color:var(--pf-text)!important}
+
+.profileWindow,.profileEditWindow,.inGameProfileCard{background:var(--pf-shell)!important;color:var(--pf-text)!important}
+.profileWindow::before,.profileEditWindow::before,.inGameProfileCard::before{opacity:1!important}
+.profileWindow .profileXp,
+.profileWindow .profileSection,
+.profileWindow .profileEvolutionCard,
+.profileWindow .profileStat,
+.profileWindow .profileActions button,
+.profileWindow .profileCosmeticCard,
+.profileWindow .achievementCard,
+.profileEditWindow .profileEditor,
+.profileEditWindow select,
+.profileEditWindow textarea,
+.inGameProfileCard>p,
+.inGameProfileCard .inGameProfileFavorite,
+.inGameProfileCard .inGameProfileStats div,
+.inGameProfileCard .inGameProfileShowcase>div{
+  background:var(--pf-panel)!important;
+  color:var(--pf-text)!important;
+  border-color:var(--pf-border)!important;
+}
+.profileWindow .profileSection h3,
+.profileWindow .profileCosmeticCard b,
+.profileWindow .achievementCard b,
+.profileWindow .profileStat b,
+.profileWindow .profileEvolutionCard b,
+.inGameProfileCard h3,
+.inGameProfileCard b{color:var(--pf-text)!important}
+.profileWindow .profileSection p,
+.profileWindow .profileCosmeticCard span,
+.profileWindow .achievementCard span,
+.profileWindow .profileStat span,
+.profileWindow .profileEvolutionCard span,
+.profileWindow .profileEvolutionCard small,
+.profileWindow #profileXpText,
+.profileWindow #profileAchievementScore,
+.profileWindow #profilePresence,
+.profileWindow #profileFriendCode,
+.profileWindow #profileTitle,
+.inGameProfileCard span,
+.inGameProfileCard small{color:var(--pf-muted)!important}
+.profileWindow .profileBanner,
+.inGameProfileBanner{border-color:var(--pf-border)!important;box-shadow:0 0 0 3px rgba(0,0,0,.08)}
+.profileWindow .profileLevelBadge,
+.profileWindow .profileCoreIcon,
+.profileWindow #profileIconCanvas,
+.inGameProfileBanner canvas{border-color:var(--pf-border)!important}
+.profileWindow .profileLevelBadge{background:var(--pf-panel-strong)!important;color:var(--pf-text)!important}
+.profileWindow .profileLevelBadge span,.profileWindow .profileLevelBadge small{color:var(--pf-muted)!important}
+.profileWindow .profileActions button{background:var(--pf-panel-strong)!important}
+.profileWindow .profileActions button:hover,
+.profileEditWindow .profileEditorActions button:hover{transform:translateY(-1px)}
+.profileWindow .profileStat span,
+.inGameProfileStats span{white-space:normal!important;line-height:1.12!important}
+
+#profileName,.profileIdentity h3,#inGameProfileName{
+  color:var(--pf-text)!important;
+  text-shadow:0 0 18px var(--pf-glow),0 0 4px rgba(255,255,255,.2),0 1px 0 rgba(0,0,0,.3)!important;
+  letter-spacing:.04em!important;
+}
+#profileTitle,#profilePresence,#profileFriendCode,#inGameProfileTitle,#inGameProfileLevel{font-weight:1000!important}
+.profileWindow.profile-bg-floor7 #profilePresence,
+.profileWindow.profile-bg-floor7 #profileFriendCode,
+.profileWindow.profile-bg-voidarchive #profilePresence,
+.profileWindow.profile-bg-voidarchive #profileFriendCode,
+.inGameProfileCard.profile-bg-floor7 #inGameProfileLevel,
+.inGameProfileCard.profile-bg-voidarchive #inGameProfileLevel{color:#fff0f4!important}
+
+.shopDailyShell{display:grid;gap:14px}
+.shopDailyHero{display:grid;grid-template-columns:1.3fr .9fr;gap:12px}
+.shopDailyPanel,.shopPackSection,.shopCoreSection{border:4px solid #101820;background:#eef3f7;padding:12px}
+.shopDailyPanel small,.shopCoreSection small,.shopPackSection small{display:block;font-size:10px;letter-spacing:.08em;font-weight:1000;color:#526170}
+.shopDailyPanel h3,.shopCoreSection h3,.shopPackSection h3{margin:6px 0 4px;font-size:18px}
+.shopDailyMeta{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.shopDailyMeta b{border:3px solid #101820;background:#fff;padding:5px 8px;font-size:10px}
+.shopDailyGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.shopOfferCard{border:4px solid #101820;background:#fff;padding:10px;display:grid;gap:8px;align-content:start;box-shadow:5px 5px 0 rgba(0,0,0,.1)}
+.shopOfferCard[data-rarity="common"]{background:#f5f8fb}
+.shopOfferCard[data-rarity="rare"]{background:#edf4ff}
+.shopOfferCard[data-rarity="epic"]{background:#f3eeff}
+.shopOfferCard[data-rarity="legendary"]{background:#fff4dd}
+.shopOfferCard[data-rarity="mythic"]{background:#fff0fb}
+.shopOfferPreview{height:112px;border:3px solid #101820;background:#dce6ef;display:grid;place-items:center}
+.shopOfferPreview canvas{width:100%;height:100%}
+.shopOfferTitle{display:grid;gap:3px}
+.shopOfferTitle b{font-size:13px;line-height:1.15}
+.shopOfferTitle span{font-size:10px;color:#526170}
+.shopOfferFooter{display:grid;gap:7px}
+.shopOfferPrice{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;font-weight:1000}
+.shopOfferPrice .rarityPillMini{padding:4px 6px;border:2px solid #101820;background:#fff;font-size:9px;letter-spacing:.06em}
+.shopOfferCard button,.shopCoreSection button,.shopPackGrid button{height:38px;border:3px solid #101820;background:#315fc9;color:#fff;font-weight:1000}
+.shopOfferCard button[disabled],.shopCoreSection button[disabled]{background:#9fa8b7!important;color:#eef3f7!important}
+.shopCoreBox{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;padding:10px;border:3px solid #101820;background:#fff}
+.shopCoreCount{font-size:12px;font-weight:1000}
+.shopPackSection .shopPackGrid{margin-top:10px}
+.shopPackGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.shopPack{border:3px solid #101820;background:#fff;padding:10px;display:grid;gap:6px;text-align:center}
+.shopPack b{font-size:22px}
+.shopNote{border:3px dashed #101820;background:#fff;padding:10px;font-size:11px;line-height:1.4}
+.shopOfferOwned{font-size:10px;font-weight:1000;color:#526170}
+[data-modal="shop"] .lockedHint{margin-top:0!important}
+@media(max-width:780px){.shopDailyHero{grid-template-columns:1fr}.shopDailyGrid,.shopPackGrid{grid-template-columns:1fr}.shopCoreBox{flex-direction:column;align-items:flex-start}}
 </style>
-<script id="fragment-v1-profile-shop-achievement-profile-polish-script">
-(function(){
-const SHOP_PRICES={common:50,rare:120,epic:300,legendary:800,mythic:2600};
-let minorCoreMatterTokens=0;
-let dailyCosmeticShopState={dayKey:'',purchased:[]};
-function safeText(v){return String(v??'');}
-function hashString(str){let h=2166136261>>>0;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
-function mulberry32(a){return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296;};}
-function sanitizeDailyShopState(raw){raw=raw&&typeof raw==='object'?raw:{};return{dayKey:safeText(raw.dayKey),purchased:Array.isArray(raw.purchased)?raw.purchased.filter(Boolean).slice(0,20):[]};}
-function todayShopKey(){const d=new Date();return [d.getUTCFullYear(),String(d.getUTCMonth()+1).padStart(2,'0'),String(d.getUTCDate()).padStart(2,'0')].join('-');}
-function resetTimeLeftText(){const now=new Date();const next=new Date(now);next.setUTCHours(24,0,0,0);const ms=Math.max(0,next-now);const h=Math.floor(ms/3600000),m=Math.floor((ms%3600000)/60000);return `${h}h ${m}m until refresh`;}
-function ensureDailyShopStateCurrent(){const key=todayShopKey();if(dailyCosmeticShopState.dayKey!==key){dailyCosmeticShopState={dayKey:key,purchased:[]};saveDailyShopState();}}
-function cosmeticDailyPrice(c){return SHOP_PRICES[c?.rarity]||200;}
-function deterministicPick(pool,count,seed){const arr=[...new Map(pool.map(item=>[item.id,item])).values()];const rng=mulberry32(seed||1);for(let i=arr.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr.slice(0,Math.min(count,arr.length));}
-function dailyCosmeticOffers(){ensureDailyShopStateCurrent();const basePool=allCosmetics().filter(c=>!c.limited&&['trail','aura','hat','shape','title','profilebanner','profilebackground'].includes(c.type));const unowned=basePool.filter(c=>!ownedCosmetics.includes(c.id));const seedBase=hashString(todayShopKey()+'|'+(cloudUser?.id||ui?.playerName?.value||'guest'));const profilePool=(unowned.length?unowned:basePool).filter(c=>c.type==='profilebanner'||c.type==='profilebackground');const generalPool=(unowned.length?unowned:basePool).filter(c=>c.type!=='profilebanner'&&c.type!=='profilebackground');const picked=[...deterministicPick(profilePool.length?profilePool:basePool,1,seedBase+11),...deterministicPick(generalPool.length?generalPool:basePool,2,seedBase+29)];return [...new Map(picked.map(item=>[item.id,item])).values()].slice(0,3);}
-function renderDailyCosmeticShop(){const grid=$('dailyCosmeticShopGrid');const utility=$('minorCoreMatterStore');if(!grid||!utility)return;ensureDailyShopStateCurrent();const offers=dailyCosmeticOffers();$('dailyCosmeticResetText').textContent=resetTimeLeftText();grid.innerHTML=offers.map(item=>{const rarity=rarityInfo(item.rarity),owned=ownedCosmetics.includes(item.id),bought=dailyCosmeticShopState.purchased.includes(item.id),price=cosmeticDailyPrice(item);const disabled=owned||bought||remnant<price;return `<article class="dailyCosmeticCard" style="border-color:${rarity.color}"><div class="dailyCosmeticCardTop"><div><b>${escapeHtml(item.name)}</b><span>${escapeHtml(typeLabel(item.type))}</span></div><div class="dailyRarityTag" style="border-color:${rarity.color};color:${rarity.color}">${escapeHtml(rarity.name)}</div></div><div class="dailyCosmeticType">Daily Offer</div><div class="dailyCosmeticPrice"><span><span class="remnantSymbol">◆</span> <b>${price}</b></span><span>${owned?'Owned':bought?'Bought today':item.type==='profilebackground'||item.type==='profilebanner'?'Profile cosmetic':'Permanent unlock'}</span></div><button type="button" data-buy-daily-cosmetic="${escapeHtml(item.id)}" ${disabled?'disabled':''}>${owned?'Owned':bought?'Purchased':'Buy Cosmetic'}</button></article>`;}).join('');utility.innerHTML=`<article class="minorCoreMatterCard"><div><b>One-Use Minor Core Matter</b><span>Stores one charge that can be consumed during a run to grant a random minor fragment reserve.</span><small>Storage: ${minorCoreMatterTokens}</small></div><button type="button" id="buyMinorCoreMatterBtn" ${remnant<50?'disabled':''}>Buy · <span class="remnantSymbol">◆</span>50</button></article>`;$('minorCoreMatterCountLabel').textContent=`${minorCoreMatterTokens} in storage`;renderMinorCoreMatterDock();}
-function dailyShopLockedGuest(){tone(120,0.08,'square',0.025);notify('Account required','Login or register to use the cosmetic shop. Guest mode cannot purchase store items.');openMenuModal('account');}
-function buyDailyCosmetic(itemId){if(isGuestAccount())return dailyShopLockedGuest();ensureDailyShopStateCurrent();const item=cosmeticById(itemId);if(!item)return;const price=cosmeticDailyPrice(item);if(ownedCosmetics.includes(item.id)){notify('Already owned',item.name+' is already in your collection.');return;}if(dailyCosmeticShopState.purchased.includes(item.id)){notify('Sold out','That daily offer was already purchased today.');return;}if(remnant<price){notify('Not enough Remnant',`You need ${price-remnant} more Remnant.`);return;}remnant-=price;ownedCosmetics.push(item.id);ownedCosmetics=[...new Set(ownedCosmetics)];dailyCosmeticShopState.purchased.push(item.id);saveGacha();renderOwnedCosmeticOptions();renderGachaMenu();renderRemnantBadges();renderDailyCosmeticShop();notify('Cosmetic purchased',item.name+' added to your collection.');}
-function buyMinorCoreMatter(){if(isGuestAccount())return dailyShopLockedGuest();if(remnant<50){notify('Not enough Remnant','One-Use Minor Core Matter costs 50 Remnant.');return;}remnant-=50;minorCoreMatterTokens=Math.max(0,minorCoreMatterTokens+1);saveGacha();renderRemnantBadges();renderDailyCosmeticShop();notify('Stored utility','One-Use Minor Core Matter added to storage.');}
-function useMinorCoreMatter(){if(!player||state.screen!=='play'||socialState.spectating){notify('Cannot use now','Enter a run first.');return;}if(minorCoreMatterTokens<=0){notify('No stored matter','Buy One-Use Minor Core Matter in the shop first.');return;}const id=randomCoreFragment('minor');if(!addCoreFragment(player,id)){notify('Reserve full','Your Core reserve is full right now.');return;}minorCoreMatterTokens=Math.max(0,minorCoreMatterTokens-1);saveGacha();renderDailyCosmeticShop();renderMinorCoreMatterDock();const def=coreFragmentDefs[id];notify('Minor Core Matter used',`${def.short} added to your reserve.`);floatText(player.x,player.y-player.r-26,'MINOR RESERVE',def.color||'#315fc9');}
-function renderMinorCoreMatterDock(){const dock=$('minorCoreMatterDock'),count=$('minorCoreMatterHudCount'),btn=$('useMinorCoreMatterBtn');if(!dock||!count||!btn)return;count.textContent=String(minorCoreMatterTokens);const show=state.screen==='play'&&!socialState.spectating;dock.classList.toggle('hidden',!show);btn.disabled=minorCoreMatterTokens<=0||!player||player.dead;}
-function loadDailyShopState(){if(!isGuestAccount()&&cloudGameDataLoaded)return;try{minorCoreMatterTokens=Math.max(0,Number(localStorage.getItem(currentAccountStorageKey('minor_core_matter_tokens'))||'0'));}catch(e){minorCoreMatterTokens=0;}try{dailyCosmeticShopState=sanitizeDailyShopState(JSON.parse(localStorage.getItem(currentAccountStorageKey('daily_cosmetic_shop'))||'{}'));}catch(e){dailyCosmeticShopState=sanitizeDailyShopState({});}ensureDailyShopStateCurrent();}
-function saveDailyShopState(){if(!isGuestAccount()&&cloudUser&&cloudGameDataLoaded){queueCloudSave();return;}localStorage.setItem(currentAccountStorageKey('minor_core_matter_tokens'),String(Math.max(0,Math.floor(minorCoreMatterTokens))));localStorage.setItem(currentAccountStorageKey('daily_cosmetic_shop'),JSON.stringify(sanitizeDailyShopState(dailyCosmeticShopState)));}
-const _loadGachaProfileShop=loadGacha;loadGacha=function(){const r=_loadGachaProfileShop.apply(this,arguments);loadDailyShopState();renderDailyCosmeticShop();return r;};
-const _saveGachaProfileShop=saveGacha;saveGacha=function(){saveDailyShopState();return _saveGachaProfileShop.apply(this,arguments);};
-const _loadSupplementalSettingsProfileShop=loadSupplementalSettings;loadSupplementalSettings=function(settings={}){_loadSupplementalSettingsProfileShop(settings);minorCoreMatterTokens=Math.max(0,Number(settings.minor_core_matter_tokens)||0);dailyCosmeticShopState=sanitizeDailyShopState(settings.daily_cosmetic_shop||{});ensureDailyShopStateCurrent();renderDailyCosmeticShop();};
-saveCloudProgress=async function(){
-  if(!fragmentSupabase || !cloudUser || !cloudGameDataLoaded) return;
-  const payload={
-    user_id:cloudUser.id,
-    remnant:Math.max(0,Math.floor(Number(remnant)||0)),
-    owned_cosmetics:[...new Set(ownedCosmetics)].filter(Boolean),
-    gacha_pity:sanitizePity(gachaPity),
-    equipped_cosmetics:cloudEquippedPayload(),
-    settings:{
-      sfx_volume:Number(sfxVolume)||0,
-      music_volume:Number(musicVolume)||0,
-      cosmetic_presets:sanitizeCosmeticPresets(cosmeticPresets),
-      weekly_challenges:sanitizeWeeklyChallengeState(weeklyChallengeState),
-      daily_cosmetic_shop:sanitizeDailyShopState(dailyCosmeticShopState),
-      minor_core_matter_tokens:Math.max(0,Math.floor(Number(minorCoreMatterTokens)||0))
-    }
+
+
+<script id="fragment-v1-profile-shop-achievements-ui-fix-script">
+(() => {
+  'use strict';
+
+  const EXTRA_ACHIEVEMENTS = {
+    matches_100:{name:'Centurion Deployment',desc:'Complete 100 matches.',points:90,xp:700},
+    matches_250:{name:'Never Logged Off',desc:'Complete 250 matches.',points:180,xp:1500},
+    wins_5:{name:'Winning Shape',desc:'Win 5 matches.',points:35,xp:240},
+    wins_25:{name:'Arena Climber',desc:'Win 25 matches.',points:90,xp:760},
+    wins_100:{name:'Fragment Champion',desc:'Win 100 matches.',points:220,xp:1800},
+    fragments_2500:{name:'Fragment Collector III',desc:'Collect 2,500 fragments.',points:80,xp:550},
+    fragments_5000:{name:'Fragment Collector IV',desc:'Collect 5,000 fragments.',points:120,xp:950},
+    fragments_10000:{name:'Fragment Collector V',desc:'Collect 10,000 fragments.',points:220,xp:1800},
+    eliminations_250:{name:'Core Rupturer',desc:'Earn 250 eliminations.',points:90,xp:700},
+    eliminations_500:{name:'Fracture Engine',desc:'Earn 500 eliminations.',points:140,xp:1100},
+    eliminations_1000:{name:'Arena Extinction Event',desc:'Earn 1,000 eliminations.',points:260,xp:2200},
+    bosses_25:{name:'Authority Collapse',desc:'Defeat 25 bosses.',points:100,xp:850},
+    bosses_50:{name:'Administrative Shutdown',desc:'Defeat 50 bosses.',points:180,xp:1600},
+    br_wins_5:{name:'Storm Reader',desc:'Win 5 Battle Royale matches.',points:130,xp:1100},
+    br_wins_10:{name:'Battle Royale Tyrant',desc:'Win 10 Battle Royale matches.',points:250,xp:2200},
+    bossrush_5:{name:'Raid Specialist',desc:'Complete Boss Rush 5 times.',points:150,xp:1200},
+    friends_5:{name:'Linked Signals',desc:'Add 5 friends.',points:40,xp:240},
+    friends_10:{name:'Social Mesh',desc:'Add 10 friends.',points:90,xp:520},
+    party_matches_10:{name:'Squad Habit',desc:'Play 10 matches with friends.',points:90,xp:680},
+    spectated_5:{name:'Observer Loop',desc:'Spectate friends in 5 live matches.',points:55,xp:320},
+    join_friend_5:{name:'Drop-In Responder',desc:'Join friends mid-match 5 times.',points:70,xp:430},
+    playtime_10h:{name:'Logged In',desc:'Play for 10 hours.',points:100,xp:800},
+    playtime_50h:{name:'Permanent Resident',desc:'Play for 50 hours.',points:250,xp:2200},
+    score_25000:{name:'Score Surge',desc:'Reach 25,000 score in one match.',points:90,xp:720},
+    score_50000:{name:'Half-Century Burst',desc:'Reach 50,000 score in one match.',points:180,xp:1500},
+    level_50:{name:'Signal Veteran',desc:'Reach Resonance Level 50.',points:130,xp:0},
+    level_75:{name:'Ancient Static',desc:'Reach Resonance Level 75.',points:220,xp:0},
+    mastery_15:{name:'Evolution Artisan',desc:'Reach Mastery 15 with any evolution path.',points:120,xp:850},
+    mastery_25:{name:'Absolute Specialist',desc:'Reach Mastery 25 with any evolution path.',points:240,xp:1800},
+    cosmetics_10:{name:'Locker Started',desc:'Own 10 cosmetics.',points:30,xp:120},
+    cosmetics_50:{name:'Collection Expands',desc:'Own 50 cosmetics.',points:120,xp:850},
+    cosmetics_100:{name:'Vault of Looks',desc:'Own 100 cosmetics.',points:260,xp:2100},
+    mythics_1:{name:'A Flash of Myth',desc:'Own your first mythic cosmetic.',points:100,xp:700},
+    mythics_5:{name:'Mythic Wardrobe',desc:'Own 5 mythic cosmetics.',points:260,xp:2200},
+    shopper_1:{name:'Storefront Debut',desc:'Buy your first cosmetic from the daily shop.',points:20,xp:90},
+    shopper_10:{name:'Repeat Customer',desc:'Buy 10 cosmetics from the daily shop.',points:120,xp:850},
+    shopper_25:{name:'Market Whale',desc:'Buy 25 cosmetics from the daily shop.',points:260,xp:2200},
+    spend_1000:{name:'Remnant Investor',desc:'Spend 1,000 Remnant.',points:40,xp:180},
+    spend_5000:{name:'Deep Pockets',desc:'Spend 5,000 Remnant.',points:140,xp:1100},
+    spend_20000:{name:'Currency Singularity',desc:'Spend 20,000 Remnant.',points:320,xp:2800}
   };
-  const {error}=await fragmentSupabase.from('player_data').upsert(payload,{onConflict:'user_id'});
-  if(error) throw error;
-  if(cloudProfile){
-    const profilePayload={
-      id:cloudUser.id,
-      username:cloudProfile.username||ui.playerName?.value||'Player',
-      about_me:String(cloudProfile.about_me||'').slice(0,240),
-      equipped_title:String(cloudProfile.equipped_title||ui.titleSel?.value||'').slice(0,40),
-      profile_banner:String(cloudProfile.profile_banner||'default').slice(0,32),
-      profile_icon:String(cloudProfile.profile_icon||'default').slice(0,48),
-      featured_cosmetics:Array.isArray(cloudProfile.featured_cosmetics)?cloudProfile.featured_cosmetics.slice(0,5):[],
-      featured_achievements:Array.isArray(cloudProfile.featured_achievements)?cloudProfile.featured_achievements.slice(0,5):[],
-      profile_settings:cloudProfile.profile_settings||{}
+  Object.assign(ACHIEVEMENTS, EXTRA_ACHIEVEMENTS);
+
+  const EXTENDED_PROGRESS_DEFAULTS = {
+    boss_rush_clears:0,
+    remnant_spent:0,
+    shop_purchases:0,
+    shop_spend:0,
+    minor_core_matter_owned:0,
+    minor_core_matter_bought:0,
+    shop_daily:{day:'',bought:[],coreBought:false},
+    total_rolls:0
+  };
+
+  const _normalizeAccountProgressPatchBase = normalizeAccountProgress;
+  normalizeAccountProgress = function(row){
+    const out = _normalizeAccountProgressPatchBase(row);
+    out.stats = {...EXTENDED_PROGRESS_DEFAULTS, ...(out.stats||{})};
+    if(!out.stats.shop_daily || typeof out.stats.shop_daily!=='object') out.stats.shop_daily={day:'',bought:[],coreBought:false};
+    out.stats.shop_daily.day = String(out.stats.shop_daily.day||'');
+    out.stats.shop_daily.bought = Array.isArray(out.stats.shop_daily.bought)?out.stats.shop_daily.bought.filter(Boolean):[];
+    out.stats.shop_daily.coreBought = !!out.stats.shop_daily.coreBought;
+    out.stats.minor_core_matter_owned = Math.max(0,Math.floor(Number(out.stats.minor_core_matter_owned)||0));
+    out.stats.minor_core_matter_bought = Math.max(0,Math.floor(Number(out.stats.minor_core_matter_bought)||0));
+    out.stats.shop_purchases = Math.max(0,Math.floor(Number(out.stats.shop_purchases)||0));
+    out.stats.shop_spend = Math.max(0,Math.floor(Number(out.stats.shop_spend)||0));
+    out.stats.remnant_spent = Math.max(0,Math.floor(Number(out.stats.remnant_spent)||0));
+    out.stats.total_rolls = Math.max(0,Math.floor(Number(out.stats.total_rolls)||0));
+    out.stats.boss_rush_clears = Math.max(0,Math.floor(Number(out.stats.boss_rush_clears)||0));
+    return out;
+  };
+
+  function ensureExtendedProgress(){
+    accountProgress = normalizeAccountProgress(accountProgress);
+    return accountProgress;
+  }
+  function achievementRuntimeStats(){
+    const progress = ensureExtendedProgress();
+    return progress.stats||{};
+  }
+  function ownedCosmeticCount(){ return Array.isArray(ownedCosmetics) ? [...new Set(ownedCosmetics)].length : 0; }
+  function ownedMythicCount(){ return [...new Set(ownedCosmetics||[])].map(cosmeticById).filter(item=>item&&item.rarity==='mythic').length; }
+  function highestMasteryLevel(){
+    const book = achievementRuntimeStats().evolution_mastery||{};
+    return Math.max(0,...Object.values(book).map(entry=>normalizedMasteryEntry(entry).level));
+  }
+  function progressLabel(value,target,mode='count'){
+    if(mode==='hours') return `${Math.floor(Math.min(value,target)/3600)} / ${Math.floor(target/3600)} h`;
+    return `${Math.min(value,target).toLocaleString()} / ${target.toLocaleString()}`;
+  }
+  const _achievementProgressInfoBase = achievementProgressInfo;
+  achievementProgressInfo = function(id){
+    const s = achievementRuntimeStats();
+    const p = ensureExtendedProgress();
+    const direct = {
+      matches_100:[s.matches,100],matches_250:[s.matches,250],
+      wins_5:[s.wins,5],wins_25:[s.wins,25],wins_100:[s.wins,100],
+      fragments_2500:[s.fragments,2500],fragments_5000:[s.fragments,5000],fragments_10000:[s.fragments,10000],
+      eliminations_250:[s.eliminations,250],eliminations_500:[s.eliminations,500],eliminations_1000:[s.eliminations,1000],
+      bosses_25:[s.bosses,25],bosses_50:[s.bosses,50],
+      br_wins_5:[s.br_wins,5],br_wins_10:[s.br_wins,10],
+      bossrush_5:[s.boss_rush_clears,5],
+      friends_5:[s.friends_added,5],friends_10:[s.friends_added,10],
+      party_matches_10:[s.matches_with_friends,10],
+      spectated_5:[s.spectated_matches,5],join_friend_5:[s.joined_friend_matches,5],
+      score_25000:[s.highest_score,25000],score_50000:[s.highest_score,50000],
+      cosmetics_10:[ownedCosmeticCount(),10],cosmetics_50:[ownedCosmeticCount(),50],cosmetics_100:[ownedCosmeticCount(),100],
+      mythics_1:[ownedMythicCount(),1],mythics_5:[ownedMythicCount(),5],
+      shopper_1:[s.shop_purchases,1],shopper_10:[s.shop_purchases,10],shopper_25:[s.shop_purchases,25],
+      spend_1000:[s.remnant_spent,1000],spend_5000:[s.remnant_spent,5000],spend_20000:[s.remnant_spent,20000]
     };
-    const profileSave=await fragmentSupabase.from('profiles').update(profilePayload).eq('id',cloudUser.id);
-    if(profileSave.error) throw profileSave.error;
-  }
-  if(accountProgress){
-    const progressSave=await fragmentSupabase.from('player_progress').upsert({user_id:cloudUser.id,account_level:accountProgress.account_level,account_xp:accountProgress.account_xp,achievement_points:accountProgress.achievement_points,achievements:accountProgress.achievements||{},stats:accountProgress.stats||{},showcased_achievements:accountProgress.showcased_achievements||[]},{onConflict:'user_id'});
-    if(progressSave.error) throw progressSave.error;
-  }
-};
-const _renderRemnantBadgesProfileShop=renderRemnantBadges;renderRemnantBadges=function(){const r=_renderRemnantBadgesProfileShop.apply(this,arguments);renderDailyCosmeticShop();return r;};
-document.addEventListener('click',event=>{const daily=event.target.closest('[data-buy-daily-cosmetic]');if(daily){buyDailyCosmetic(daily.dataset.buyDailyCosmetic);return;}if(event.target.closest('#buyMinorCoreMatterBtn')){buyMinorCoreMatter();return;}if(event.target.closest('#useMinorCoreMatterBtn')){useMinorCoreMatter();return;}});
-setInterval(()=>{if($('dailyCosmeticShopGrid'))$('dailyCosmeticResetText').textContent=resetTimeLeftText();},30000);
-Object.assign(ACHIEVEMENTS,{
-  matches_100:{name:'Century Drop',desc:'Complete 100 matches.',points:90,xp:850},
-  matches_250:{name:'Persistent Anomaly',desc:'Complete 250 matches.',points:180,xp:1600},
-  fragments_5000:{name:'Fragment Collector III',desc:'Collect 5,000 fragments.',points:140,xp:1150},
-  eliminations_250:{name:'Shatter Specialist',desc:'Earn 250 eliminations.',points:100,xp:820},
-  eliminations_1000:{name:'Arena Catastrophe',desc:'Earn 1,000 eliminations.',points:260,xp:2100},
-  bosses_25:{name:'Containment Breach',desc:'Defeat 25 bosses.',points:100,xp:900},
-  bosses_50:{name:'Boss Archive',desc:'Defeat 50 bosses.',points:220,xp:1750},
-  wins_10:{name:'Reliable Closer',desc:'Win 10 matches.',points:80,xp:640},
-  wins_50:{name:'Consistent Winner',desc:'Win 50 matches.',points:200,xp:1550},
-  wins_100:{name:'Island Apex',desc:'Win 100 matches.',points:420,xp:3000},
-  br_wins_5:{name:'Royale Regular',desc:'Win 5 Battle Royale matches.',points:220,xp:1650},
-  br_wins_25:{name:'Royale Monolith',desc:'Win 25 Battle Royale matches.',points:520,xp:3400},
-  deaths_25:{name:'Cracked Core',desc:'Fall in battle 25 times.',points:30,xp:220},
-  deaths_100:{name:'Returns Anyway',desc:'Fall in battle 100 times.',points:90,xp:700},
-  friends_5:{name:'Signal Network',desc:'Add 5 friends.',points:45,xp:340},
-  party_match_10:{name:'Squad Habit',desc:'Play 10 matches with friends.',points:100,xp:760},
-  spectated_5:{name:'Field Observer',desc:'Spectate 5 live matches.',points:60,xp:420},
-  reinforcement_5:{name:'Drop-In Specialist',desc:'Join 5 friend matches in progress.',points:75,xp:560},
-  playtime_10h:{name:'Long Shift',desc:'Play for 10 hours.',points:120,xp:980},
-  playtime_24h:{name:'Permanent Station',desc:'Play for 24 hours.',points:300,xp:2200},
-  score_25000:{name:'Quarter-Century Score',desc:'Score 25,000 in one match.',points:110,xp:900},
-  score_50000:{name:'Score Anomaly',desc:'Score 50,000 in one match.',points:260,xp:1950},
-  level_50:{name:'Resonance Engine',desc:'Reach Resonance Level 50.',points:220,xp:0},
-  level_75:{name:'Deep Resonance',desc:'Reach Resonance Level 75.',points:420,xp:0},
-  fracture_3:{name:'Fracture Rank III',desc:'Reach Fracture Rank III.',points:260,xp:0},
-  mastery_15:{name:'Mastery Architect',desc:'Reach Mastery 15 with any evolution path.',points:170,xp:1150},
-  mastery_25:{name:'Perfect Form',desc:'Reach Mastery 25 with any evolution path.',points:450,xp:3200}
-});
-achievementProgressInfo=function(id){
-  const stats=accountProgress?.stats||{};
-  const rules={
-    first_match:['matches',1],matches_10:['matches',10],matches_50:['matches',50],matches_100:['matches',100],matches_250:['matches',250],
-    first_fragment:['fragments',1],fragments_100:['fragments',100],fragments_1000:['fragments',1000],fragments_5000:['fragments',5000],
-    first_elimination:['eliminations',1],eliminations_25:['eliminations',25],eliminations_100:['eliminations',100],eliminations_250:['eliminations',250],eliminations_1000:['eliminations',1000],
-    bot_hunter:['bot_eliminations',50],first_boss:['bosses',1],bosses_10:['bosses',10],bosses_25:['bosses',25],bosses_50:['bosses',50],
-    first_win:['wins',1],wins_10:['wins',10],wins_50:['wins',50],wins_100:['wins',100],br_win:['br_wins',1],br_wins_5:['br_wins',5],br_wins_25:['br_wins',25],
-    friend_added:['friends_added',1],friends_5:['friends_added',5],party_match:['matches_with_friends',1],party_match_10:['matches_with_friends',10],witness:['spectated_matches',1],spectated_5:['spectated_matches',5],reinforcement:['joined_friend_matches',1],reinforcement_5:['joined_friend_matches',5],
-    playtime_hour:['playtime_seconds',3600],playtime_10h:['playtime_seconds',36000],playtime_24h:['playtime_seconds',86400],score_10000:['highest_score',10000],score_25000:['highest_score',25000],score_50000:['highest_score',50000],
-    fracture_1:['fracture_rank',1],fracture_3:['fracture_rank',3],fracture_7:['fracture_rank',7],deaths_25:['deaths',25],deaths_100:['deaths',100]
+    if(id in direct){ const [value,target]=direct[id]; return {value,target,label:progressLabel(Number(value)||0,Number(target)||1)}; }
+    if(id==='playtime_10h') return {value:s.playtime_seconds||0,target:36000,label:progressLabel(s.playtime_seconds||0,36000,'hours')};
+    if(id==='playtime_50h') return {value:s.playtime_seconds||0,target:180000,label:progressLabel(s.playtime_seconds||0,180000,'hours')};
+    if(id==='level_50') return {value:p.account_level||1,target:50,label:`${p.account_level||1} / 50`};
+    if(id==='level_75') return {value:p.account_level||1,target:75,label:`${p.account_level||1} / 75`};
+    if(id==='mastery_15'){ const value=highestMasteryLevel(); return {value,target:15,label:`${value} / 15`}; }
+    if(id==='mastery_25'){ const value=highestMasteryLevel(); return {value,target:25,label:`${value} / 25`}; }
+    return _achievementProgressInfoBase(id);
   };
-  if(['level_5','level_10','level_25','level_50','level_75'].includes(id)){const target=Number(id.split('_')[1]);const value=accountProgress?.account_level||1;return{value,target,label:value+' / '+target};}
-  const masteryMap={mastery_swordsman:'swordsman',mastery_kindler:'kindler',mastery_cloner:'cloner',mastery_selfburn:'selfburn'};
-  if(masteryMap[id]){const value=normalizedMasteryEntry(stats.evolution_mastery?.[masteryMap[id]]).level;return{value,target:5,label:value+' / 5'};}
-  if(id==='mastery_10'||id==='mastery_15'||id==='mastery_25'){const target=Number(id.split('_')[1]);const value=Math.max(0,...Object.values(stats.evolution_mastery||{}).map(entry=>normalizedMasteryEntry(entry).level));return{value,target,label:value+' / '+target};}
-  const rule=rules[id];
-  if(!rule)return{value:accountProgress?.achievements?.[id]?1:0,target:1,label:accountProgress?.achievements?.[id]?'Complete':'Requirement not yet completed'};
-  const value=Math.max(0,Number(stats[rule[0]])||0),target=rule[1];
-  let label=Math.min(value,target).toLocaleString()+' / '+target.toLocaleString();
-  if(rule[0]==='playtime_seconds')label=Math.floor(value/60)+' / '+Math.floor(target/60)+' min';
-  return{value,target,label};
-};
-checkPersistentAchievements=function(){
-  if(!accountProgress)return;const s=accountProgress.stats||{};const mastery=s.evolution_mastery||{};const maxMastery=Math.max(0,...Object.values(mastery).map(entry=>normalizedMasteryEntry(entry).level));
-  if(s.matches>=1)unlockAchievement('first_match');if(s.matches>=10)unlockAchievement('matches_10');if(s.matches>=50)unlockAchievement('matches_50');if(s.matches>=100)unlockAchievement('matches_100');if(s.matches>=250)unlockAchievement('matches_250');
-  if(s.fragments>=1)unlockAchievement('first_fragment');if(s.fragments>=100)unlockAchievement('fragments_100');if(s.fragments>=1000)unlockAchievement('fragments_1000');if(s.fragments>=5000)unlockAchievement('fragments_5000');
-  if(s.eliminations>=1)unlockAchievement('first_elimination');if(s.eliminations>=25)unlockAchievement('eliminations_25');if(s.eliminations>=100)unlockAchievement('eliminations_100');if(s.eliminations>=250)unlockAchievement('eliminations_250');if(s.eliminations>=1000)unlockAchievement('eliminations_1000');if(s.bot_eliminations>=50)unlockAchievement('bot_hunter');
-  if(s.bosses>=1)unlockAchievement('first_boss');if(s.bosses>=10)unlockAchievement('bosses_10');if(s.bosses>=25)unlockAchievement('bosses_25');if(s.bosses>=50)unlockAchievement('bosses_50');
-  if(s.wins>=1)unlockAchievement('first_win');if(s.wins>=10)unlockAchievement('wins_10');if(s.wins>=50)unlockAchievement('wins_50');if(s.wins>=100)unlockAchievement('wins_100');
-  if(s.br_wins>=1)unlockAchievement('br_win');if(s.br_wins>=5)unlockAchievement('br_wins_5');if(s.br_wins>=25)unlockAchievement('br_wins_25');
-  if(s.friends_added>=1)unlockAchievement('friend_added');if(s.friends_added>=5)unlockAchievement('friends_5');if(s.matches_with_friends>=1)unlockAchievement('party_match');if(s.matches_with_friends>=10)unlockAchievement('party_match_10');if(s.spectated_matches>=1)unlockAchievement('witness');if(s.spectated_matches>=5)unlockAchievement('spectated_5');if(s.joined_friend_matches>=1)unlockAchievement('reinforcement');if(s.joined_friend_matches>=5)unlockAchievement('reinforcement_5');
-  if(s.playtime_seconds>=3600)unlockAchievement('playtime_hour');if(s.playtime_seconds>=36000)unlockAchievement('playtime_10h');if(s.playtime_seconds>=86400)unlockAchievement('playtime_24h');
-  if(s.highest_score>=10000)unlockAchievement('score_10000');if(s.highest_score>=25000)unlockAchievement('score_25000');if(s.highest_score>=50000)unlockAchievement('score_50000');
-  if((s.fracture_rank||0)>=1)unlockAchievement('fracture_1');if((s.fracture_rank||0)>=3)unlockAchievement('fracture_3');if((s.fracture_rank||0)>=7)unlockAchievement('fracture_7');
-  if((accountProgress.account_level||1)>=5)unlockAchievement('level_5');if((accountProgress.account_level||1)>=10)unlockAchievement('level_10');if((accountProgress.account_level||1)>=25)unlockAchievement('level_25');if((accountProgress.account_level||1)>=50)unlockAchievement('level_50');if((accountProgress.account_level||1)>=75)unlockAchievement('level_75');
-  if((s.deaths||0)>=25)unlockAchievement('deaths_25');if((s.deaths||0)>=100)unlockAchievement('deaths_100');
-  if(normalizedMasteryEntry(mastery.swordsman).level>=5)unlockAchievement('mastery_swordsman');if(normalizedMasteryEntry(mastery.kindler).level>=5)unlockAchievement('mastery_kindler');if(normalizedMasteryEntry(mastery.cloner).level>=5)unlockAchievement('mastery_cloner');if(normalizedMasteryEntry(mastery.selfburn).level>=5)unlockAchievement('mastery_selfburn');if(maxMastery>=10)unlockAchievement('mastery_10');if(maxMastery>=15)unlockAchievement('mastery_15');if(maxMastery>=25)unlockAchievement('mastery_25');
-};
-const _grantAccountXPProfilePolish=grantAccountXP;grantAccountXP=function(){const r=_grantAccountXPProfilePolish.apply(this,arguments);checkPersistentAchievements();return r;};
-function lifetimeStatsRows(stats){return [['Matches',stats.matches||0,false],['Wins',stats.wins||0,false],['Eliminations',stats.eliminations||0,false],['Bosses',stats.bosses||0,false],['Fragments',stats.fragments||0,false],['Highest Score',(stats.highest_score||0).toLocaleString(),false],['Battle Royale Wins',stats.br_wins||0,true],['Playtime',Math.floor((stats.playtime_seconds||0)/60)+'m',false]];}
-const _renderPlayerProfileProfilePolish=renderPlayerProfile;renderPlayerProfile=function(profile,progress){_renderPlayerProfileProfilePolish(profile,progress);const s=normalizeAccountProgress(progress).stats||{};$('profileStats').innerHTML=lifetimeStatsRows(s).map(([k,v,wide])=>`<div class="profileStat ${wide?'profileStatWide':''}"><b>${v}</b><span>${k}</span></div>`).join('');};
-const _renderInGameProfileProfilePolish=renderInGameProfile;renderInGameProfile=function(data){_renderInGameProfileProfilePolish(data);if(!data)return;const s=normalizeAccountProgress(data.progress).stats||{};$('inGameProfileStats').innerHTML=lifetimeStatsRows(s).map(([k,v,wide])=>`<div class="${wide?'profileStatWide':''}"><b>${Number.isFinite(v)?Number(v).toLocaleString():escapeHtml(String(v))}</b><span>${k}</span></div>`).join('');};
-const _updateHudProfilePolish=updateHud;updateHud=function(){const r=_updateHudProfilePolish.apply(this,arguments);renderMinorCoreMatterDock();return r;};
-renderDailyCosmeticShop();renderMinorCoreMatterDock();
+
+  const _checkPersistentAchievementsBase = checkPersistentAchievements;
+  checkPersistentAchievements = function(){
+    _checkPersistentAchievementsBase();
+    if(!accountProgress) return;
+    const s = achievementRuntimeStats();
+    if(s.matches>=100) unlockAchievement('matches_100');
+    if(s.matches>=250) unlockAchievement('matches_250');
+    if(s.wins>=5) unlockAchievement('wins_5');
+    if(s.wins>=25) unlockAchievement('wins_25');
+    if(s.wins>=100) unlockAchievement('wins_100');
+    if(s.fragments>=2500) unlockAchievement('fragments_2500');
+    if(s.fragments>=5000) unlockAchievement('fragments_5000');
+    if(s.fragments>=10000) unlockAchievement('fragments_10000');
+    if(s.eliminations>=250) unlockAchievement('eliminations_250');
+    if(s.eliminations>=500) unlockAchievement('eliminations_500');
+    if(s.eliminations>=1000) unlockAchievement('eliminations_1000');
+    if(s.bosses>=25) unlockAchievement('bosses_25');
+    if(s.bosses>=50) unlockAchievement('bosses_50');
+    if(s.br_wins>=5) unlockAchievement('br_wins_5');
+    if(s.br_wins>=10) unlockAchievement('br_wins_10');
+    if(s.boss_rush_clears>=5) unlockAchievement('bossrush_5');
+    if(s.friends_added>=5) unlockAchievement('friends_5');
+    if(s.friends_added>=10) unlockAchievement('friends_10');
+    if(s.matches_with_friends>=10) unlockAchievement('party_matches_10');
+    if(s.spectated_matches>=5) unlockAchievement('spectated_5');
+    if(s.joined_friend_matches>=5) unlockAchievement('join_friend_5');
+    if(s.playtime_seconds>=36000) unlockAchievement('playtime_10h');
+    if(s.playtime_seconds>=180000) unlockAchievement('playtime_50h');
+    if(s.highest_score>=25000) unlockAchievement('score_25000');
+    if(s.highest_score>=50000) unlockAchievement('score_50000');
+    if((accountProgress.account_level||1)>=50) unlockAchievement('level_50');
+    if((accountProgress.account_level||1)>=75) unlockAchievement('level_75');
+    if(highestMasteryLevel()>=15) unlockAchievement('mastery_15');
+    if(highestMasteryLevel()>=25) unlockAchievement('mastery_25');
+    if(ownedCosmeticCount()>=10) unlockAchievement('cosmetics_10');
+    if(ownedCosmeticCount()>=50) unlockAchievement('cosmetics_50');
+    if(ownedCosmeticCount()>=100) unlockAchievement('cosmetics_100');
+    if(ownedMythicCount()>=1) unlockAchievement('mythics_1');
+    if(ownedMythicCount()>=5) unlockAchievement('mythics_5');
+    if(s.shop_purchases>=1) unlockAchievement('shopper_1');
+    if(s.shop_purchases>=10) unlockAchievement('shopper_10');
+    if(s.shop_purchases>=25) unlockAchievement('shopper_25');
+    if(s.remnant_spent>=1000) unlockAchievement('spend_1000');
+    if(s.remnant_spent>=5000) unlockAchievement('spend_5000');
+    if(s.remnant_spent>=20000) unlockAchievement('spend_20000');
+  };
+
+  const _recordPersistentEventBase = recordPersistentEvent;
+  recordPersistentEvent = function(type,data={}){
+    const result = _recordPersistentEventBase(type,data);
+    if(cloudUser && accountProgress && !['tutorial','test'].includes(gameMode)){
+      const s = achievementRuntimeStats();
+      if(type==='boss_rush_win') s.boss_rush_clears++;
+      checkPersistentAchievements();
+      queueCloudSave();
+      renderAchievementDock();
+    }
+    return result;
+  };
+
+  const _rollBannerBase = rollBanner;
+  rollBanner = function(key,count=1){
+    const actualCount = count===10 ? 10 : 1;
+    if(cloudUser && accountProgress && remnant >= (actualCount===10?GACHA_TEN_COST:GACHA_COST) && !isGuestAccount()){
+      const s = achievementRuntimeStats();
+      s.total_rolls += actualCount;
+      s.remnant_spent += actualCount===10?GACHA_TEN_COST:GACHA_COST;
+      queueCloudSave();
+    }
+    const result = _rollBannerBase.apply(this,arguments);
+    setTimeout(()=>{ try{ checkPersistentAchievements(); renderAchievementDock(); renderAchievementsBrowser(); renderDailyShop(); }catch(_error){} },80);
+    return result;
+  };
+
+  function applyThemedBackgroundClass(target, value){
+    if(!target) return;
+    const token='profile-bg-'+profileClassToken(value||'default');
+    [...target.classList].forEach(className=>{ if(className.startsWith('profile-bg-')) target.classList.remove(className); });
+    target.classList.add(token);
+  }
+  const _applyProfileBackgroundBase = applyProfileBackground;
+  applyProfileBackground = function(element,value){
+    _applyProfileBackgroundBase(element,value);
+    const modalCard = element?.closest('.modalCard');
+    if(modalCard) applyThemedBackgroundClass(modalCard,value);
+    if(element?.classList?.contains('inGameProfileCard')) applyThemedBackgroundClass(element,value);
+  };
+
+  function patchProfileStatLabels(container){
+    if(!container) return;
+    [...container.querySelectorAll('span')].forEach(span=>{
+      if(span.textContent==='BR Wins') span.textContent='Battle Royale Wins';
+    });
+  }
+  const _renderPlayerProfileBase = renderPlayerProfile;
+  renderPlayerProfile = function(profile,progress){
+    _renderPlayerProfileBase(profile,progress);
+    applyThemedBackgroundClass(document.querySelector('[data-modal="profile"] .modalCard'),profile?.profile_settings?.profile_background||'default');
+    patchProfileStatLabels($('profileStats'));
+  };
+  const _renderInGameProfileBase = renderInGameProfile;
+  renderInGameProfile = function(data){
+    _renderInGameProfileBase(data);
+    applyThemedBackgroundClass($('inGameProfileOverlay')?.querySelector('.inGameProfileCard'),data?.profile?.profile_settings?.profile_background||'default');
+    patchProfileStatLabels($('inGameProfileStats'));
+  };
+  const _openProfileEditorBase = openProfileEditor;
+  openProfileEditor = function(){
+    _openProfileEditorBase.apply(this,arguments);
+    applyThemedBackgroundClass(document.querySelector('[data-modal="profile-edit"] .modalCard'),$('profileBackgroundSelect')?.value||cloudProfile?.profile_settings?.profile_background||'default');
+  };
+
+  const RARITY_SHOP_PRICES = {common:60,rare:180,epic:550,legendary:1800,mythic:12000};
+  const MINOR_CORE_MATTER_PRICE = 50;
+  function currentShopDayKey(){ return new Date().toISOString().slice(0,10); }
+  function hashString(input){ let h=2166136261>>>0; for(let i=0;i<input.length;i++){ h^=input.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
+  function shopRefreshText(){
+    const next=new Date(); next.setUTCHours(24,0,0,0);
+    const ms=next-Date.now(); const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000);
+    return `${h}h ${m}m until refresh`;
+  }
+  function syncDailyShopState(){
+    if(!accountProgress) return {day:currentShopDayKey(),bought:[],coreBought:false};
+    const stats = achievementRuntimeStats();
+    const day = currentShopDayKey();
+    if(stats.shop_daily.day !== day){ stats.shop_daily={day,bought:[],coreBought:false}; queueCloudSave(); }
+    return stats.shop_daily;
+  }
+  function dailyShopPrice(item){ return RARITY_SHOP_PRICES[item?.rarity]||250; }
+  function sortedDailyPool(pool, seed){
+    return pool.slice().sort((a,b)=>hashString(`${seed}:${a.id}`)-hashString(`${seed}:${b.id}`));
+  }
+  function pickUnique(pool, used, seed){
+    return sortedDailyPool(pool, seed).find(item=>item && !used.has(item.id)) || null;
+  }
+  function getDailyShopOffers(){
+    const day = currentShopDayKey();
+    const basePool = allCosmetics().filter(item=>item && !item.limited && ['trail','aura','hat','shape','title','profilebanner','profilebackground'].includes(item.type));
+    const used = new Set();
+    const lowPool = basePool.filter(item=>['common','rare'].includes(item.rarity));
+    const midPool = basePool.filter(item=>['rare','epic'].includes(item.rarity));
+    const highPool = basePool.filter(item=>['epic','legendary','mythic'].includes(item.rarity));
+    const offers = [
+      pickUnique(lowPool, used, day+':low'),
+      pickUnique(midPool, used, day+':mid'),
+      pickUnique(highPool, used, day+':high')
+    ].filter(Boolean).map(item=>{ used.add(item.id); return item; });
+    if(offers.length<3){
+      for(const item of sortedDailyPool(basePool, day+':fallback')){
+        if(item && !used.has(item.id)){ used.add(item.id); offers.push(item); if(offers.length>=3) break; }
+      }
+    }
+    return offers.slice(0,3);
+  }
+  function drawShopItemPreview(canvas,item){
+    if(!canvas || !item) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height, cx = w/2, cy = h/2;
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle='#dce6ef'; ctx.fillRect(0,0,w,h);
+    try{
+      if(item.type==='shape') drawPreviewCore(ctx,cx,cy,item.value||'circle','#5d8cff');
+      else if(item.type==='hat'){ drawPreviewCore(ctx,cx,cy+8,'circle','#5d8cff'); drawHatShape(ctx,cx,cy+8,item.value||'none'); }
+      else if(item.type==='aura'){ drawPreviewCore(ctx,cx,cy,'circle','#5d8cff'); drawAuraEffect(ctx,cx,cy,item.value||'none',52,true); }
+      else if(item.type==='trail'){
+        drawPreviewCore(ctx,cx-16,cy,'diamond','#5d8cff');
+        for(let i=0;i<5;i++){ ctx.fillStyle=['#6fb8ff','#ff89c7','#ffe28a','#8cf7c2','#c5b0ff'][i%5]; ctx.beginPath(); ctx.arc(cx+10+i*14,cy-(i%2?8:-8),5+i*.4,0,Math.PI*2); ctx.fill(); }
+      }else if(item.type==='profilebanner'){
+        ctx.fillStyle='#101820'; ctx.fillRect(16,22,w-32,h-44);
+        ctx.fillStyle=item.value==='floor7'?'#6d1018':item.value==='remembrance'?'#f0c6dc':item.value==='void'?'#35224c':item.value==='memorypalace'?'#bcc9ff':'#315fc9';
+        ctx.fillRect(20,26,w-40,h-52);
+        ctx.strokeStyle='#fff'; ctx.lineWidth=3; ctx.strokeRect(20,26,w-40,h-52);
+        ctx.fillStyle='#fff'; ctx.font='1000 16px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('BANNER',cx,cy);
+      }else if(item.type==='profilebackground'){
+        ctx.fillStyle=item.value==='floor7'?'#35090d':item.value==='remembrance'?'#ead4e1':item.value==='voidarchive'?'#211632':item.value==='skyglass'?'#b7dae5':'#c7d1db';
+        ctx.fillRect(24,10,w-48,h-20);
+        ctx.fillStyle='rgba(255,255,255,.85)'; ctx.fillRect(34,22,w-68,20); ctx.fillRect(34,50,w-68,34); ctx.fillRect(34,92,w-68,8);
+        ctx.strokeStyle='#101820'; ctx.lineWidth=3; ctx.strokeRect(34,22,w-68,20); ctx.strokeRect(34,50,w-68,34);
+      }else if(item.type==='title'){
+        ctx.fillStyle='#101820'; ctx.fillRect(18,24,w-36,h-48); ctx.fillStyle='#fff'; ctx.font='1000 24px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('T',cx,cy);
+      } else drawPreviewCore(ctx,cx,cy,'circle','#5d8cff');
+    }catch(_error){ drawPreviewCore(ctx,cx,cy,'circle','#5d8cff'); }
+  }
+  function buildDailyShopCard(item, state){
+    const price = dailyShopPrice(item);
+    const rarity = rarityInfo(item.rarity);
+    const owned = ownedCosmetics.includes(item.id);
+    const boughtToday = state.bought.includes(item.id);
+    let status='BUY NOW';
+    let disabled='';
+    if(isGuestAccount()){ status='ACCOUNT REQUIRED'; disabled='disabled'; }
+    else if(owned){ status='OWNED'; disabled='disabled'; }
+    else if(boughtToday){ status='SOLD TODAY'; disabled='disabled'; }
+    else if(remnant < price){ status='NOT ENOUGH'; disabled='disabled'; }
+    return `<article class="shopOfferCard" data-rarity="${escapeHtml(item.rarity)}">
+      <div class="shopOfferPreview"><canvas width="220" height="112" data-shop-preview="${escapeHtml(item.id)}"></canvas></div>
+      <div class="shopOfferTitle"><b>${escapeHtml(item.name)}</b><span>${escapeHtml(typeLabel(item.type))}${owned?' · Owned':''}</span></div>
+      <div class="shopOfferFooter">
+        <div class="shopOfferPrice"><span><span class="remnantSymbol">◆</span>${price.toLocaleString()}</span><span class="rarityPillMini" style="background:${rarity.color}33">${escapeHtml(rarity.name)}</span></div>
+        <button type="button" data-buy-shop-offer="${escapeHtml(item.id)}" ${disabled}>${status}</button>
+      </div>
+    </article>`;
+  }
+  function renderDailyShop(){
+    const modal = document.querySelector('[data-modal="shop"] .modalCard');
+    if(!modal) return;
+    const state = syncDailyShopState();
+    const offers = getDailyShopOffers();
+    const coreOwned = achievementRuntimeStats().minor_core_matter_owned||0;
+    modal.innerHTML = `<div class="modalTop"><h2>Shop</h2><div style="display:flex;gap:8px;align-items:center;"><span class="remnantBadge"><span class="remnantSymbol">◆</span><span class="remnantValue">${Math.floor(remnant)}</span></span><button class="modalClose" type="button" data-close-modal>×</button></div></div>
+      <div class="shopDailyShell">
+        <div class="shopDailyHero">
+          <div class="shopDailyPanel">
+            <small>DAILY COSMETIC MARKET</small>
+            <h3>3 rotating cosmetics every day</h3>
+            <p style="margin:0;line-height:1.45">Each day offers three cosmetic deals selected from the full pool, including profile banners and profile backgrounds. Mythics stay extremely expensive on purpose.</p>
+            <div class="shopDailyMeta"><b>${shopRefreshText()}</b><b>${state.bought.length}/3 bought today</b><b>${ownedCosmeticCount()} cosmetics owned</b></div>
+          </div>
+          <div class="shopCoreSection">
+            <small>UTILITY PURCHASE</small>
+            <h3>One-Use Minor Core Matter</h3>
+            <p style="margin:0;line-height:1.45">A cheap utility purchase that adds one One-Use Minor Core Matter to your account inventory.</p>
+            <div class="shopCoreBox"><div><div class="shopCoreCount">Owned: ${coreOwned.toLocaleString()}</div><div class="shopOfferOwned">Price: <span class="remnantSymbol">◆</span>${MINOR_CORE_MATTER_PRICE}</div></div><button type="button" data-buy-core-matter ${isGuestAccount()||state.coreBought||remnant<MINOR_CORE_MATTER_PRICE?'disabled':''}>${state.coreBought?'BOUGHT TODAY':isGuestAccount()?'ACCOUNT REQUIRED':remnant<MINOR_CORE_MATTER_PRICE?'NOT ENOUGH':'BUY CORE MATTER'}</button></div>
+          </div>
+        </div>
+        <div class="shopDailyGrid">${offers.map(item=>buildDailyShopCard(item,state)).join('')}</div>
+        <div class="shopPackSection">
+          <small>REMNANT PACKS</small>
+          <h3>Top up your currency</h3>
+          <div class="shopPackGrid">
+            <div class="shopPack"><b><span class="remnantSymbol">◆</span>100</b><span>1 single</span><button type="button" data-buy-remnant-pack="100">€0.99</button></div>
+            <div class="shopPack"><b><span class="remnantSymbol">◆</span>1000</b><span>10 pulls</span><button type="button" data-buy-remnant-pack="1000">€8.99</button></div>
+            <div class="shopPack"><b><span class="remnantSymbol">◆</span>2200</b><span>22 pulls</span><button type="button" data-buy-remnant-pack="2200">€17.99</button></div>
+          </div>
+        </div>
+        <div class="shopNote">Pricing is based on Remnant value and rarity. Commons stay relatively cheap, while mythics are intentionally extremely expensive because a mythic pull only has a 0.6% base rate.</div>
+      </div>`;
+    modal.querySelectorAll('[data-shop-preview]').forEach(canvas=>drawShopItemPreview(canvas, cosmeticById(canvas.dataset.shopPreview)));
+    modal.querySelectorAll('[data-close-modal]').forEach(btn=>btn.addEventListener('click',closeMenuModals));
+    renderRemnantBadges();
+  }
+  function spendRemnantTracked(cost){
+    const s=achievementRuntimeStats();
+    s.remnant_spent += Math.max(0,Math.floor(Number(cost)||0));
+  }
+  function buyDailyShopOffer(itemId){
+    if(isGuestAccount()){ openMenuModal('account'); notify('Account required','Login or register to use the shop.'); return; }
+    const state = syncDailyShopState();
+    const item = cosmeticById(itemId);
+    if(!item) return;
+    if(state.bought.includes(item.id)){ notify('Already purchased','That daily offer was already bought today.'); return; }
+    if(ownedCosmetics.includes(item.id)){ notify('Already owned','You already own that cosmetic.'); return; }
+    const price = dailyShopPrice(item);
+    if(remnant < price){ notify('Not enough Remnant',`You need ${remnantText(price)} for ${item.name}.`); return; }
+    remnant -= price;
+    spendRemnantTracked(price);
+    ownedCosmetics.push(item.id);
+    state.bought.push(item.id);
+    const s = achievementRuntimeStats();
+    s.shop_purchases++;
+    s.shop_spend += price;
+    saveGacha();
+    renderOwnedCosmeticOptions();
+    renderGachaMenu();
+    renderDailyShop();
+    checkPersistentAchievements();
+    renderAchievementDock();
+    queueCloudSave();
+    notify('Daily shop purchase',`${item.name} obtained for ${remnantText(price)}.`);
+  }
+  function buyMinorCoreMatter(){
+    if(isGuestAccount()){ openMenuModal('account'); notify('Account required','Login or register to use the shop.'); return; }
+    const state = syncDailyShopState();
+    if(state.coreBought){ notify('Already purchased','You already bought today\'s One-Use Minor Core Matter.'); return; }
+    if(remnant < MINOR_CORE_MATTER_PRICE){ notify('Not enough Remnant',`You need ${remnantText(MINOR_CORE_MATTER_PRICE)}.`); return; }
+    remnant -= MINOR_CORE_MATTER_PRICE;
+    spendRemnantTracked(MINOR_CORE_MATTER_PRICE);
+    const s = achievementRuntimeStats();
+    s.minor_core_matter_owned++;
+    s.minor_core_matter_bought++;
+    state.coreBought = true;
+    saveGacha();
+    renderGachaMenu();
+    renderDailyShop();
+    checkPersistentAchievements();
+    renderAchievementDock();
+    queueCloudSave();
+    notify('Utility purchased','One-Use Minor Core Matter added to your inventory.');
+  }
+
+  document.querySelector('[data-modal="shop"]')?.addEventListener('click',event=>{
+    const remnantBtn = event.target.closest('[data-buy-remnant-pack]');
+    if(remnantBtn){
+      if(isGuestAccount()){ tone(120,0.08,'square',0.025); notify('Account required','Login or register to use the shop. Guest mode cannot buy Remnant.'); openMenuModal('account'); return; }
+      initAudio();
+      addRemnant(Number(remnantBtn.dataset.buyRemnantPack)||0,'Shop purchase');
+      renderDailyShop();
+      return;
+    }
+    const buyOfferBtn = event.target.closest('[data-buy-shop-offer]');
+    if(buyOfferBtn){ buyDailyShopOffer(buyOfferBtn.dataset.buyShopOffer); return; }
+    if(event.target.closest('[data-buy-core-matter]')){ buyMinorCoreMatter(); }
+  });
+
+  const _renderAchievementsBrowserBase = renderAchievementsBrowser;
+  renderAchievementsBrowser = function(){
+    _renderAchievementsBrowserBase();
+    const total=Object.keys(ACHIEVEMENTS).length;
+    const unlocked=Object.keys(accountProgress?.achievements||{}).filter(id=>ACHIEVEMENTS[id]).length;
+    const dock=$('achievementDockStatus'); if(dock) dock.textContent=`${unlocked} / ${total}`;
+  };
+
+  const _loadCloudAccountBase = loadCloudAccount;
+  loadCloudAccount = async function(options={}){
+    const ok = await _loadCloudAccountBase.call(this,options);
+    if(ok){
+      ensureExtendedProgress();
+      checkPersistentAchievements();
+      renderAchievementDock();
+      renderAchievementsBrowser();
+      renderDailyShop();
+      queueCloudSave();
+    }
+    return ok;
+  };
+
+  const _openMenuModalBaseFinal = openMenuModal;
+  openMenuModal = function(name){
+    const result = _openMenuModalBaseFinal.apply(this,arguments);
+    if(name==='shop') renderDailyShop();
+    if(name==='achievements') renderAchievementsBrowser();
+    if(name==='profile' && cloudProfile && accountProgress) renderPlayerProfile(cloudProfile,accountProgress);
+    return result;
+  };
+
+  setTimeout(()=>{
+    try{
+      if(accountProgress){ ensureExtendedProgress(); checkPersistentAchievements(); renderAchievementDock(); }
+      renderDailyShop();
+    }catch(_error){}
+  },0);
 })();
 </script>
 
