@@ -1716,9 +1716,16 @@ function handleMessage(client, msg){
   }
   if(msg.type === 'party_ping'){
     if(!client.authenticated || !client.room || !client.inMatch) return;
+    const now=Date.now();
+    const pingWait=2500-(now-(client.lastPartyPingAt||0));
+    if(pingWait>0){
+      send(client,{type:'social_notice',message:`Quick Ping cooldown: wait ${(pingWait/1000).toFixed(1)}s.`});
+      return;
+    }
     const party=partyForClient(client); if(!party || party.members.size<2) return;
     const kind=safeToken(msg.kind,24); if(!['enemy','fragment','boss','retreat','group','solarbum'].includes(kind)) return;
     const room=rooms.get(client.room); if(!room) return;
+    client.lastPartyPingAt=now;
     const payload={type:'party_ping',kind,x:finiteNumber(msg.x,client.snapshot?.x||0,-HALF_W,HALF_W),y:finiteNumber(msg.y,client.snapshot?.y||0,-HALF_H,HALF_H),sourceName:client.name,userId:client.userId};
     for(const uid of party.members) for(const member of allOnlineClientsForUser(uid)) if(member.room===room.code) send(member,payload);
     return;
@@ -1848,6 +1855,12 @@ function handleMessage(client, msg){
     const now=Date.now();
     const body=String(msg.msg||'').replace(/[<>]/g,'').trim().slice(0,120);
     if(!body) return;
+
+    const chatWait=1500-(now-(client.lastChatAt||0));
+    if(chatWait>0){
+      send(client,{type:'chat',name:'SERVER',msg:`Chat cooldown: wait ${(chatWait/1000).toFixed(1)}s.`});
+      return;
+    }
 
     if(now<(client.chatMutedUntil||0)){
       const seconds=Math.max(1,Math.ceil((client.chatMutedUntil-now)/1000));
@@ -1998,6 +2011,7 @@ server.on('upgrade', (req, socket) => {
     authenticated:false, accessToken:'', userId:null, profile:null, progress:null, friendIds:new Set(), partyId:null, queueId:null, matchTeam:null,
     lastSeen:Date.now(), lastParseErrorAt:0,
     chatTimes:[], chatMutedUntil:0, lastChatBody:'', lastChatAt:0,
+    lastPartyPingAt:0,
     lastDeathDropAt:0
   };
   clients.add(client);

@@ -17299,6 +17299,617 @@ if(v1MenuLogo){
     if((accountProgress&&cloudGameDataLoaded)||initializationAttempts>=12)clearInterval(initializationTimer);
   },500);
   setTimeout(initializeOverhaul,0);
+
+
+  /* ===== CREATIVE ACHIEVEMENTS / FIXED DAILY MARKET / COOLDOWNS ===== */
+  const CREATIVE_ACHIEVEMENTS={
+    fragment_fever:{name:'Fragment Fever',desc:'Collect 250 fragments in a single match.',points:100,xp:700},
+    seventh_floor_calling:{name:'The Seventh Floor Is Calling',desc:'Enter Elevator Terminus in seven different matches.',points:120,xp:900},
+    before_world_changed:{name:'I Was Here Before the World Changed',desc:'Survive three world changes in one match.',points:85,xp:600},
+    boss_material:{name:'Boss Material',desc:'Deal the final blow to five bosses.',points:90,xp:650},
+    no_exit_floor7:{name:'No Exit on Floor 7',desc:'Defeat a boss inside Elevator Terminus without leaving the biome after engaging it.',points:140,xp:1100},
+    impossible_build:{name:'That Build Should Not Have Worked',desc:'Win with fragment abilities from at least four different categories.',points:160,xp:1300},
+    perfectly_balanced:{name:'Perfectly Balanced, Unfortunately',desc:'Finish a match with the same non-zero number of eliminations and deaths.',points:70,xp:420},
+    administrator_disapproves:{name:'The Administrator Disapproves',desc:'Defeat The Seventh Administrator without being struck by a deletion or Administrative Beam.',points:250,xp:2200},
+    collectors_instinct:{name:"Collector's Instinct",desc:'Own 25 different cosmetics.',points:60,xp:350},
+    squad_shooting_started:{name:'We Were a Squad Until the Shooting Started',desc:'Win a Squad match after every party member has fallen below 25% HP.',points:180,xp:1500},
+    seven_oh_seven:{name:'7:07',desc:'Remain alive for exactly seven minutes and seven seconds in one match.',points:77,xp:707},
+    last_fragment_taken:{name:'The Last Fragment Was Already Taken',desc:'Reach a rare fragment less than one second after another player collects it.',points:45,xp:250},
+    void_touched:{name:'Void-Touched',desc:'Hold two cursed fragments simultaneously for their full 20-second duration.',points:100,xp:700},
+    heard_boss_first:{name:'I Heard the Boss Before I Saw It',desc:'Encounter a boss within 15 seconds of entering its biome.',points:55,xp:330},
+    endless_eight:{name:'Endless Eight',desc:'Complete eight matches consecutively with the same evolution.',points:160,xp:1300},
+    informant_right:{name:'The Informant Was Right',desc:'Discover three different Floor 7 anomalies.',points:140,xp:1000},
+    unreasonable_confidence:{name:'Unreasonable Confidence',desc:'Attack a boss below 10% HP and survive until that boss is defeated.',points:120,xp:850},
+    needed_the_score:{name:'Nothing Personal, I Needed the Score',desc:'Eliminate the real player currently leading the match by score.',points:100,xp:700},
+    chair_occupied:{name:'Chair Occupied',desc:'Remain stationary in Elevator Terminus for seven seconds while enemies are nearby.',points:70,xp:420},
+    no_safe_biomes:{name:'There Are No Safe Biomes Anymore',desc:'Take damage in every named biome during one match and finish alive.',points:220,xp:1900}
+  };
+  Object.assign(ACHIEVEMENTS,CREATIVE_ACHIEVEMENTS);
+
+  const CREATIVE_STATS_DEFAULTS={
+    creative_floor7_match_entries:0,
+    creative_boss_final_blows:0,
+    creative_endless_evolution:'',
+    creative_endless_streak:0,
+    creative_floor7_anomalies:[]
+  };
+
+  function creativeStats(){
+    if(!accountProgress)return null;
+    accountProgress.stats={...(accountProgress.stats||{})};
+    for(const [key,value] of Object.entries(CREATIVE_STATS_DEFAULTS)){
+      if(key==='creative_floor7_anomalies'){
+        accountProgress.stats[key]=Array.isArray(accountProgress.stats[key])?[...new Set(accountProgress.stats[key].map(String))]:[];
+      }else if(key==='creative_endless_evolution'){
+        accountProgress.stats[key]=String(accountProgress.stats[key]||'');
+      }else{
+        accountProgress.stats[key]=Math.max(0,Math.floor(Number(accountProgress.stats[key])||0));
+      }
+    }
+    return accountProgress.stats;
+  }
+
+  let creativeRun=null;
+  let creativePendingBossAward=null;
+
+  function creativeBossId(boss){
+    return String(boss?.netBossId||boss?.id||boss?.bossKind||boss?.name||'boss');
+  }
+  function creativeCurrentArea(){
+    if(!player)return null;
+    try{return getBiomeAt(player.x,player.y);}catch(_error){return null;}
+  }
+  function creativeDiscoverAnomaly(id){
+    const stats=creativeStats();
+    if(!stats||!id)return;
+    const set=new Set(stats.creative_floor7_anomalies||[]);
+    if(set.has(id))return;
+    set.add(id);
+    stats.creative_floor7_anomalies=[...set];
+    if(set.size>=3)unlockAchievement('informant_right');
+    queueCloudSave();
+  }
+  function creativeStartRun(){
+    const stats=creativeStats();
+    if(!stats||!player)return;
+    const now=performance.now();
+    creativeRun={
+      startedAt:now,
+      startFragments:player.frags||0,
+      fragmentPickups:0,
+      startEliminations:stats.eliminations||0,
+      startDeaths:stats.deaths||0,
+      lastAreaId:'',
+      areaEnteredAt:now,
+      floor7Counted:false,
+      worldCount:0,
+      lastWorldKey:'',
+      damageBiomes:new Set(),
+      lowPartyMembers:new Set(),
+      partyIds:(socialState.party?.members||[]).map(member=>String(member.userId||'')).filter(Boolean),
+      lastX:player.x,
+      lastY:player.y,
+      chairSeconds:0,
+      doubleCurseSeconds:0,
+      rareMiss:null,
+      administratorBeamHit:false,
+      floor7BossFight:null,
+      lowHpBossId:'',
+      bossEncounterIds:new Set(),
+      completed:false
+    };
+  }
+  function creativeAbilityCategory(id){
+    id=String(id||'').toLowerCase();
+    const categories={
+      assault:['bullet_spam','precision_strike','ricochet_dart','poison_dart','judgement_laser','fragment_storm'],
+      control:['freeze_ray','gravity_bullet','magnet','knockback','wall_drop'],
+      defense:['flare','reflect_shield','fake_death','bullet_eater'],
+      mobility:['super_speed','swap_position'],
+      utility:['loot_radar','copycat','fragment_mine']
+    };
+    return Object.entries(categories).find(([,ids])=>ids.includes(id))?.[0]||'';
+  }
+  function creativeBuildCategoryCount(){
+    return new Set((player?.abilities||[]).slice(1).map(creativeAbilityCategory).filter(Boolean)).size;
+  }
+  function creativeMarkPartyHealth(){
+    if(!creativeRun||!player)return;
+    const ownId=String(cloudUser?.id||'');
+    if(ownId&&player.maxHp>0&&player.hp/player.maxHp<=.25)creativeRun.lowPartyMembers.add(ownId);
+    for(const remote of remotePlayers){
+      const id=String(remote.userId||'');
+      if(id&&remote.maxHp>0&&remote.hp/remote.maxHp<=.25)creativeRun.lowPartyMembers.add(id);
+    }
+  }
+  function creativeEvaluateBossDefeat(info={}){
+    if(!creativeRun||!player)return;
+    const id=String(info.id||info.bossId||info.kind||info.name||'boss');
+    const kind=String(info.kind||info.bossKind||'');
+    const area=creativeCurrentArea();
+
+    if(creativeRun.floor7BossFight&&creativeRun.floor7BossFight.id===id&&creativeRun.floor7BossFight.valid&&area?.id==='terminus'){
+      unlockAchievement('no_exit_floor7');
+    }
+    if(kind==='seventh_administrator'){
+      creativeDiscoverAnomaly('seventh_administrator');
+      if(!creativeRun.administratorBeamHit)unlockAchievement('administrator_disapproves');
+    }
+    if(creativeRun.lowHpBossId===id&&!player.dead&&player.hp>0){
+      unlockAchievement('unreasonable_confidence');
+    }
+  }
+  function creativeFinishRun(outcome){
+    if(!creativeRun||creativeRun.completed||!accountProgress)return;
+    creativeRun.completed=true;
+    const stats=creativeStats();
+    const eliminations=Math.max(0,(stats.eliminations||0)-creativeRun.startEliminations);
+    const deaths=Math.max(0,(stats.deaths||0)-creativeRun.startDeaths);
+
+    if(creativeRun.fragmentPickups>=250)unlockAchievement('fragment_fever');
+    if(eliminations>0&&eliminations===deaths)unlockAchievement('perfectly_balanced');
+
+    if(outcome==='win'&&creativeBuildCategoryCount()>=4)unlockAchievement('impossible_build');
+
+    if(outcome==='win'&&gameMode==='squad'&&creativeRun.partyIds.length>=2){
+      const everyoneLow=creativeRun.partyIds.every(id=>creativeRun.lowPartyMembers.has(id));
+      if(everyoneLow)unlockAchievement('squad_shooting_started');
+    }
+
+    if(outcome!=='left'){
+      const evolution=String(player?.archetype||'starter');
+      if(evolution&&evolution!=='starter'){
+        if(stats.creative_endless_evolution===evolution)stats.creative_endless_streak++;
+        else{
+          stats.creative_endless_evolution=evolution;
+          stats.creative_endless_streak=1;
+        }
+      }else{
+        stats.creative_endless_evolution='';
+        stats.creative_endless_streak=0;
+      }
+      if(stats.creative_endless_streak>=8)unlockAchievement('endless_eight');
+    }
+
+    const alive=!!player&&!player.dead&&player.hp>0;
+    const requiredBiomes=new Set(biomes.map(area=>area.id));
+    const damagedEverywhere=[...requiredBiomes].every(id=>creativeRun.damageBiomes.has(id));
+    if(alive&&outcome!=='loss'&&damagedEverywhere)unlockAchievement('no_safe_biomes');
+
+    checkPersistentAchievements();
+    queueCloudSave();
+  }
+
+  const creativeBaseStartPersistentMatch=startPersistentMatch;
+  startPersistentMatch=function(){
+    const result=creativeBaseStartPersistentMatch.apply(this,arguments);
+    if(cloudUser&&accountProgress&&!socialState.spectating&&!['tutorial','test'].includes(gameMode))creativeStartRun();
+    return result;
+  };
+
+  const creativeBaseFinishPersistentMatch=finishPersistentMatch;
+  finishPersistentMatch=function(outcome='left'){
+    creativeFinishRun(outcome);
+    return creativeBaseFinishPersistentMatch.apply(this,arguments);
+  };
+
+  const creativeBaseAchievementProgressInfo=achievementProgressInfo;
+  achievementProgressInfo=function(id){
+    const stats=creativeStats()||{};
+    const run=creativeRun;
+    const current={
+      fragment_fever:[run?.fragmentPickups||0,250],
+      seventh_floor_calling:[stats.creative_floor7_match_entries||0,7],
+      before_world_changed:[run?.worldCount||0,3],
+      boss_material:[stats.creative_boss_final_blows||0,5],
+      impossible_build:[creativeBuildCategoryCount(),4],
+      collectors_instinct:[ownedCount(),25],
+      squad_shooting_started:[run?.lowPartyMembers?.size||0,Math.max(2,run?.partyIds?.length||2)],
+      seven_oh_seven:[Math.min(427,Math.floor((performance.now()-(run?.startedAt||performance.now()))/1000)),427],
+      void_touched:[Math.floor(run?.doubleCurseSeconds||0),20],
+      endless_eight:[stats.creative_endless_streak||0,8],
+      informant_right:[stats.creative_floor7_anomalies?.length||0,3],
+      chair_occupied:[Math.floor(run?.chairSeconds||0),7],
+      no_safe_biomes:[run?.damageBiomes?.size||0,biomes.length]
+    };
+    if(current[id]){
+      const [value,target]=current[id];
+      return{value,target,label:`${Math.min(value,target)} / ${target}`};
+    }
+    return creativeBaseAchievementProgressInfo(id);
+  };
+
+  const creativeBaseCheckPersistentAchievements=checkPersistentAchievements;
+  checkPersistentAchievements=function(){
+    creativeBaseCheckPersistentAchievements();
+    if(!accountProgress)return;
+    const stats=creativeStats();
+    if((stats.creative_floor7_match_entries||0)>=7)unlockAchievement('seventh_floor_calling');
+    if((stats.creative_boss_final_blows||0)>=5)unlockAchievement('boss_material');
+    if((stats.creative_endless_streak||0)>=8)unlockAchievement('endless_eight');
+    if((stats.creative_floor7_anomalies?.length||0)>=3)unlockAchievement('informant_right');
+    if(ownedCount()>=25)unlockAchievement('collectors_instinct');
+  };
+
+  const creativeBaseRecordPersistentEvent=recordPersistentEvent;
+  recordPersistentEvent=function(type,data={}){
+    const result=creativeBaseRecordPersistentEvent.apply(this,arguments);
+    if(type==='boss_kill'&&accountProgress){
+      const stats=creativeStats();
+      stats.creative_boss_final_blows++;
+      if(stats.creative_boss_final_blows>=5)unlockAchievement('boss_material');
+      creativeEvaluateBossDefeat({...creativePendingBossAward,...data});
+      checkPersistentAchievements();
+      queueCloudSave();
+    }
+    return result;
+  };
+
+  const creativeBaseTryCollect=tryCollect;
+  tryCollect=function(ent){
+    let rareBefore=null;
+    const online=netUsesServerWorld();
+    if(creativeRun&&!online&&ent!==player){
+      rareBefore=fragments.filter(fragment=>fragment.kind!=='xp'||(fragment.rarity?.xp||0)>=28);
+    }
+    const before=fragments.length;
+    const result=creativeBaseTryCollect.apply(this,arguments);
+    if(creativeRun&&!online){
+      if(ent===player)creativeRun.fragmentPickups+=Math.max(0,before-fragments.length);
+      else if(rareBefore?.length){
+        const removed=rareBefore.find(fragment=>!fragments.includes(fragment));
+        if(removed)creativeRun.rareMiss={x:removed.x,y:removed.y,expires:performance.now()+1000};
+      }
+    }
+    return result;
+  };
+
+  const creativeBaseNetRewardFragment=netRewardFragment;
+  netRewardFragment=function(snapshot){
+    const result=creativeBaseNetRewardFragment.apply(this,arguments);
+    if(creativeRun)creativeRun.fragmentPickups++;
+    return result;
+  };
+
+  const creativeBaseRecordIncomingDamage=recordIncomingDamage;
+  recordIncomingDamage=function(amount,source,attack){
+    if(creativeRun&&player&&!player.dead){
+      const area=creativeCurrentArea();
+      if(area?.id)creativeRun.damageBiomes.add(area.id);
+      const label=String(attack||'').toLowerCase();
+      if(label.includes('administrative')||label.includes('deletion')||label.includes('heavy delete')){
+        creativeRun.administratorBeamHit=true;
+      }
+    }
+    return creativeBaseRecordIncomingDamage.apply(this,arguments);
+  };
+
+  const creativeBaseDimensionDamagePlayer=dimensionDamagePlayer;
+  dimensionDamagePlayer=function(){
+    if(creativeRun)creativeRun.administratorBeamHit=true;
+    return creativeBaseDimensionDamagePlayer.apply(this,arguments);
+  };
+
+  const creativeBaseHitEntity=hitEntity;
+  hitEntity=function(target,damage,source){
+    if(creativeRun&&target?.boss&&(source===player||source?.cloneOwner===player)){
+      const id=creativeBossId(target);
+      const area=creativeCurrentArea();
+      if(player.maxHp>0&&player.hp/player.maxHp<=.10)creativeRun.lowHpBossId=id;
+      if(area?.id==='terminus'){
+        if(!creativeRun.floor7BossFight||creativeRun.floor7BossFight.id!==id){
+          creativeRun.floor7BossFight={id,valid:true};
+        }
+      }
+    }
+    return creativeBaseHitEntity.apply(this,arguments);
+  };
+
+  const creativeBaseKillEntity=killEntity;
+  killEntity=function(target,killer){
+    const wasDead=!!target?.dead;
+    const directPlayerKill=killer===player||killer?.cloneOwner===player;
+    const bossInfo=target?.boss?{id:creativeBossId(target),kind:target.bossKind,name:target.name}:null;
+    const realTarget=target?.networkRemote?target:null;
+    const leadingScore=realTarget
+      ?Math.max(player?.score||0,...remotePlayers.filter(remote=>!remote.dead&&remote!==realTarget).map(remote=>remote.score||0))
+      :0;
+    const result=creativeBaseKillEntity.apply(this,arguments);
+    if(!wasDead&&bossInfo&&directPlayerKill&&!target.networkBoss){
+      recordPersistentEvent('boss_kill',bossInfo);
+    }
+    if(!wasDead&&realTarget&&directPlayerKill&&(realTarget.score||0)>=leadingScore){
+      unlockAchievement('needed_the_score');
+    }
+    return result;
+  };
+
+  const creativeBaseHandleFragmentNetworkMessage=handleFragmentNetworkMessage;
+  handleFragmentNetworkMessage=function(message){
+    if(creativeRun&&message?.type==='fragment_collected'&&message.by&&message.by!==multiplayer.clientId){
+      const fragment=multiplayer.fragById.get(message.id);
+      const rare=fragment&&(fragment.kind!=='xp'||(fragment.rarity?.xp||0)>=28);
+      if(rare)creativeRun.rareMiss={x:fragment.x,y:fragment.y,expires:performance.now()+1000};
+    }
+
+    if(creativeRun&&message?.type==='boss_hit'){
+      const cause=String(message.cause||message.attack||'').toLowerCase();
+      if(cause.includes('administrative')||cause.includes('deletion'))creativeRun.administratorBeamHit=true;
+    }
+
+    if(message?.type==='boss_award'){
+      const boss=multiplayer.bossById.get(message.bossId);
+      creativePendingBossAward={
+        id:String(message.bossId||creativeBossId(boss)),
+        kind:String(boss?.bossKind||message.bossKind||''),
+        name:String(message.bossName||boss?.name||'Boss')
+      };
+    }
+
+    if(creativeRun&&message?.type==='death_event'){
+      const partyId=String(message.snapshot?.userId||message.userId||'');
+      if(partyId&&creativeRun.partyIds.includes(partyId))creativeRun.lowPartyMembers.add(partyId);
+      if(message.killer?.clientId===multiplayer.clientId){
+        const targetScore=Number(message.snapshot?.score)||0;
+        const otherTop=Math.max(player?.score||0,...remotePlayers.filter(remote=>remote.netClientId!==message.clientId&&!remote.dead).map(remote=>remote.score||0));
+        if(targetScore>=otherTop)unlockAchievement('needed_the_score');
+      }
+    }
+
+    try{
+      return creativeBaseHandleFragmentNetworkMessage.apply(this,arguments);
+    }finally{
+      if(message?.type==='boss_award')creativePendingBossAward=null;
+    }
+  };
+
+  function creativeUpdateAchievements(dt){
+    if(!creativeRun||creativeRun.completed||state.screen!=='play'||state.paused||!player||player.dead)return;
+    const now=performance.now();
+    const area=creativeCurrentArea();
+    const areaId=area?.id||'';
+
+    if(areaId!==creativeRun.lastAreaId){
+      creativeRun.lastAreaId=areaId;
+      creativeRun.areaEnteredAt=now;
+      if(creativeRun.floor7BossFight&&areaId!=='terminus')creativeRun.floor7BossFight.valid=false;
+
+      if(areaId==='terminus'&&!creativeRun.floor7Counted){
+        creativeRun.floor7Counted=true;
+        const stats=creativeStats();
+        stats.creative_floor7_match_entries++;
+        creativeDiscoverAnomaly('elevator_terminus');
+        if(stats.creative_floor7_match_entries>=7)unlockAchievement('seventh_floor_calling');
+        queueCloudSave();
+      }
+    }
+
+    const worldKey=String(world.mode?.key||'');
+    if(worldKey&&worldKey!==creativeRun.lastWorldKey){
+      creativeRun.worldCount++;
+      creativeRun.lastWorldKey=worldKey;
+      if(creativeRun.worldCount>=3)unlockAchievement('before_world_changed');
+      if(areaId==='terminus')creativeDiscoverAnomaly('terminus_world_shift');
+    }else if(!worldKey){
+      creativeRun.lastWorldKey='';
+    }
+
+    const elapsed=(now-creativeRun.startedAt)/1000;
+    if(elapsed>=427){
+      unlockAchievement('seven_oh_seven');
+      creativeDiscoverAnomaly('seven_oh_seven');
+    }
+
+    creativeMarkPartyHealth();
+
+    const activeCurses=Array.isArray(player.activeCurses)?player.activeCurses:[];
+    if(activeCurses.length===2){
+      creativeRun.doubleCurseSeconds+=dt/1000;
+      if(creativeRun.doubleCurseSeconds>=19.75)unlockAchievement('void_touched');
+      if(areaId==='terminus')creativeDiscoverAnomaly('double_curse_signal');
+    }else{
+      creativeRun.doubleCurseSeconds=0;
+    }
+
+    if(creativeRun.rareMiss){
+      if(now>creativeRun.rareMiss.expires)creativeRun.rareMiss=null;
+      else if(Math.hypot(player.x-creativeRun.rareMiss.x,player.y-creativeRun.rareMiss.y)<=Math.max(82,player.pickup||54)){
+        unlockAchievement('last_fragment_taken');
+        creativeRun.rareMiss=null;
+      }
+    }
+
+    for(const boss of bosses){
+      if(!boss||boss.dead)continue;
+      const bossId=creativeBossId(boss);
+      if(boss.bossKind==='seventh_administrator')creativeDiscoverAnomaly('seventh_administrator');
+      if(creativeRun.bossEncounterIds.has(bossId))continue;
+      const bossArea=getBiomeAt(boss.x,boss.y);
+      const distance=Math.hypot(player.x-boss.x,player.y-boss.y);
+      if(bossArea?.id===areaId&&distance<=980){
+        creativeRun.bossEncounterIds.add(bossId);
+        if((now-creativeRun.areaEnteredAt)/1000<=15)unlockAchievement('heard_boss_first');
+      }
+    }
+
+    const moved=Math.hypot(player.x-creativeRun.lastX,player.y-creativeRun.lastY);
+    creativeRun.lastX=player.x;
+    creativeRun.lastY=player.y;
+    const nearbyEnemy=allTargets(player).some(enemy=>enemy&&!enemy.dead&&Math.hypot(enemy.x-player.x,enemy.y-player.y)<=500);
+    if(areaId==='terminus'&&nearbyEnemy&&moved<=Math.max(1.4,dt*.045)){
+      creativeRun.chairSeconds+=dt/1000;
+      if(creativeRun.chairSeconds>=7)unlockAchievement('chair_occupied');
+    }else{
+      creativeRun.chairSeconds=0;
+    }
+  }
+
+  const creativeBaseUpdate=update;
+  update=function(dt){
+    const result=creativeBaseUpdate.apply(this,arguments);
+    creativeUpdateAchievements(dt);
+    return result;
+  };
+
+  /* Daily market offers are now persisted for the whole UTC day. */
+  const creativeBaseEnsureMarketStats=ensureMarketStats;
+  ensureMarketStats=function(){
+    const priorOffers=accountProgress?.stats?.daily_shop?.offers;
+    const stats=creativeBaseEnsureMarketStats.apply(this,arguments);
+    if(stats){
+      if(!stats.daily_shop)stats.daily_shop={day:'',bought:[],matterBought:false};
+      stats.daily_shop.offers=Array.isArray(priorOffers)?priorOffers.filter(Boolean).slice(0,3):[];
+    }
+    return stats;
+  };
+
+  function creativeGenerateDailyOfferIds(day){
+    const pool=allCosmetics().filter(item=>item&&!item.limited&&['trail','aura','hat','shape','title','profilebanner','profilebackground'].includes(item.type));
+    const seed=`${cloudUser?.id||'guest'}:${day}:fixed-market`;
+    const buckets=[
+      pool.filter(item=>['common','rare'].includes(item.rarity)),
+      pool.filter(item=>['rare','epic'].includes(item.rarity)),
+      pool.filter(item=>['epic','legendary','mythic'].includes(item.rarity))
+    ];
+    const selected=[];
+    for(let index=0;index<3;index++){
+      const source=buckets[index].length?buckets[index]:pool;
+      const item=seededSort(source,`${seed}:${index}`).find(candidate=>!selected.includes(candidate.id));
+      if(item)selected.push(item.id);
+    }
+    for(const item of seededSort(pool,`${seed}:fallback`)){
+      if(selected.length>=3)break;
+      if(!selected.includes(item.id))selected.push(item.id);
+    }
+    return selected.slice(0,3);
+  }
+
+  marketState=function(){
+    const stats=ensureMarketStats();
+    if(!stats)return{day:todayKey(),bought:[],matterBought:false,offers:[]};
+    const day=todayKey();
+    if(stats.daily_shop.day!==day){
+      stats.daily_shop={day,bought:[],matterBought:false,offers:creativeGenerateDailyOfferIds(day)};
+      queueCloudSave();
+    }
+    if(!Array.isArray(stats.daily_shop.offers)||stats.daily_shop.offers.length!==3){
+      stats.daily_shop.offers=creativeGenerateDailyOfferIds(day);
+      queueCloudSave();
+    }
+    stats.daily_shop.bought=[...new Set((stats.daily_shop.bought||[]).filter(id=>stats.daily_shop.offers.includes(id)))].slice(0,3);
+    return stats.daily_shop;
+  };
+
+  dailyOffers=function(){
+    const state=marketState();
+    return state.offers.map(cosmeticById).filter(Boolean).slice(0,3);
+  };
+
+  const creativeBaseBuyMarketCosmetic=buyMarketCosmetic;
+  buyMarketCosmetic=function(id){
+    const state=marketState();
+    if(state.bought.length>=3){
+      notify('Daily market sold out','You have purchased all three cosmetic offers for today.');
+      return;
+    }
+    if(!state.offers.includes(id)){
+      notify('Offer unavailable','That cosmetic is not part of today’s fixed rotation.');
+      renderDailyMarket();
+      return;
+    }
+    return creativeBaseBuyMarketCosmetic.apply(this,arguments);
+  };
+
+  const creativeBaseDrawMarketPreview=drawMarketPreview;
+  drawMarketPreview=function(canvas,item){
+    if(item?.type!=='hat')return creativeBaseDrawMarketPreview.apply(this,arguments);
+    if(!canvas)return;
+    const context=canvas.getContext('2d');
+    const width=canvas.width,height=canvas.height,cx=width/2,cy=height/2;
+    context.clearRect(0,0,width,height);
+    context.fillStyle='#dce6ef';
+    context.fillRect(0,0,width,height);
+    context.save();
+    context.translate(cx,cy+13);
+    context.scale(1.7,1.7);
+    context.translate(-cx,-cy);
+    drawHatShape(context,cx,cy,item.value||'none');
+    context.restore();
+  };
+
+  /* Explicit local cooldowns. Server enforcement is added in server.js too. */
+  const CREATIVE_CHAT_COOLDOWN=1500;
+  const CREATIVE_PING_COOLDOWN=2500;
+  let creativeChatReadyAt=0;
+  let creativePingReadyAt=0;
+
+  ui.chatInput?.addEventListener('keydown',event=>{
+    if(event.key!=='Enter'||!ui.chatInput.value.trim())return;
+    const now=performance.now();
+    if(now<creativeChatReadyAt){
+      const seconds=((creativeChatReadyAt-now)/1000).toFixed(1);
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      notify('Chat cooldown',`Wait ${seconds}s before sending another message.`);
+      return;
+    }
+    creativeChatReadyAt=now+CREATIVE_CHAT_COOLDOWN;
+  },{capture:true});
+
+  const creativeBaseSendPartyPing=sendPartyPing;
+  sendPartyPing=function(kind){
+    const now=performance.now();
+    if(now<creativePingReadyAt){
+      const seconds=((creativePingReadyAt-now)/1000).toFixed(1);
+      notify('Quick Ping cooldown',`Wait ${seconds}s before pinging again.`);
+      return false;
+    }
+    creativePingReadyAt=now+CREATIVE_PING_COOLDOWN;
+    return creativeBaseSendPartyPing.apply(this,arguments);
+  };
+
+  const creativeNameReadabilityStyle=document.createElement('style');
+  creativeNameReadabilityStyle.id='fragment-v1-dark-profile-name-readability';
+  creativeNameReadabilityStyle.textContent=`
+    .profile-bg-floor7 #profileName,
+    .profile-bg-floor7 .profileIdentity h3,
+    .profile-bg-floor7 #inGameProfileName,
+    .profileBanner.banner-floor7 #profileName,
+    .profileBanner.banner-floor7 .profileIdentity h3,
+    .inGameProfileBanner.banner-floor7 #inGameProfileName{
+      color:#ffffff!important;
+      text-shadow:0 0 18px rgba(255,67,105,.98),0 0 7px rgba(255,214,225,.92),0 2px 0 #150206!important;
+    }
+    .profile-bg-voidarchive #profileName,
+    .profile-bg-voidarchive .profileIdentity h3,
+    .profile-bg-voidarchive #inGameProfileName,
+    .profileBanner.banner-void #profileName,
+    .profileBanner.banner-void .profileIdentity h3,
+    .inGameProfileBanner.banner-void #inGameProfileName{
+      color:#ffffff!important;
+      text-shadow:0 0 18px rgba(185,122,255,.98),0 0 7px rgba(241,222,255,.9),0 2px 0 #0d0715!important;
+    }
+    .profile-bg-floor7 #profileTitle,.profile-bg-floor7 #profilePresence,.profile-bg-floor7 #profileFriendCode,
+    .profile-bg-voidarchive #profileTitle,.profile-bg-voidarchive #profilePresence,.profile-bg-voidarchive #profileFriendCode{
+      color:#ffffff!important;
+      text-shadow:0 1px 2px rgba(0,0,0,.85)!important;
+    }
+  `;
+  document.head.appendChild(creativeNameReadabilityStyle);
+
+  setTimeout(()=>{
+    if(accountProgress){
+      creativeStats();
+      checkPersistentAchievements();
+      renderAchievementsBrowser();
+      renderAchievementDock();
+      marketState();
+      renderDailyMarket();
+      queueCloudSave();
+    }
+  },250);
+  /* ===== END CREATIVE ACHIEVEMENTS / FIXED DAILY MARKET / COOLDOWNS ===== */
+
 })();
 /* ===== END PROFILE / ACHIEVEMENTS / DAILY MARKET OVERHAUL ===== */
 
