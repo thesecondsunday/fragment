@@ -4386,6 +4386,107 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
 }
 </style>
 
+
+<style id="fragment-v1-friend-profile-render-performance-style">
+/* Friend request controls must remain visible and clickable. */
+.friendRequestCard{
+  position:relative!important;
+  overflow:visible!important;
+}
+.friendRequestActions{
+  position:relative!important;
+  z-index:4!important;
+  display:flex!important;
+  flex-wrap:wrap!important;
+  gap:5px!important;
+  pointer-events:auto!important;
+}
+.friendRequestActions button{
+  display:inline-grid!important;
+  place-items:center!important;
+  min-width:72px!important;
+  min-height:31px!important;
+  opacity:1!important;
+  visibility:visible!important;
+  pointer-events:auto!important;
+}
+.friendRequestActions button.primary{
+  background:#315fc9!important;
+  color:#fff!important;
+}
+.friendRequestActions button[data-friend-request-decline],
+.friendRequestActions button[data-friend-request-cancel]{
+  background:#8b2638!important;
+  color:#fff!important;
+}
+.friendRequestCard.friendRequestBusy{
+  opacity:.72;
+}
+.friendRequestCard.friendRequestBusy:after{
+  content:"UPDATING";
+  position:absolute;
+  right:6px;
+  top:6px;
+  padding:3px 5px;
+  border:2px solid #101820;
+  background:#ffcf58;
+  color:#101820;
+  font-size:7px;
+  font-weight:1000;
+  letter-spacing:.08em;
+}
+
+/* Achievement options need room for name + AP. */
+#featuredAchievementEditor{
+  grid-template-columns:repeat(5,minmax(150px,1fr))!important;
+}
+#featuredAchievementEditor select{
+  width:100%!important;
+  min-width:0!important;
+  font-size:10px!important;
+  font-weight:900!important;
+}
+
+/* Hat-only profile icons use the full square rather than a core portrait. */
+.profileCoreIcon canvas,
+#profileIconCanvas{
+  object-fit:contain;
+}
+
+/* Strong performance mode removes costly decorative canvas-adjacent effects. */
+body.fragmentPerformanceModeStrong #gameCanvas{
+  image-rendering:auto;
+}
+body.fragmentPerformanceModeStrong .abilityReadyFlash,
+body.fragmentPerformanceModeStrong .screenPulse,
+body.fragmentPerformanceModeStrong .hudShake,
+body.fragmentPerformanceModeStrong .damageVignette,
+body.fragmentPerformanceModeStrong .dashStreak,
+body.fragmentPerformanceModeStrong .worldModeFx{
+  animation:none!important;
+  filter:none!important;
+  box-shadow:none!important;
+}
+body.fragmentPerformanceModeStrong #hud,
+body.fragmentPerformanceModeStrong #gameCanvas,
+body.fragmentPerformanceModeStrong #miniMap{
+  filter:none!important;
+  text-shadow:none!important;
+}
+body.fragmentPerformanceModeStrong .slot,
+body.fragmentPerformanceModeStrong .hudPanel,
+body.fragmentPerformanceModeStrong .serverLb,
+body.fragmentPerformanceModeStrong #chatPanel{
+  box-shadow:none!important;
+}
+
+@media(max-width:900px){
+  #featuredAchievementEditor{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+}
+</style>
+
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -24149,6 +24250,494 @@ if(v1MenuLogo){
   rcUpdateInGameFriendAction();
 
   /* ===== END V1.0 BETA RELEASE-CANDIDATE PATCH ===== */
+
+
+
+
+
+  /* ===== FRIEND REQUEST / PROFILE ICON / CULLED RENDERING PATCH ===== */
+
+  // -------------------------------------------------------------------------
+  // Friend requests: capture-phase controls, visible busy states, and explicit
+  // server acknowledgements. This does not depend on the modal's old delegated
+  // listener, so dynamically rendered Accept / Decline / Cancel buttons work.
+  // -------------------------------------------------------------------------
+  const rc2PendingFriendActions=new Map();
+
+  function rc2FriendActionLabel(action,state='idle'){
+    if(state==='busy'){
+      return action==='accept'?'ACCEPTING…'
+        :action==='decline'?'DECLINING…'
+        :'CANCELLING…';
+    }
+    return action==='accept'?'ACCEPT'
+      :action==='decline'?'DECLINE'
+      :'CANCEL';
+  }
+
+  function rc2SetFriendRequestCardBusy(button,action,busy){
+    const card=button?.closest('.friendRequestCard');
+    if(!card)return;
+    card.classList.toggle('friendRequestBusy',busy);
+    card.querySelectorAll('[data-friend-request-accept],[data-friend-request-decline],[data-friend-request-cancel]')
+      .forEach(control=>{
+        control.disabled=busy;
+        const controlAction=control.hasAttribute('data-friend-request-accept')
+          ?'accept'
+          :control.hasAttribute('data-friend-request-decline')
+            ?'decline'
+            :'cancel';
+        control.textContent=rc2FriendActionLabel(controlAction,busy?'busy':'idle');
+      });
+  }
+
+  document.addEventListener('click',event=>{
+    const button=event.target.closest(
+      '[data-friend-request-accept],'
+      +'[data-friend-request-decline],'
+      +'[data-friend-request-cancel]'
+    );
+    if(!button)return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    const action=button.hasAttribute('data-friend-request-accept')
+      ?'accept'
+      :button.hasAttribute('data-friend-request-decline')
+        ?'decline'
+        :'cancel';
+    const requestId=Number(
+      button.dataset.friendRequestAccept
+      ||button.dataset.friendRequestDecline
+      ||button.dataset.friendRequestCancel
+    );
+    if(!Number.isSafeInteger(requestId)||requestId<1)return;
+    if(rc2PendingFriendActions.has(requestId))return;
+
+    rc2PendingFriendActions.set(requestId,{action,button});
+    rc2SetFriendRequestCardBusy(button,action,true);
+
+    const type=action==='accept'
+      ?'friend_request_accept'
+      :action==='decline'
+        ?'friend_request_decline'
+        :'friend_request_cancel';
+
+    try{
+      if(!socialState.authenticated){
+        rc2PendingFriendActions.delete(requestId);
+        rc2SetFriendRequestCardBusy(button,action,false);
+        ensureSocialConnection()
+          .then(()=>netSend({type,requestId}))
+          .catch(error=>notify('Friend request unavailable',error.message||'Reconnect and try again.'));
+      }else{
+        netSend({type,requestId});
+      }
+    }catch(error){
+      rc2PendingFriendActions.delete(requestId);
+      rc2SetFriendRequestCardBusy(button,action,false);
+      notify('Friend request unavailable',error.message||'Try again.');
+    }
+  },true);
+
+  // -------------------------------------------------------------------------
+  // Profile picture hats are standalone icons. No core is drawn behind them.
+  // -------------------------------------------------------------------------
+  function rc2DrawStandaloneHat(canvas,hatValue){
+    if(!canvas)return;
+    const context=canvas.getContext('2d');
+    const width=canvas.width;
+    const height=canvas.height;
+    context.clearRect(0,0,width,height);
+    context.save();
+
+    // Hats are authored above an entity center. Translate their entity anchor
+    // downward so the complete hat is visually centered in the square icon.
+    const scale=Math.min(width,height)/124;
+    context.translate(width/2,height/2);
+    context.scale(scale,scale);
+    drawHatShape(context,0,28,String(hatValue||'none'));
+
+    context.restore();
+  }
+
+  renderProfileCosmeticIcon=function(value){
+    const canvas=$('profileIconCanvas');
+    if(!canvas)return;
+    const icon=String(value||'core:circle');
+    if(icon.startsWith('hat:')){
+      rc2DrawStandaloneHat(canvas,icon.slice(4)||'none');
+      return;
+    }
+    const context=canvas.getContext('2d');
+    context.clearRect(0,0,canvas.width,canvas.height);
+    drawPreviewCore(
+      context,
+      canvas.width/2,
+      canvas.height/2,
+      icon.startsWith('core:')?icon.slice(5):'circle',
+      '#5d8cff'
+    );
+  };
+
+  drawProfileIconCanvas=function(canvasElement,value){
+    if(!canvasElement)return;
+    const icon=String(value||'core:circle');
+    if(icon.startsWith('hat:')){
+      rc2DrawStandaloneHat(canvasElement,icon.slice(4)||'none');
+      return;
+    }
+    const context=canvasElement.getContext('2d');
+    context.clearRect(0,0,canvasElement.width,canvasElement.height);
+    drawPreviewCore(
+      context,
+      canvasElement.width/2,
+      canvasElement.height/2,
+      icon.startsWith('core:')?icon.slice(5):'circle',
+      '#5d8cff'
+    );
+  };
+
+  // -------------------------------------------------------------------------
+  // Achievement editor options now display AP beside every achievement name.
+  // -------------------------------------------------------------------------
+  profileAchievementOptions=function(selected=''){
+    const unlocked=Object.keys(accountProgress?.achievements||{});
+    return'<option value="">Empty</option>'+unlocked.map(id=>{
+      const achievement=ACHIEVEMENTS[id];
+      const points=Math.max(0,Number(achievement?.points)||0);
+      return`<option value="${escapeHtml(id)}" ${id===selected?'selected':''}>${escapeHtml(achievement?.name||id)} · ${points} AP</option>`;
+    }).join('');
+  };
+
+  // -------------------------------------------------------------------------
+  // Viewport-only gameplay renderer.
+  //
+  // All simulation, networking, AI, movement, collisions, and minimap state
+  // continue updating outside the viewport. Only expensive full-size canvas
+  // drawing is culled locally.
+  // -------------------------------------------------------------------------
+  const rc2BaseDrawFlaresAndStrikes=drawFlaresAndStrikes;
+  const rc2BaseDrawAbilityObjects=drawAbilityObjects;
+  const rc2BaseDrawAreaLabels=typeof drawAreaLabels==='function'?drawAreaLabels:null;
+  let rc2LastRenderedAt=0;
+  let rc2LastMiniMapAt=0;
+  let rc2LastBigMapAt=0;
+
+  function rc2CircleVisible(x,y,r,cam,extra=0){
+    const radius=Math.max(0,Number(r)||0)+extra;
+    return x+radius>=cam.x
+      &&x-radius<=cam.x+cam.w
+      &&y+radius>=cam.y
+      &&y-radius<=cam.y+cam.h;
+  }
+
+  function rc2EntityVisible(entity,cam,extra=0){
+    if(!entity||entity.dead)return false;
+    const radius=Math.max(
+      Number(entity.r)||18,
+      Number(entity.range)||0,
+      Number(entity.visualRadius)||0
+    );
+    return rc2CircleVisible(entity.x,entity.y,radius,cam,extra);
+  }
+
+  function rc2LaserVisible(laser,cam,extra=80){
+    if(!laser)return false;
+    const length=Math.max(0,Number(laser.range)||0);
+    const angle=Number(laser.angle)||0;
+    const endX=(Number(laser.x)||0)+Math.cos(angle)*length;
+    const endY=(Number(laser.y)||0)+Math.sin(angle)*length;
+    const minX=Math.min(Number(laser.x)||0,endX)-extra;
+    const maxX=Math.max(Number(laser.x)||0,endX)+extra;
+    const minY=Math.min(Number(laser.y)||0,endY)-extra;
+    const maxY=Math.max(Number(laser.y)||0,endY)+extra;
+    return maxX>=cam.x&&minX<=cam.x+cam.w&&maxY>=cam.y&&minY<=cam.y+cam.h;
+  }
+
+  drawFlaresAndStrikes=function(camX,camY){
+    const cam={
+      x:camX,
+      y:camY,
+      w:W/(cameraZoom||1),
+      h:H/(cameraZoom||1)
+    };
+    const margin=fragmentPerformanceMode?40:140;
+    const oldStrikes=strikes;
+    const oldFlares=flares;
+    const oldStorms=fragmentStorms;
+    strikes=oldStrikes.filter(item=>rc2CircleVisible(item.x,item.y,item.r||170,cam,margin));
+    flares=oldFlares.filter(item=>rc2CircleVisible(item.x,item.y,item.r||80,cam,margin));
+    fragmentStorms=oldStorms.filter(item=>rc2CircleVisible(item.x,item.y,item.r||260,cam,margin));
+    try{
+      return rc2BaseDrawFlaresAndStrikes(camX,camY);
+    }finally{
+      strikes=oldStrikes;
+      flares=oldFlares;
+      fragmentStorms=oldStorms;
+    }
+  };
+
+  drawAbilityObjects=function(camX,camY){
+    const cam={
+      x:camX,
+      y:camY,
+      w:W/(cameraZoom||1),
+      h:H/(cameraZoom||1)
+    };
+    const margin=fragmentPerformanceMode?35:130;
+    const oldMines=mines;
+    const oldWalls=walls;
+    const oldLasers=lasers;
+    mines=oldMines.filter(item=>rc2CircleVisible(item.x,item.y,(item.r||28)*2,cam,margin));
+    walls=oldWalls.filter(item=>rc2CircleVisible(item.x,item.y,Math.max(item.w||160,item.h||24),cam,margin));
+    lasers=oldLasers.filter(item=>rc2LaserVisible(item,cam,margin));
+    try{
+      return rc2BaseDrawAbilityObjects(camX,camY);
+    }finally{
+      mines=oldMines;
+      walls=oldWalls;
+      lasers=oldLasers;
+    }
+  };
+
+  if(rc2BaseDrawAreaLabels){
+    drawAreaLabels=function(camX,camY){
+      if(fragmentPerformanceMode)return;
+      return rc2BaseDrawAreaLabels(camX,camY);
+    };
+  }
+
+  // Particles still age and move while off-screen, but only visible particles
+  // issue canvas drawing commands.
+  drawParticles=function(camX,camY){
+    const cam={
+      x:camX,
+      y:camY,
+      w:W/(cameraZoom||1),
+      h:H/(cameraZoom||1)
+    };
+    const limit=fragmentPerformanceMode?80:PERF_LIMITS.particles;
+    if(particles.length>limit){
+      particles.splice(0,particles.length-limit);
+    }
+
+    for(let index=particles.length-1;index>=0;index--){
+      const particle=particles[index];
+      if(!particle){
+        particles.splice(index,1);
+        continue;
+      }
+
+      particle.life--;
+      if(!particle.text){
+        particle.x+=(particle.vx||0);
+        particle.y+=(particle.vy||0);
+      }else{
+        particle.y+=(particle.vy||-.5);
+      }
+
+      const radius=particle.text?90:Math.max(particle.r||0,particle.size||4)+30;
+      const visible=rc2CircleVisible(
+        Number(particle.x)||0,
+        Number(particle.y)||0,
+        radius,
+        cam,
+        fragmentPerformanceMode?10:45
+      );
+
+      if(visible){
+        const sx=particle.x-camX;
+        const sy=particle.y-camY;
+        if(particle.dot){
+          contextGlobal:
+          {
+            ctx.globalAlpha=Math.max(0,particle.life/24);
+            ctx.fillStyle=particle.color;
+            ctx.beginPath();
+            ctx.arc(sx,sy,particle.size||4,0,Math.PI*2);
+            ctx.fill();
+            ctx.globalAlpha=1;
+          }
+        }else if(particle.text){
+          ctx.globalAlpha=Math.max(0,particle.life/34);
+          ctx.fillStyle=particle.color;
+          ctx.font=fragmentPerformanceMode?'bold 15px Arial':'bold 18px Arial';
+          ctx.textAlign='center';
+          ctx.fillText(particle.text,sx,sy);
+          ctx.globalAlpha=1;
+        }else if(!fragmentPerformanceMode||index%2===0){
+          ctx.globalAlpha=Math.max(0,particle.life/26);
+          ctx.strokeStyle=particle.color;
+          ctx.lineWidth=fragmentPerformanceMode?2:3;
+          ctx.beginPath();
+          ctx.arc(
+            sx,
+            sy,
+            (particle.r||20)*(1+(26-particle.life)/26*.25),
+            0,
+            Math.PI*2
+          );
+          ctx.stroke();
+          ctx.globalAlpha=1;
+        }
+      }
+
+      if(particle.life<=0)particles.splice(index,1);
+    }
+  };
+
+  // Stronger performance-mode behavior while preserving mechanics.
+  const rc2BaseApplyPerformanceMode=applyFragmentPerformanceMode;
+  applyFragmentPerformanceMode=function(){
+    rc2BaseApplyPerformanceMode.apply(this,arguments);
+    document.body.classList.toggle('fragmentPerformanceModeStrong',fragmentPerformanceMode);
+    PERF_LIMITS.particles=fragmentPerformanceMode?80:560;
+    if(fragmentPerformanceMode){
+      particles.splice(0,Math.max(0,particles.length-80));
+      if(typeof elasticAfterimages!=='undefined')elasticAfterimages.length=0;
+      if(typeof elasticDeathBursts!=='undefined')elasticDeathBursts.length=0;
+      camera.shake=0;
+      camera.zoomKick=0;
+      ctx.imageSmoothingEnabled=false;
+      mctx.imageSmoothingEnabled=false;
+    }else{
+      ctx.imageSmoothingEnabled=true;
+      mctx.imageSmoothingEnabled=true;
+    }
+
+    const description=$('fragmentPerformanceToggle')
+      ?.closest('.profileSettingsToggle')
+      ?.querySelector('small');
+    if(description){
+      description.textContent='Caps gameplay rendering near 40 FPS, culls everything outside the camera, lowers minimap refresh, removes decorative labels, auras, trails, afterimages, death bursts, post-processing, most particles, shadows, and camera shake. Simulation and minimap movement remain active.';
+    }
+  };
+
+  // This replacement is intentionally late in the file so it becomes the final
+  // gameplay renderer after every previous visual patch.
+  draw=function(){
+    if(player&&state.screen==='play'){
+      const now=performance.now();
+      if(fragmentPerformanceMode&&now-rc2LastRenderedAt<24){
+        return;
+      }
+      rc2LastRenderedAt=now;
+
+      const cam=getCamera();
+      const zoom=cam.zoom||cameraZoom||1;
+      const entityMargin=fragmentPerformanceMode?35:150;
+      const fragmentMargin=fragmentPerformanceMode?25:80;
+
+      ctx.save();
+      ctx.setTransform(zoom,0,0,zoom,0,0);
+
+      drawBackground(cam.x,cam.y,cam.w,cam.h);
+      drawMapSystems(cam.x,cam.y,cam.w,cam.h);
+
+      for(const fragment of fragments){
+        if(rc2CircleVisible(fragment.x,fragment.y,fragment.r||14,cam,fragmentMargin)){
+          drawFragment(fragment,cam.x,cam.y);
+        }
+      }
+
+      drawFlaresAndStrikes(cam.x,cam.y);
+      drawAbilityObjects(cam.x,cam.y);
+      drawProjectiles(cam.x,cam.y);
+
+      for(const clone of (player.clones||[])){
+        if(rc2EntityVisible(clone,cam,entityMargin))drawEntity(clone,cam.x,cam.y);
+      }
+
+      for(const remote of remotePlayers){
+        if(!remote||remote.dead)continue;
+        for(const clone of (remote.remoteClones||[])){
+          if(rc2EntityVisible(clone,cam,entityMargin))drawEntity(clone,cam.x,cam.y);
+        }
+        if(rc2EntityVisible(remote,cam,entityMargin))drawEntity(remote,cam.x,cam.y);
+      }
+
+      for(const bot of bots){
+        if(rc2EntityVisible(bot,cam,entityMargin))drawEntity(bot,cam.x,cam.y);
+      }
+      for(const boss of bosses){
+        if(rc2EntityVisible(boss,cam,Math.max(entityMargin,220))){
+          drawEntity(boss,cam.x,cam.y);
+        }
+      }
+
+      // The local player is always rendered regardless of camera interpolation.
+      drawEntity(player,cam.x,cam.y);
+      drawPartySpeechBubbles(cam.x,cam.y);
+      drawParticles(cam.x,cam.y);
+      ctx.restore();
+
+      if(!fragmentPerformanceMode)drawWorldPostFX();
+      drawDuoArrow(cam);
+
+      const miniMapInterval=fragmentPerformanceMode?250:100;
+      if(now-rc2LastMiniMapAt>=miniMapInterval){
+        rc2LastMiniMapAt=now;
+        drawMiniMap();
+      }
+
+      if(showMap){
+        const bigMapInterval=fragmentPerformanceMode?500:250;
+        if(now-rc2LastBigMapAt>=bigMapInterval){
+          rc2LastBigMapAt=now;
+          drawBigMap();
+        }
+      }
+    }else{
+      const camX=player?player.x-W/2:-HALF_W;
+      const camY=player?player.y-H/2:-HALF_H;
+      drawBackground(camX,camY,W,H);
+    }
+  };
+
+  // Apply the stronger mode immediately for players who already enabled it.
+  applyFragmentPerformanceMode();
+
+  // -------------------------------------------------------------------------
+  // Final network layer for friend-request acknowledgements.
+  // -------------------------------------------------------------------------
+  const rc2BaseHandleNetwork=handleFragmentNetworkMessage;
+  handleFragmentNetworkMessage=function(message){
+    if(message?.type==='friend_request_action_result'){
+      const requestId=Number(message.requestId);
+      const pending=rc2PendingFriendActions.get(requestId);
+      if(pending){
+        rc2SetFriendRequestCardBusy(pending.button,pending.action,false);
+        rc2PendingFriendActions.delete(requestId);
+      }
+
+      if(message.ok){
+        if(message.action==='accept'){
+          notify('Friend request accepted','The player has been added to your friends.');
+          loadCloudFriends().then(renderSocial).catch(()=>{});
+        }else if(message.action==='decline'){
+          notify('Friend request declined','The request was removed.');
+        }else if(message.action==='cancel'){
+          notify('Friend request cancelled','Your sent request was removed.');
+        }
+        netSend({type:'friend_request_refresh'});
+        netSend({type:'social_refresh'});
+      }else{
+        notify(
+          'Friend request failed',
+          message.message||'The request could not be updated.'
+        );
+        netSend({type:'friend_request_refresh'});
+      }
+      return;
+    }
+
+    return rc2BaseHandleNetwork.apply(this,arguments);
+  };
+
+  /* ===== END FRIEND REQUEST / PROFILE ICON / CULLED RENDERING PATCH ===== */
 
 
 })();

@@ -3772,3 +3772,87 @@ handleMessage=function(client,msg){
 
 console.log('[Fragment.io] Beta release-candidate chat, ping, friend, and resync hardening enabled.');
 
+
+
+// -----------------------------------------------------------------------------
+// Fragment.io v1.0 friend-request action acknowledgement patch
+// -----------------------------------------------------------------------------
+async function v12FriendRequestAction(client,msg,action){
+  if(!client?.authenticated||!client.userId){
+    throw new Error('Login before managing friend requests.');
+  }
+
+  const requestIdText=String(msg?.requestId??'').trim();
+  if(!/^\d+$/.test(requestIdText)){
+    throw new Error('Invalid friend request.');
+  }
+  const requestId=Number(requestIdText);
+  if(!Number.isSafeInteger(requestId)||requestId<1){
+    throw new Error('Invalid friend request.');
+  }
+
+  if(action==='accept'){
+    await acceptFriendRequest(client,{requestId});
+  }else if(action==='decline'){
+    await closeFriendRequest(client,{requestId},'declined');
+  }else if(action==='cancel'){
+    await closeFriendRequest(client,{requestId},'cancelled');
+  }else{
+    throw new Error('Invalid friend-request action.');
+  }
+
+  send(client,{
+    type:'friend_request_action_result',
+    ok:true,
+    action,
+    requestId
+  });
+
+  // Always return a fresh request list to the acting session immediately,
+  // even if another refresh sent by the shared helper is still in flight.
+  await sendFriendRequestState(client);
+}
+
+const v12BaseHandleMessage=handleMessage;
+handleMessage=function(client,msg){
+  if(msg?.type==='friend_request_accept'){
+    v12FriendRequestAction(client,msg,'accept').catch(error=>{
+      send(client,{
+        type:'friend_request_action_result',
+        ok:false,
+        action:'accept',
+        requestId:String(msg?.requestId??''),
+        message:error.message||'Could not accept friend request.'
+      });
+    });
+    return;
+  }
+  if(msg?.type==='friend_request_decline'){
+    v12FriendRequestAction(client,msg,'decline').catch(error=>{
+      send(client,{
+        type:'friend_request_action_result',
+        ok:false,
+        action:'decline',
+        requestId:String(msg?.requestId??''),
+        message:error.message||'Could not decline friend request.'
+      });
+    });
+    return;
+  }
+  if(msg?.type==='friend_request_cancel'){
+    v12FriendRequestAction(client,msg,'cancel').catch(error=>{
+      send(client,{
+        type:'friend_request_action_result',
+        ok:false,
+        action:'cancel',
+        requestId:String(msg?.requestId??''),
+        message:error.message||'Could not cancel friend request.'
+      });
+    });
+    return;
+  }
+  return v12BaseHandleMessage(client,msg);
+};
+
+console.log('[Fragment.io] Friend request accept, decline, and cancel acknowledgements enabled.');
+
