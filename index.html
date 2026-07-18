@@ -3423,10 +3423,9 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
         </div>
         <div class="wordmark v3Wordmark">
           <b>FRAGMENT.IO</b>
-          <span>SISCON BUILD</span>
         </div>
       </div>
-      <div class="tinyStatus releaseStatus"><span>v1.0 RELEASE · ISLAND</span></div>
+      <div class="tinyStatus releaseStatus"><span>v1.0 RELEASE</span></div>
     </header>
 
     <main class="v3Home">
@@ -3495,14 +3494,14 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
         </div>
 
         <div class="playModeTabs" role="tablist" aria-label="Play modes">
-          <button class="playModeTab active" type="button" data-play-tab="normal"><b>ARENA</b><span>Normal / Test Arena / Duo / Squad / Teams / BR</span></button>
+          <button class="playModeTab active" type="button" data-play-tab="normal"><b>ARENA</b><span>Normal / Duo / Squad / Teams / Battle Royale</span></button>
           <button class="playModeTab bossRushTab" type="button" data-play-tab="bossrush"><b>BOSS RUSH</b><span>Final evo raid duel</span></button>
         </div>
 
         <div class="playTabPanel normalPlayPanel" data-play-panel="normal">
           <div class="modalGrid playGrid">
             <div class="modalWide"><label>Mode</label><select id="modeSel">
-              <option value="normal">Normal</option><option value="test">Test Arena</option><option value="duo">Duo</option><option value="squad">Squad (up to 6)</option><option value="teams">Teams (10v10)</option><option value="br">Battle Royale</option><option value="bossrush" hidden>Boss Rush</option>
+              <option value="normal">Normal</option><option value="duo">Duo</option><option value="squad">Squad (up to 6)</option><option value="teams">Teams (10v10)</option><option value="br">Battle Royale</option><option value="bossrush" hidden>Boss Rush</option>
             </select></div>
           </div>
           <div class="matchRouteGrid">
@@ -3512,7 +3511,7 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
           </div>
           <label class="matchBotFillCard" for="fillBotsToggle">
             <span class="matchBotFillIcon">BOT</span>
-            <span class="matchBotFillCopy"><b>Complete the roster</b><small>Bots occupy only open player slots so matches can start quickly.</small></span>
+            <span class="matchBotFillCopy"><b>Complete your squad</b><small>Matchmaking searches for real teammates first. Allied bots fill any remaining squad slots.</small></span>
             <span class="matchBotSwitch"><input id="fillBotsToggle" type="checkbox" checked /><i></i></span>
           </label>
           <div id="matchmakingStatus" class="matchmakingStatus hidden"><b>SEARCHING</b><span>Connecting to matchmaking…</span><button id="cancelQueueBtn" type="button">Cancel Search</button></div>
@@ -3619,7 +3618,7 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
           <div><span>REWARDS READY</span><b id="weeklyClaimableText">0</b></div>
         </div>
         <div id="weeklyChallengeGrid" class="weeklyChallengeGrid"></div>
-        <p class="weeklyChallengeNote">Progress is account-wide. Test Arena does not count. Rewards reset every Monday at 00:00 UTC.</p>
+        <p class="weeklyChallengeNote">Progress is account-wide. Rewards reset every Monday at 00:00 UTC.</p>
       </div>
     </div>
 
@@ -3634,7 +3633,7 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
           <label>Your Friend Code</label>
           <div class="friendCodeRow"><div class="friendCodeValue" id="accountFriendCode">GUEST</div><button id="copyFriendCodeBtn" type="button">Copy</button></div>
           <span class="accountSmallNote">Other players can add you with this unique code. Guests do not get a saved friend code.</span>
-          <div id="accountAddFriendRow"><input id="accountFriendCodeInput" maxlength="16" placeholder="Enter friend code" /><button id="accountAddFriendCodeBtn" type="button">Add</button></div>
+          <div id="accountAddFriendRow"><input id="accountFriendCodeInput" maxlength="16" placeholder="Enter friend code" /><button id="accountAddFriendCodeBtn" type="button">Send Request</button></div>
         </div>
         <div class="accountTabs">
           <button class="accountTab active" type="button" data-account-tab="login">Login</button>
@@ -3788,8 +3787,8 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
         <div class="partyList socialPartyList" id="partyList"></div>
         <div class="friendEntry socialAddRow">
           <input id="friendName" maxlength="16" placeholder="Friend code · F7-XXXX-XXXX" />
-          <button id="addFriendBtn" type="button">Add Friend</button>
-          <button id="addPartyBtn" type="button">Invite Code</button>
+          <button id="addFriendBtn" type="button">Send Request</button>
+          <button id="addPartyBtn" type="button">Invite Friend</button>
         </div>
         <div class="friendList socialFriendList" id="friendList"></div>
       </div>
@@ -4017,24 +4016,24 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
   <div id="brSpawnCard" class="card">
     <div id="brSpawnTop">
       <div>
-        <h2>CHOOSE SPAWN</h2>
-        <p>Click anywhere on the map to lock your drop. The match begins when the 20s timer ends.</p>
+        <h2>SELECT ENTRY SECTOR</h2>
+        <p>Choose a valid land sector. The opening phase is slower, giving every core time to establish a build.</p>
       </div>
       <div id="brSpawnTimerBox">
         <div id="brSpawnTimerLabel">DROP IN</div>
-        <div id="brSpawnTimer">20</div>
+        <div id="brSpawnTimer">30</div>
       </div>
     </div>
     <canvas id="brSpawnMap" width="720" height="480"></canvas>
-    <div id="brSpawnHint">Battle Royale · 50 players · Void Storm begins after the drop.</div>
+    <div id="brSpawnHint">BATTLE ROYALE · FULL ROSTER · 30-SECOND DEPLOYMENT · SLOWER VOID COLLAPSES</div>
   </div>
 </div>
 
-<div id="brDropFlash">DROPPING INTO THE VOID</div>
+<div id="brDropFlash">CORE DEPLOYMENT</div>
 
 <div id="brVictory" class="overlay hidden">
   <div id="brVictoryCard" class="card">
-    <h2>LAST FRAGMENT ASCENDANT</h2>
+    <h2>FINAL CORE STANDING</h2>
     <p id="brVictoryText">You outlived the arena, outran the void, and shattered every rival core.</p>
     <div class="brVictoryButtons">
       <button id="brRetryBtn" type="button">Run It Back</button>
@@ -20736,6 +20735,1098 @@ if(v1MenuLogo){
   /* ===== END VERIFIED DEVELOPER ROLE + MODERATION PANEL ===== */
 
 
+
+
+
+  /* ===== SERVER-VALIDATED DEVELOPER DEBUG ===== */
+  let secureDeveloperDebugToken='';
+  let secureDeveloperDebugScope='';
+  let secureDeveloperDebugExpiresAt=0;
+  let secureDeveloperDebugOpening=false;
+  let secureDeveloperDebugApplyGuard=false;
+  const secureDeveloperDebugPending=new Map();
+
+  const secureLocalForceWorld=forceWorld;
+  const secureLocalSetEvolution=debugSetEvolution;
+  const secureLocalSetVariant=debugSetVariant;
+  const secureLocalGiveFragment=debugGiveFragment;
+  const secureLocalGiveAbility=debugGiveAbility;
+
+  function clearSecureDeveloperDebug({notifyServer=false}={}){
+    if(notifyServer&&secureDeveloperDebugToken&&socialState.authenticated){
+      netSend({type:'developer_debug_close',token:secureDeveloperDebugToken});
+    }
+    secureDeveloperDebugToken='';
+    secureDeveloperDebugScope='';
+    secureDeveloperDebugExpiresAt=0;
+    secureDeveloperDebugOpening=false;
+    secureDeveloperDebugPending.clear();
+    if(ui.debugGui){
+      ui.debugGui.classList.add('hidden');
+      ui.debugGui.removeAttribute('data-server-authorized');
+      ui.debugGui.setAttribute('aria-hidden','true');
+      ui.debugGui.inert=true;
+    }
+  }
+
+  function secureDeveloperDebugSessionActive(){
+    return !!(
+      isVerifiedDeveloper()
+      &&secureDeveloperDebugToken
+      &&Date.now()<secureDeveloperDebugExpiresAt
+      &&state.screen==='play'
+    );
+  }
+
+  function requestSecureDeveloperDebug(){
+    // Ordinary players get no notification and no visible response.
+    if(!isVerifiedDeveloper()||state.screen!=='play')return false;
+
+    if(secureDeveloperDebugOpening)return true;
+    secureDeveloperDebugOpening=true;
+
+    const sendRequest=()=>{
+      if(!isVerifiedDeveloper()||state.screen!=='play'){
+        secureDeveloperDebugOpening=false;
+        return;
+      }
+      netSend({type:'developer_debug_open'});
+      setTimeout(()=>{secureDeveloperDebugOpening=false;},1800);
+    };
+
+    if(multiplayer.connected&&socialState.authenticated)sendRequest();
+    else ensureSocialConnection().then(sendRequest).catch(()=>{secureDeveloperDebugOpening=false;});
+    return true;
+  }
+
+  function secureDeveloperDebugRequest(action,payload={}){
+    if(secureDeveloperDebugApplyGuard)return false;
+    if(!secureDeveloperDebugSessionActive()){
+      requestSecureDeveloperDebug();
+      return false;
+    }
+
+    const requestId='DBG-'+Math.random().toString(36).slice(2,10)+'-'+Date.now().toString(36);
+    secureDeveloperDebugPending.set(requestId,{action,createdAt:Date.now()});
+    netSend({
+      type:'developer_debug_action',
+      token:secureDeveloperDebugToken,
+      requestId,
+      action,
+      payload
+    });
+    setTimeout(()=>secureDeveloperDebugPending.delete(requestId),6000);
+    return true;
+  }
+
+  function applyServerValidatedDebugAction(message){
+    const pending=secureDeveloperDebugPending.get(message.requestId);
+    if(!pending||pending.action!==message.action||!secureDeveloperDebugSessionActive())return;
+    secureDeveloperDebugPending.delete(message.requestId);
+
+    secureDeveloperDebugApplyGuard=true;
+    try{
+      if(message.action==='set_evolution'){
+        secureLocalSetEvolution(message.payload?.type);
+      }else if(message.action==='set_variant'){
+        secureLocalSetVariant(message.payload?.type,message.payload?.fragment);
+      }else if(message.action==='give_fragment'){
+        secureLocalGiveFragment(message.payload?.id);
+      }else if(message.action==='give_ability'){
+        secureLocalGiveAbility(message.payload?.id);
+      }else if(message.action==='force_world'){
+        const mode=worldModes.find(worldMode=>worldMode.key===message.payload?.key);
+        if(mode)secureLocalForceWorld(mode);
+      }
+      netBroadcastState(true);
+    }finally{
+      secureDeveloperDebugApplyGuard=false;
+    }
+  }
+
+  forceWorld=function(mode){
+    if(secureDeveloperDebugApplyGuard)return secureLocalForceWorld(mode);
+    if(!mode?.key)return;
+    secureDeveloperDebugRequest('force_world',{key:mode.key});
+  };
+
+  debugSetEvolution=function(type){
+    if(secureDeveloperDebugApplyGuard)return secureLocalSetEvolution(type);
+    secureDeveloperDebugRequest('set_evolution',{type});
+  };
+
+  debugSetVariant=function(type,fragment){
+    if(secureDeveloperDebugApplyGuard)return secureLocalSetVariant(type,fragment);
+    secureDeveloperDebugRequest('set_variant',{type,fragment});
+  };
+
+  debugGiveFragment=function(id){
+    if(secureDeveloperDebugApplyGuard)return secureLocalGiveFragment(id);
+    secureDeveloperDebugRequest('give_fragment',{id});
+  };
+
+  debugGiveAbility=function(id){
+    if(secureDeveloperDebugApplyGuard)return secureLocalGiveAbility(id);
+    secureDeveloperDebugRequest('give_ability',{id});
+  };
+
+  // This replaces the previous role-gate notification. For normal players,
+  // Shift+1 now does absolutely nothing and does not reveal the tool.
+  toggleDebug=function(){
+    if(!isVerifiedDeveloper())return;
+    if(ui.debugGui&&!ui.debugGui.classList.contains('hidden')){
+      clearSecureDeveloperDebug({notifyServer:true});
+      return;
+    }
+    requestSecureDeveloperDebug();
+  };
+
+  const secureBaseRefreshDeveloperAccess=refreshDeveloperAccess;
+  refreshDeveloperAccess=function(){
+    const result=secureBaseRefreshDeveloperAccess.apply(this,arguments);
+    if(ui.debugGui){
+      const allowed=isVerifiedDeveloper()&&ui.debugGui.dataset.serverAuthorized==='1';
+      ui.debugGui.inert=!allowed;
+      ui.debugGui.setAttribute('aria-hidden',allowed?'false':'true');
+      if(!allowed)ui.debugGui.classList.add('hidden');
+    }
+    return result;
+  };
+
+  const secureBaseHandleFragmentNetworkMessage=handleFragmentNetworkMessage;
+  handleFragmentNetworkMessage=function(message){
+    if(message?.type==='developer_debug_granted'){
+      if(!isVerifiedDeveloper()||state.screen!=='play')return;
+      secureDeveloperDebugToken=String(message.token||'');
+      secureDeveloperDebugScope=String(message.scope||'');
+      secureDeveloperDebugExpiresAt=Number(message.expiresAt)||0;
+      secureDeveloperDebugOpening=false;
+
+      if(!secureDeveloperDebugToken||Date.now()>=secureDeveloperDebugExpiresAt){
+        clearSecureDeveloperDebug();
+        return;
+      }
+
+      if(ui.debugGui){
+        ui.debugGui.dataset.serverAuthorized='1';
+        ui.debugGui.inert=false;
+        ui.debugGui.setAttribute('aria-hidden','false');
+        const subtitle=ui.debugGui.querySelector('.debugTopBar span');
+        if(subtitle){
+          subtitle.textContent=secureDeveloperDebugScope==='private_developer_room'
+            ?'SERVER VERIFIED · PRIVATE DEVELOPER ROOM'
+            :'SERVER VERIFIED · OFFLINE SESSION';
+        }
+        renderDebug();
+        ui.debugGui.classList.remove('hidden');
+        setTimeout(()=>ui.debugSearch?.focus(),0);
+      }
+      return;
+    }
+
+    if(message?.type==='developer_debug_unavailable'){
+      secureDeveloperDebugOpening=false;
+      clearSecureDeveloperDebug();
+      // This message can only be sent after server verification of a Developer.
+      if(isVerifiedDeveloper()){
+        notify('Debug unavailable',message.message||'Use offline play or a private Developer-only room.');
+      }
+      return;
+    }
+
+    if(message?.type==='developer_debug_revoked'){
+      clearSecureDeveloperDebug();
+      return;
+    }
+
+    if(message?.type==='developer_debug_apply'){
+      applyServerValidatedDebugAction(message);
+      return;
+    }
+
+    if(message?.type==='developer_debug_action_ok'){
+      secureDeveloperDebugPending.delete(message.requestId);
+      return;
+    }
+
+    if(message?.type==='developer_debug_action_rejected'){
+      secureDeveloperDebugPending.delete(message.requestId);
+      return;
+    }
+
+    return secureBaseHandleFragmentNetworkMessage.apply(this,arguments);
+  };
+
+  const secureBaseNetDisconnect=netDisconnect;
+  netDisconnect=function(){
+    clearSecureDeveloperDebug();
+    return secureBaseNetDisconnect.apply(this,arguments);
+  };
+
+  // Keep the hidden DOM inert unless the server has issued a current grant.
+  if(ui.debugGui){
+    ui.debugGui.classList.add('hidden');
+    ui.debugGui.removeAttribute('data-server-authorized');
+    ui.debugGui.setAttribute('aria-hidden','true');
+    ui.debugGui.inert=true;
+  }
+
+  const secureDebugCard=$('developerOpenDebug')?.closest('.developerCommandCard');
+  const secureDebugDescription=secureDebugCard?.querySelector('.developerCardHeading small');
+  if(secureDebugDescription){
+    secureDebugDescription.textContent='Server validated. Available only offline or in a private room containing verified Developers only.';
+  }
+
+  setInterval(()=>{
+    if(secureDeveloperDebugToken&&(!secureDeveloperDebugSessionActive()||Date.now()>=secureDeveloperDebugExpiresAt)){
+      clearSecureDeveloperDebug({notifyServer:true});
+    }
+  },1000);
+  /* ===== END SERVER-VALIDATED DEVELOPER DEBUG ===== */
+
+
+
+
+
+  /* ===== SOCIAL / BATTLE ROYALE / PROFILE / RELEASE OVERHAUL ===== */
+
+  // -------------------------------------------------------------------------
+  // Clean release labels and remove Test Arena from every normal route.
+  // -------------------------------------------------------------------------
+  netModeLabel=function(mode){
+    return mode==='bossrush'?'Boss Rush'
+      :mode==='br'?'Battle Royale'
+      :mode==='duo'?'Duo'
+      :mode==='squad'?'Squad'
+      :mode==='teams'?'10v10'
+      :'Normal';
+  };
+  currentModeName=function(){
+    return gameMode==='bossrush'?'Boss Rush / Raid Arena'
+      :gameMode==='br'?'Battle Royale'
+      :gameMode==='duo'?'Duo Mode'
+      :gameMode==='squad'?'Squad Mode / Up to 6'
+      :gameMode==='teams'?'Teams Mode / 10v10'
+      :'Normal Mode';
+  };
+  if(ui.modeSel?.value==='test')ui.modeSel.value='normal';
+
+  // -------------------------------------------------------------------------
+  // Verified Developer badge: large and directly beside the actual name.
+  // -------------------------------------------------------------------------
+  decorateVerifiedProfileBadge=function(root,userId){
+    if(!root)return;
+    root.querySelectorAll('.verifiedDeveloperProfileBadge,.verifiedDeveloperNameBadge').forEach(element=>element.remove());
+    if(roleForUser(userId)!=='developer')return;
+
+    const heading=root.querySelector('#profileName,#inGameProfileName,.profileIdentity h3,.inGameProfileIdentity h2');
+    if(!heading)return;
+    heading.classList.add('developerNameHeading');
+    const badge=document.createElement('span');
+    badge.className='verifiedDeveloperNameBadge';
+    badge.textContent='DEVELOPER';
+    heading.appendChild(badge);
+  };
+
+  // -------------------------------------------------------------------------
+  // Sectioned main-menu composition with a smooth full-song loop.
+  // -------------------------------------------------------------------------
+  const releaseBaseAudioMusicTick=audioMusicTick;
+  let releaseMenuSongStep=0;
+  let releaseMenuSongActive=false;
+  const RELEASE_MENU_SECTIONS=[
+    {name:'Opening Signal',steps:16,bpm:82,root:48,bass:[0,0,7,5,0,3,7,10],lead:[12,14,19,17,12,15,19,22],chords:[[0,3,7],[5,8,12],[3,7,10],[7,10,14]],drums:0},
+    {name:'Fragment Theme',steps:32,bpm:96,root:50,bass:[0,0,5,7,0,10,7,5],lead:[12,17,19,24,22,19,17,14],chords:[[0,4,7],[5,9,12],[7,11,14],[3,7,10]],drums:1},
+    {name:'Forward Motion',steps:32,bpm:106,root:53,bass:[0,7,5,10,0,12,10,7],lead:[12,19,17,22,24,22,19,17],chords:[[0,3,7],[7,10,14],[5,8,12],[10,14,17]],drums:2},
+    {name:'Quiet Channel',steps:20,bpm:76,root:45,bass:[0,0,3,5,0,7,5,3],lead:[12,15,19,17,12,14,15,19],chords:[[0,3,7],[3,7,10],[5,8,12],[7,10,14]],drums:0},
+    {name:'Final Deployment',steps:36,bpm:112,root:48,bass:[0,5,7,10,0,12,10,7],lead:[12,17,19,22,24,22,19,17],chords:[[0,4,7],[5,9,12],[7,11,14],[10,14,17]],drums:2},
+    {name:'Loop Resolve',steps:12,bpm:88,root:48,bass:[0,7,5,3,0,0,7,0],lead:[19,17,15,14,12,14,12,12],chords:[[0,3,7],[5,8,12],[3,7,10],[0,3,7]],drums:0}
+  ];
+  const RELEASE_MENU_TOTAL_STEPS=RELEASE_MENU_SECTIONS.reduce((sum,section)=>sum+section.steps,0);
+
+  function releaseMenuSectionAt(step){
+    let cursor=0;
+    for(let index=0;index<RELEASE_MENU_SECTIONS.length;index++){
+      const section=RELEASE_MENU_SECTIONS[index];
+      if(step<cursor+section.steps)return{section,index,local:step-cursor,start:cursor};
+      cursor+=section.steps;
+    }
+    return{section:RELEASE_MENU_SECTIONS[0],index:0,local:0,start:0};
+  }
+  function releaseMenuMusicTick(){
+    if(!fragmentAudio.musicRunning||!audioCtx){
+      fragmentAudio.musicTimer=null;
+      return;
+    }
+    if(state.screen!=='menu'){
+      releaseMenuSongActive=false;
+      return releaseBaseAudioMusicTick();
+    }
+
+    if(!releaseMenuSongActive){
+      releaseMenuSongActive=true;
+      releaseMenuSongStep=0;
+    }
+
+    const info=releaseMenuSectionAt(releaseMenuSongStep);
+    const section=info.section;
+    const index=info.local%8;
+    const beatMs=60000/section.bpm/2;
+    const phrase=Math.floor(info.local/8);
+    const bassNote=audioMidi(section.root+section.bass[index]);
+    const leadNote=audioMidi(section.root+section.lead[index]);
+
+    if(info.local===0){
+      const chord=section.chords[0].map(offset=>audioMidi(section.root+12+offset));
+      audioChord(chord,beatMs/1000*5.5,.0065,'music',0,info.index>=2?'triangle':'sine');
+      audioVoice({
+        frequency:audioMidi(section.root-12),
+        endFrequency:audioMidi(section.root),
+        duration:beatMs/1000*2.8,
+        type:'sine',
+        volume:.011,
+        channel:'music',
+        attack:.08,
+        release:.32,
+        filter:1200
+      });
+    }
+
+    if(info.local%2===0){
+      audioVoice({
+        frequency:bassNote,
+        duration:beatMs/1000*1.75,
+        type:info.index===2||info.index===4?'triangle':'sine',
+        volume:.012,
+        channel:'music',
+        attack:.016,
+        release:.18,
+        filter:1000
+      });
+    }
+
+    if(info.local%8===0){
+      const chordDef=section.chords[phrase%section.chords.length];
+      audioChord(
+        chordDef.map(offset=>audioMidi(section.root+12+offset)),
+        beatMs/1000*7,
+        info.index===3?.0048:.0058,
+        'music',
+        0,
+        info.index===4?'triangle':'sine'
+      );
+    }
+
+    const leadDensity=info.index===0||info.index===3?4:2;
+    if(info.local%leadDensity===leadDensity-1){
+      audioVoice({
+        frequency:leadNote,
+        duration:info.index===3?.19:.11,
+        type:info.index===4?'triangle':'sine',
+        volume:info.index===3?.0054:.0065,
+        channel:'music',
+        release:info.index===3?.12:.065,
+        filter:3900
+      });
+    }
+
+    if(section.drums>=1&&info.local%2===0){
+      audioNoise({duration:.035,volume:.0062,channel:'music',lowpass:1600,highpass:60});
+    }
+    if(section.drums>=2&&info.local%4===2){
+      audioNoise({duration:.025,volume:.0048,channel:'music',lowpass:7800,highpass:3100});
+    }
+
+    const isFinalStep=releaseMenuSongStep===RELEASE_MENU_TOTAL_STEPS-1;
+    if(isFinalStep){
+      // The resolve intentionally overlaps the first opening chord.
+      audioChord(
+        [audioMidi(60),audioMidi(63),audioMidi(67),audioMidi(72)],
+        beatMs/1000*4.8,
+        .007,
+        'music',
+        0,
+        'sine'
+      );
+      releaseMenuSongStep=0;
+    }else{
+      releaseMenuSongStep++;
+    }
+
+    if(fragmentAudio.musicFilter){
+      const cutoff=info.index===3?3600:info.index===4?7200:5200;
+      fragmentAudio.musicFilter.frequency.setTargetAtTime(cutoff,audioCtx.currentTime,.22);
+    }
+    fragmentAudio.musicTimer=setTimeout(audioMusicTick,beatMs);
+  }
+  audioMusicTick=function(){
+    if(state.screen==='menu')return releaseMenuMusicTick();
+    releaseMenuSongActive=false;
+    return releaseBaseAudioMusicTick();
+  };
+  const releaseBaseStartLobbyMusic=startLobbyMusic;
+  startLobbyMusic=function(){
+    if(state.screen==='menu'&&!releaseMenuSongActive)releaseMenuSongStep=0;
+    return releaseBaseStartLobbyMusic.apply(this,arguments);
+  };
+
+  // -------------------------------------------------------------------------
+  // Squad-only roster completion. All online arenas receive enough bots to
+  // reach their target population, but allied roster bots are squad-specific.
+  // -------------------------------------------------------------------------
+  function releaseCompleteRosterEnabled(){
+    return netCurrentSelectedMode()==='squad'&&$('fillBotsToggle')?.checked!==false;
+  }
+  function releaseUpdateRosterCard(){
+    const card=$('fillBotsToggle')?.closest('.matchBotFillCard');
+    if(!card)return;
+    const mode=netCurrentSelectedMode();
+    const squad=mode==='squad';
+    card.classList.toggle('hidden',!squad);
+    if($('fillBotsToggle')){
+      $('fillBotsToggle').disabled=!squad;
+      if(!squad)$('fillBotsToggle').checked=true;
+    }
+  }
+  updateMatchButtons=function(){
+    const mode=netCurrentSelectedMode();
+    if($('quickPlayBtn'))$('quickPlayBtn').disabled=isGuestAccount();
+    if($('partyQueueBtn'))$('partyQueueBtn').disabled=isGuestAccount();
+    releaseUpdateRosterCard();
+  };
+  queueSelectedMode=function(asParty){
+    const mode=netCurrentSelectedMode();
+    if(isGuestAccount()){
+      openMenuModal('account');
+      notify('Account required','Login before online matchmaking.');
+      return;
+    }
+    ensureSocialConnection().then(()=>netSend({
+      type:'queue_join',
+      mode,
+      asParty,
+      fillBots:mode==='squad'?releaseCompleteRosterEnabled():true
+    }));
+  };
+
+  const releaseBaseRenderQueueState=renderQueueState;
+  renderQueueState=function(){
+    releaseBaseRenderQueueState();
+    const q=socialState.queue;
+    const box=$('matchmakingStatus');
+    if(!q||!box)return;
+    const copy=box.querySelector('span');
+    if(!copy)return;
+    copy.textContent=q.mode==='squad'
+      ?`Real squad members found: ${q.players}/6 · bots complete the arena after matchmaking`
+      :`Real players found: ${q.players} · bots fill the remaining ${Math.max(0,q.target-q.players)} slots`;
+  };
+
+  const releaseBaseSpawnInitial=spawnInitial;
+  spawnInitial=function(){
+    const result=releaseBaseSpawnInitial.apply(this,arguments);
+
+    if(gameMode==='squad'&&!netUsesServerWorld()&&!netUsesServerBots()){
+      const complete=$('fillBotsToggle')?.checked!==false;
+      const allies=bots.filter(bot=>bot.team==='blue'&&bot.ally);
+      const enemies=bots.filter(bot=>!(bot.team==='blue'&&bot.ally));
+
+      if(complete){
+        const needed=Math.max(0,5-allies.length);
+        for(let index=0;index<needed;index++){
+          const ally=makeBot(`Squad Bot-${String(index+1).padStart(2,'0')}`,'blue',true,player.x+rand(-150,150),player.y+rand(-150,150));
+          ally.partyMember=true;
+          ally.squadMember=true;
+          allies.push(ally);
+        }
+      }
+
+      const desiredTotalBots=17;
+      const desiredEnemies=Math.max(0,desiredTotalBots-allies.length);
+      bots=[...allies,...enemies.slice(0,desiredEnemies)];
+    }
+
+    if(gameMode==='br'){
+      br.stormAppear=120;
+      br.nextShrink=150;
+      br.damageTick=.8;
+      br.combatStartedAt=0;
+
+      const wanted={xp:106,natural:30,ability:7,evo:4,world:1,cursed:1};
+      const kept=[];
+      const counts={};
+      for(const fragment of fragments){
+        const kind=fragment.kind||'xp';
+        counts[kind]=counts[kind]||0;
+        if(counts[kind]<(wanted[kind]??0)){
+          counts[kind]++;
+          kept.push(fragment);
+        }
+      }
+      fragments=kept;
+
+      const paths=[
+        ['starter','swordsman','samurai','ronin'],
+        ['starter','kindler','hellflame','azure'],
+        ['starter','sniper','marksman','deadeye'],
+        ['starter','machine','minigunner','bullet_storm'],
+        ['starter','cloner','doppelgaenger','hakka'],
+        ['starter','gravity_mage','singularity','black_star'],
+        ['starter','rocketeer','destroyer','warhead'],
+        ['starter','spark','stormcaller','thunder_god']
+      ];
+      bots.forEach((bot,index)=>{
+        bot.archetype='starter';
+        bot.abilities[0]=primaryName('starter');
+        bot.brEvolutionPath=paths[index%paths.length];
+        bot.brEvolutionStage=0;
+        bot.spawnAttackCooldown=Math.max(bot.spawnAttackCooldown||0,6);
+        bot.primaryCooldown=Math.max(bot.primaryCooldown||0,110);
+      });
+    }
+
+    releaseUpdateRosterCard();
+    return result;
+  };
+
+  function releaseUpdateLocalBrBots(){
+    if(gameMode!=='br'||netUsesServerBots()||!br.combatStartedAt)return;
+    const elapsed=Math.max(0,(performance.now()-br.combatStartedAt)/1000);
+    for(const bot of bots){
+      if(!bot||bot.dead||!Array.isArray(bot.brEvolutionPath))continue;
+      let stage=0;
+      if(elapsed>=105||(bot.level||1)>=4)stage=1;
+      if(elapsed>=260||(bot.level||1)>=9)stage=2;
+      if(elapsed>=480||(bot.level||1)>=15)stage=3;
+      stage=Math.min(stage,bot.brEvolutionPath.length-1);
+      if(stage!==bot.brEvolutionStage){
+        bot.brEvolutionStage=stage;
+        bot.archetype=bot.brEvolutionPath[stage];
+        bot.abilities[0]=primaryName(bot.archetype);
+        playFormShiftAnimation(bot);
+      }
+    }
+  }
+  const releaseBaseUpdateBots=updateBots;
+  updateBots=function(dt){
+    releaseUpdateLocalBrBots();
+    return releaseBaseUpdateBots.apply(this,arguments);
+  };
+
+  ui.modeSel?.addEventListener('change',releaseUpdateRosterCard);
+  $('partyMatchModeSelect')?.addEventListener('change',releaseUpdateRosterCard);
+  $('fillBotsToggle')?.addEventListener('change',releaseUpdateRosterCard);
+  releaseUpdateRosterCard();
+
+  // -------------------------------------------------------------------------
+  // Mutual friend requests. One player sends; the other accepts once.
+  // -------------------------------------------------------------------------
+  let friendRequestState={incoming:[],outgoing:[]};
+
+  function releaseInstallFriendRequestUi(){
+    const socialWindow=document.querySelector('[data-modal="squad"] .socialWindow');
+    if(!socialWindow)return;
+
+    if(!$('friendRequestPanels')){
+      const panels=document.createElement('div');
+      panels.id='friendRequestPanels';
+      panels.className='friendRequestPanels';
+      panels.innerHTML=`
+        <section class="friendRequestSection">
+          <div class="friendRequestHeading"><b>Incoming Requests</b><span id="incomingFriendRequestCount">0</span></div>
+          <div id="incomingFriendRequests" class="friendRequestList"></div>
+        </section>
+        <section class="friendRequestSection">
+          <div class="friendRequestHeading"><b>Sent Requests</b><span id="outgoingFriendRequestCount">0</span></div>
+          <div id="outgoingFriendRequests" class="friendRequestList"></div>
+        </section>
+      `;
+      ui.friendList?.before(panels);
+
+      const friendsHeading=document.createElement('div');
+      friendsHeading.className='socialFriendsHeading';
+      friendsHeading.innerHTML='<b>Friends</b><span>Accepted connections</span>';
+      ui.friendList?.before(friendsHeading);
+    }
+
+    function replaceButton(id,handler){
+      const old=$(id);
+      if(!old||old.dataset.friendRequestBound)return old;
+      const next=old.cloneNode(true);
+      next.dataset.friendRequestBound='1';
+      old.replaceWith(next);
+      next.addEventListener('click',handler);
+      if(id==='addFriendBtn')ui.addFriendBtn=next;
+      if(id==='addPartyBtn')ui.addPartyBtn=next;
+      return next;
+    }
+
+    replaceButton('addFriendBtn',releaseSendFriendRequestFromInput);
+    replaceButton('addPartyBtn',releaseInviteExistingFriendFromInput);
+
+    const input=ui.friendName;
+    if(input&&!input.dataset.friendRequestBound){
+      input.dataset.friendRequestBound='1';
+      input.addEventListener('keydown',event=>{
+        if(event.key!=='Enter')return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        releaseSendFriendRequestFromInput();
+      },{capture:true});
+    }
+
+    const accountButton=$('accountAddFriendCodeBtn');
+    if(accountButton&&!accountButton.dataset.friendRequestBound){
+      accountButton.dataset.friendRequestBound='1';
+      accountButton.textContent='Send Request';
+      accountButton.onclick=releaseSendFriendRequestFromAccount;
+    }
+
+    socialWindow.addEventListener('click',event=>{
+      const accept=event.target.closest('[data-friend-request-accept]');
+      if(accept)netSend({type:'friend_request_accept',requestId:Number(accept.dataset.friendRequestAccept)});
+      const decline=event.target.closest('[data-friend-request-decline]');
+      if(decline)netSend({type:'friend_request_decline',requestId:Number(decline.dataset.friendRequestDecline)});
+      const cancel=event.target.closest('[data-friend-request-cancel]');
+      if(cancel)netSend({type:'friend_request_cancel',requestId:Number(cancel.dataset.friendRequestCancel)});
+    });
+  }
+
+  async function releaseEnsureFriendConnection(){
+    if(isGuestAccount()){
+      openMenuModal('account');
+      throw new Error('Login before using friend requests.');
+    }
+    await ensureSocialConnection();
+    if(!socialState.authenticated)throw new Error('Social server is not authenticated yet.');
+  }
+  async function releaseSendFriendRequest(code){
+    code=cleanFriendCode(code);
+    if(!code)throw new Error('Enter a valid friend code.');
+    await releaseEnsureFriendConnection();
+    netSend({type:'friend_request_send',friendCode:code});
+  }
+  async function releaseSendFriendRequestFromInput(){
+    const code=cleanFriendCode(ui.friendName?.value);
+    if(!code)return;
+    try{
+      await releaseSendFriendRequest(code);
+      if(ui.friendName)ui.friendName.value='';
+      notify('Friend request sent','The other player must accept it once.');
+    }catch(error){
+      notify('Could not send request',error.message||'Try again.');
+    }
+  }
+  async function releaseSendFriendRequestFromAccount(){
+    const input=$('accountFriendCodeInput');
+    const button=$('accountAddFriendCodeBtn');
+    const code=cleanFriendCode(input?.value);
+    setAccountBusy(button,true,'Sending…');
+    try{
+      await releaseSendFriendRequest(code);
+      if(input)input.value='';
+      accountHint('Friend request sent. They only need to accept it once.');
+    }catch(error){
+      accountHint(error.message||'Could not send that request.',true);
+    }finally{
+      setAccountBusy(button,false);
+    }
+  }
+  async function releaseInviteExistingFriendFromInput(){
+    const code=cleanFriendCode(ui.friendName?.value);
+    if(!code)return;
+    const profile=cloudFriendProfiles.get(code);
+    if(!profile){
+      notify('Friend required','Send a friend request and wait for it to be accepted before inviting them.');
+      return;
+    }
+    inviteFriendToParty(profile.id);
+    if(ui.friendName)ui.friendName.value='';
+  }
+
+  addCloudFriend=async function(friendCode){
+    await releaseSendFriendRequest(friendCode);
+    return{username:'Friend request'};
+  };
+  removeCloudFriend=async function(friendCode){
+    if(!cloudUser)return;
+    const profile=cloudFriendProfiles.get(cleanFriendCode(friendCode));
+    if(!profile)return;
+    await releaseEnsureFriendConnection();
+    netSend({type:'friend_remove_mutual',targetUserId:profile.id});
+  };
+
+  function releaseFriendRequestCard(request,direction){
+    const incoming=direction==='incoming';
+    return`<article class="friendRequestCard">
+      <div class="friendRequestAvatar">${escapeHtml(String(request.username||'?').slice(0,1).toUpperCase())}</div>
+      <div class="friendRequestMeta">
+        <b>${escapeHtml(request.username||'Player')}</b>
+        <span>${escapeHtml(request.friendCode||'')}</span>
+        <small>${incoming?'Wants to become friends':'Waiting for their response'}</small>
+      </div>
+      <div class="friendRequestActions">
+        <button type="button" data-profile-user="${escapeHtml(request.userId)}">Profile</button>
+        ${incoming
+          ?`<button class="primary" type="button" data-friend-request-accept="${Number(request.id)}">Accept</button><button type="button" data-friend-request-decline="${Number(request.id)}">Decline</button>`
+          :`<button type="button" data-friend-request-cancel="${Number(request.id)}">Cancel</button>`}
+      </div>
+    </article>`;
+  }
+  function renderFriendRequests(){
+    const incoming=$('incomingFriendRequests');
+    const outgoing=$('outgoingFriendRequests');
+    if(!incoming||!outgoing)return;
+    $('incomingFriendRequestCount').textContent=friendRequestState.incoming.length;
+    $('outgoingFriendRequestCount').textContent=friendRequestState.outgoing.length;
+    incoming.innerHTML=friendRequestState.incoming.length
+      ?friendRequestState.incoming.map(request=>releaseFriendRequestCard(request,'incoming')).join('')
+      :'<div class="friendRequestEmpty">No incoming requests.</div>';
+    outgoing.innerHTML=friendRequestState.outgoing.length
+      ?friendRequestState.outgoing.map(request=>releaseFriendRequestCard(request,'outgoing')).join('')
+      :'<div class="friendRequestEmpty">No sent requests.</div>';
+    document.querySelectorAll('#friendRequestPanels [data-profile-user]').forEach(button=>{
+      button.onclick=()=>openPlayerProfile(button.dataset.profileUser);
+    });
+  }
+
+  const releaseBaseRenderSocial=renderSocial;
+  renderSocial=function(){
+    const result=releaseBaseRenderSocial.apply(this,arguments);
+    releaseInstallFriendRequestUi();
+    renderFriendRequests();
+    return result;
+  };
+
+  const releaseBaseHandleNetwork=handleFragmentNetworkMessage;
+  handleFragmentNetworkMessage=function(message){
+    if(message?.type==='friend_request_state'){
+      friendRequestState={
+        incoming:Array.isArray(message.incoming)?message.incoming:[],
+        outgoing:Array.isArray(message.outgoing)?message.outgoing:[]
+      };
+      renderFriendRequests();
+      return;
+    }
+    if(message?.type==='friend_request_sent'){
+      netSend({type:'friend_request_refresh'});
+      return;
+    }
+    if(message?.type==='friend_request_accepted'){
+      loadCloudFriends()
+        .then(()=>{
+          recordPersistentEvent('friend_added');
+          renderSocial();
+          notify('Friend request accepted','Your friend lists are now connected.');
+        })
+        .catch(()=>{});
+      netSend({type:'social_refresh'});
+      return;
+    }
+    if(message?.type==='friendship_removed'){
+      loadCloudFriends().then(renderSocial).catch(()=>{});
+      netSend({type:'social_refresh'});
+      return;
+    }
+    return releaseBaseHandleNetwork.apply(this,arguments);
+  };
+
+  const releaseBaseOpenMenuModal=openMenuModal;
+  openMenuModal=function(name){
+    const result=releaseBaseOpenMenuModal.apply(this,arguments);
+    if(name==='squad'&&socialState.authenticated){
+      netSend({type:'friend_request_refresh'});
+    }
+    return result;
+  };
+  releaseInstallFriendRequestUi();
+
+  // -------------------------------------------------------------------------
+  // Slower, cleaner Battle Royale.
+  // -------------------------------------------------------------------------
+  beginBRSpawnSelect=function(){
+    if(gameMode!=='br'||br.dropped||br.spawnPhase)return;
+    br.spawnPhase=true;
+    br.timer=30;
+    br.selected=null;
+    state.paused=true;
+    ui.brSpawn.classList.remove('hidden');
+    ui.brSpawnTimer.textContent='30';
+    drawBRSpawnMap();
+    clearInterval(beginBRSpawnSelect._timer);
+    beginBRSpawnSelect._timer=setInterval(()=>{
+      br.timer=Math.max(0,br.timer-.25);
+      ui.brSpawnTimer.textContent=Math.ceil(br.timer);
+      drawBRSpawnMap();
+      if(br.timer<=0)finalizeBRSpawn(!!br.selected);
+    },250);
+  };
+
+  const releaseBaseFinalizeBRSpawn=finalizeBRSpawn;
+  finalizeBRSpawn=function(chosen=true){
+    const result=releaseBaseFinalizeBRSpawn.apply(this,arguments);
+    if(gameMode==='br'){
+      br.combatStartedAt=performance.now();
+      br.stormAppear=120;
+      br.nextShrink=150;
+      br.damageTick=.8;
+    }
+    return result;
+  };
+
+  activateBRStorm=function(){
+    if(br.stormActive)return;
+    br.stormActive=true;
+    br.nextShrink=150;
+    br.warned=false;
+    br.stormPulse=2.4;
+    notify('VOID PERIMETER ACTIVE','First collapse in 2:30.');
+    addChat('SERVER','VOID PERIMETER ACTIVE. First collapse in 2:30.');
+    ring(br.centerX,br.centerY,'#b582ff',420);
+    tone(120,.16,'sawtooth',.045);
+    setTimeout(()=>tone(240,.14,'triangle',.035),140);
+  };
+
+  warnBRStormShrink=function(){
+    if(br.warned)return;
+    br.warned=true;
+    notify('PERIMETER WARNING','Safe zone contracts in 25 seconds.');
+    addChat('SERVER','PERIMETER WARNING: safe zone contracts in 25 seconds.');
+    tone(155,.16,'sawtooth',.045);
+    setTimeout(()=>tone(98,.18,'sawtooth',.035),170);
+  };
+
+  beginBRStormShrink=function(){
+    if(!br.stormActive)return;
+    br.phase++;
+    const oldX=br.centerX,oldY=br.centerY,oldR=br.radius;
+    const newR=Math.max(650,br.radius*(br.phase<3?.82:.76));
+    const angle=br.phase*2.399963229728653;
+    const shift=Math.min(390,Math.max(90,(oldR-newR)*.46));
+    const target={
+      x:clamp(oldX+Math.cos(angle)*shift,-HALF_W+newR,HALF_W-newR),
+      y:clamp(oldY+Math.sin(angle)*shift*.72,-HALF_H+newR,HALF_H-newR)
+    };
+    const safe=typeof nearestIslandPoint==='function'
+      ?nearestIslandPoint(target.x,target.y,Math.min(220,Math.max(50,newR*.07)))
+      :target;
+    br.centerX=clamp(safe.x,-HALF_W+newR,HALF_W-newR);
+    br.centerY=clamp(safe.y,-HALF_H+newR,HALF_H-newR);
+    br.radius=newR;
+    br.nextShrink=150;
+    br.warned=false;
+    br.stormPulse=2.2;
+    ring(oldX,oldY,'#b582ff',oldR*.1);
+    ring(br.centerX,br.centerY,'#ffcf58',Math.min(380,br.radius*.28));
+    notify('PERIMETER CONTRACTED','Next collapse in 2:30.');
+    addChat('SERVER','PERIMETER CONTRACTED. Next collapse in 2:30.');
+    camera.shake=Math.max(camera.shake,.18);
+    tone(80,.18,'sawtooth',.045);
+    setTimeout(()=>tone(190,.14,'triangle',.03),130);
+  };
+
+  updateBR=function(dt){
+    if(gameMode!=='br'||!br.active||br.spawnPhase||br.victory)return;
+    const sec=dt/1000;
+    br.stormPulse=Math.max(0,(br.stormPulse||0)-sec);
+    if(!br.stormActive){
+      br.stormAppear=Math.max(0,(br.stormAppear||0)-sec);
+      if(br.stormAppear<=0)activateBRStorm();
+      checkBRWin();
+      return;
+    }
+    br.nextShrink=Math.max(0,br.nextShrink-sec);
+    if(br.nextShrink<=25&&br.radius>680)warnBRStormShrink();
+    if(br.nextShrink<=0&&br.radius>680)beginBRStormShrink();
+    br.damageTick-=sec;
+    if(br.damageTick<=0){
+      br.damageTick=.8;
+      const damage=5+br.phase*1.6;
+      for(const entity of [player,...bots]){
+        if(!entity||entity.dead)continue;
+        if(Math.hypot(entity.x-br.centerX,entity.y-br.centerY)>br.radius){
+          hitEntity(entity,damage,null);
+          if(!entity.dead)floatText(entity.x,entity.y-34,'VOID','#b582ff');
+        }
+      }
+    }
+    checkBRWin();
+  };
+
+  drawBRStorm=function(camX,camY,viewW,viewH){
+    if(gameMode!=='br'||!br.active||br.spawnPhase||!br.stormActive)return;
+    const x=br.centerX-camX,y=br.centerY-camY;
+    const warning=br.nextShrink<=25&&br.radius>680;
+    const pulse=(br.stormPulse||0)>0?1+Math.sin(performance.now()/90)*.045:1;
+    ctx.save();
+    ctx.fillStyle='rgba(44,28,72,.22)';
+    ctx.beginPath();
+    ctx.rect(0,0,viewW,viewH);
+    ctx.arc(x,y,br.radius*pulse,0,Math.PI*2,true);
+    ctx.fill('evenodd');
+    ctx.strokeStyle=warning?'#ffcf58':'#b582ff';
+    ctx.lineWidth=warning?8:6;
+    ctx.setLineDash(warning?[14,9]:[26,14]);
+    ctx.beginPath();
+    ctx.arc(x,y,br.radius*pulse,0,Math.PI*2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=warning?'#ffcf58':'#eef3f7';
+    ctx.font=warning?'1000 20px Arial':'900 17px Arial';
+    ctx.textAlign='center';
+    if(warning)ctx.fillText('PERIMETER CONTRACTS IN '+Math.ceil(br.nextShrink)+'s',x,y-br.radius-18);
+    else if((br.stormPulse||0)>0)ctx.fillText('SAFE PERIMETER UPDATED',x,y-br.radius-18);
+    ctx.restore();
+  };
+
+  drawBRSpawnMap=function(){
+    if(!brctx||!player)return;
+    const g=drawMapBase(brctx,brSpawnCanvas);
+
+    // Blocky sector grid above the existing map art.
+    brctx.save();
+    brctx.strokeStyle='rgba(238,243,247,.34)';
+    brctx.lineWidth=1;
+    const columns=8,rows=6;
+    for(let column=1;column<columns;column++){
+      const x=g.ox+g.mapW*column/columns;
+      brctx.beginPath();brctx.moveTo(x,g.oy);brctx.lineTo(x,g.oy+g.mapH);brctx.stroke();
+    }
+    for(let row=1;row<rows;row++){
+      const y=g.oy+g.mapH*row/rows;
+      brctx.beginPath();brctx.moveTo(g.ox,y);brctx.lineTo(g.ox+g.mapW,y);brctx.stroke();
+    }
+    brctx.restore();
+
+    drawIslandMapLabels(brctx,g,false);
+
+    for(const bot of bots){
+      if(bot.dead)continue;
+      const px=g.mapX(bot.x),py=g.mapY(bot.y);
+      brctx.fillStyle='#ff5d67';
+      brctx.fillRect(px-2,py-2,4,4);
+      brctx.strokeStyle='#101820';
+      brctx.lineWidth=1;
+      brctx.strokeRect(px-2.5,py-2.5,5,5);
+    }
+
+    brctx.save();
+    brctx.fillStyle='#101820';
+    brctx.fillRect(g.ox,g.oy,g.mapW,40);
+    brctx.fillStyle='#eef3f7';
+    brctx.font='1000 17px Arial';
+    brctx.textAlign='left';
+    brctx.fillText('ENTRY SECTOR CONTROL',g.ox+14,g.oy+25);
+    brctx.fillStyle='#ffcf58';
+    brctx.fillRect(g.ox+g.mapW-120,g.oy+7,105,25);
+    brctx.strokeStyle='#eef3f7';
+    brctx.lineWidth=2;
+    brctx.strokeRect(g.ox+g.mapW-120,g.oy+7,105,25);
+    brctx.fillStyle='#101820';
+    brctx.font='1000 13px Arial';
+    brctx.textAlign='center';
+    brctx.fillText('T-'+Math.ceil(br.timer||30)+'s',g.ox+g.mapW-67.5,g.oy+24);
+    brctx.restore();
+
+    if(br.selected){
+      const safe=nearestIslandPoint(br.selected.x,br.selected.y,180);
+      br.selected=safe;
+      const sx=g.mapX(safe.x),sy=g.mapY(safe.y);
+      const pulse=1+Math.sin(performance.now()/150)*.08;
+      brctx.save();
+      brctx.strokeStyle='#101820';
+      brctx.lineWidth=5;
+      brctx.beginPath();brctx.arc(sx,sy,22*pulse,0,Math.PI*2);brctx.stroke();
+      brctx.fillStyle='#ffcf58';
+      brctx.fillRect(sx-8*pulse,sy-8*pulse,16*pulse,16*pulse);
+      brctx.strokeStyle='#eef3f7';
+      brctx.lineWidth=2;
+      brctx.strokeRect(sx-8*pulse,sy-8*pulse,16*pulse,16*pulse);
+      brctx.fillStyle='#101820';
+      brctx.fillRect(sx+17,sy-25,118,23);
+      brctx.fillStyle='#eef3f7';
+      brctx.font='1000 11px Arial';
+      brctx.textAlign='left';
+      brctx.fillText('SECTOR LOCKED',sx+24,sy-10);
+      brctx.restore();
+    }else{
+      const width=276,height=31,x=g.cw/2-width/2,y=g.ch-45;
+      brctx.fillStyle='#eef3f7';
+      brctx.fillRect(x,y,width,height);
+      brctx.strokeStyle='#101820';
+      brctx.lineWidth=3;
+      brctx.strokeRect(x,y,width,height);
+      brctx.fillStyle='#101820';
+      brctx.font='1000 12px Arial';
+      brctx.textAlign='center';
+      brctx.fillText('CLICK A VALID LAND SECTOR',g.cw/2,y+20);
+    }
+
+    brctx.strokeStyle='#101820';
+    brctx.lineWidth=4;
+    brctx.strokeRect(g.ox+2,g.oy+2,g.mapW-4,g.mapH-4);
+  };
+
+  // -------------------------------------------------------------------------
+  // Leaderboard profile viewer: responsive, scrollable, cleaner hierarchy.
+  // -------------------------------------------------------------------------
+  function releaseInstallInGameProfileLayout(){
+    const card=$('inGameProfileOverlay')?.querySelector('.inGameProfileCard');
+    if(!card||card.dataset.releaseProfileLayout)return;
+    card.dataset.releaseProfileLayout='1';
+
+    const top=card.querySelector('.inGameProfileTop');
+    const banner=$('inGameProfileBanner');
+    const identity=card.querySelector('.inGameProfileIdentity');
+    if(banner&&identity&&!banner.contains(identity)){
+      banner.appendChild(identity);
+    }
+
+    const scroll=document.createElement('div');
+    scroll.className='inGameProfileScroll';
+    [...card.children].filter(child=>child!==top).forEach(child=>scroll.appendChild(child));
+    card.appendChild(scroll);
+
+    const label=document.createElement('div');
+    label.className='inGameProfileViewerLabel';
+    label.innerHTML='<span>PLAYER PROFILE</span><small>SCROLL FOR FULL ACCOUNT DETAILS</small>';
+    top?.prepend(label);
+  }
+
+  const releaseBaseRenderInGameProfile=renderInGameProfile;
+  renderInGameProfile=function(data){
+    releaseInstallInGameProfileLayout();
+    const result=releaseBaseRenderInGameProfile.apply(this,arguments);
+    const stats=normalizeAccountProgress(data?.progress).stats;
+    const cards=[...($('inGameProfileStats')?.children||[])];
+    const playtime=cards.find(card=>card.querySelector('span')?.textContent.trim().toLowerCase()==='playtime');
+    if(playtime){
+      const seconds=Math.max(0,Number(stats.playtime_seconds)||0);
+      const hours=Math.floor(seconds/3600);
+      const minutes=Math.floor((seconds%3600)/60);
+      playtime.querySelector('b').textContent=hours?`${hours}h ${minutes}m`:`${minutes}m`;
+    }
+    decorateVerifiedProfileBadge($('inGameProfileOverlay'),data?.profile?.id);
+    const scroll=$('inGameProfileOverlay')?.querySelector('.inGameProfileScroll');
+    if(scroll)scroll.scrollTop=0;
+    return result;
+  };
+
+  releaseInstallInGameProfileLayout();
+
+  // Reapply profile badge placement after role lookups.
+  const releaseBaseRememberVerifiedRole=rememberVerifiedRole;
+  rememberVerifiedRole=function(userId,accountRole){
+    const result=releaseBaseRememberVerifiedRole.apply(this,arguments);
+    if(socialState.currentProfile?.profile?.id===userId){
+      decorateVerifiedProfileBadge(document.querySelector('[data-modal="profile"]'),userId);
+    }
+    return result;
+  };
+
+  /* ===== END SOCIAL / BATTLE ROYALE / PROFILE / RELEASE OVERHAUL ===== */
+
+
 })();
 </script>
 
@@ -24332,6 +25423,562 @@ body[data-game-ui-size="big"] #pendingUpgradeTab{
   }
   .developerSanctionRow>button{
     grid-column:1/-1;
+  }
+}
+</style>
+
+
+<style id="fragment-v1-server-validated-debug-style">
+/*
+  The debug DOM is not displayable until a server-issued grant marks it.
+  Normal Shift+1 presses remain silent.
+*/
+#debugGui:not([data-server-authorized="1"]){
+  display:none!important;
+}
+body:not(.verifiedDeveloperAccount) #debugGui{
+  display:none!important;
+}
+#debugGui[data-server-authorized="1"] .debugTopBar{
+  border-bottom-color:#ffcf58!important;
+}
+#debugGui[data-server-authorized="1"] .debugTopBar:before{
+  content:"VERIFIED";
+  display:grid;
+  place-items:center;
+  min-height:22px;
+  padding:2px 6px;
+  margin-right:8px;
+  border:2px solid #101820;
+  background:#ffcf58;
+  color:#101820;
+  font-size:7px;
+  font-weight:1000;
+  letter-spacing:.1em;
+}
+</style>
+
+
+<style id="fragment-v1-social-br-profile-release-overhaul-style">
+/* Release header cleanup */
+.v3Wordmark{
+  align-items:center!important;
+}
+.v3Wordmark>b{
+  margin:0!important;
+}
+.releaseStatus span{
+  white-space:nowrap;
+}
+
+/* Developer badge sits beside the actual account name. */
+.developerNameHeading{
+  display:flex!important;
+  align-items:center!important;
+  flex-wrap:wrap!important;
+  gap:9px!important;
+}
+.verifiedDeveloperNameBadge{
+  display:inline-grid;
+  place-items:center;
+  min-height:27px;
+  padding:3px 9px;
+  border:3px solid #101820;
+  background:#ffcf58;
+  color:#101820!important;
+  font-size:10px!important;
+  font-weight:1000!important;
+  letter-spacing:.09em!important;
+  line-height:1!important;
+  text-shadow:none!important;
+  box-shadow:3px 3px 0 rgba(0,0,0,.22);
+}
+.verifiedDeveloperProfileBadge{
+  display:none!important;
+}
+
+/* Complete roster belongs only to Squad. */
+.matchBotFillCard.hidden{
+  display:none!important;
+}
+
+/* Friend requests */
+.friendRequestPanels{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+  margin:10px 0;
+}
+.friendRequestSection{
+  min-width:0;
+  padding:8px;
+  border:3px solid #101820;
+  background:#cbd5df;
+}
+.friendRequestHeading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:7px;
+}
+.friendRequestHeading b{
+  color:#101820;
+  font-size:10px;
+  letter-spacing:.06em;
+}
+.friendRequestHeading span{
+  min-width:25px;
+  height:25px;
+  display:grid;
+  place-items:center;
+  border:2px solid #101820;
+  background:#ffcf58;
+  color:#101820;
+  font-size:9px;
+  font-weight:1000;
+}
+.friendRequestList{
+  display:grid;
+  gap:6px;
+}
+.friendRequestCard{
+  display:grid;
+  grid-template-columns:35px minmax(0,1fr);
+  gap:7px;
+  padding:7px;
+  border:2px solid #101820;
+  background:#eef3f7;
+}
+.friendRequestAvatar{
+  width:34px;
+  height:34px;
+  display:grid;
+  place-items:center;
+  grid-row:1/3;
+  border:2px solid #101820;
+  background:#315fc9;
+  color:#fff;
+  font-size:12px;
+  font-weight:1000;
+}
+.friendRequestMeta{
+  min-width:0;
+}
+.friendRequestMeta b,
+.friendRequestMeta span,
+.friendRequestMeta small{
+  display:block;
+  overflow-wrap:anywhere;
+}
+.friendRequestMeta b{
+  color:#101820;
+  font-size:10px;
+}
+.friendRequestMeta span{
+  margin-top:2px;
+  color:#315fc9;
+  font-size:8px;
+  font-weight:1000;
+}
+.friendRequestMeta small{
+  margin-top:2px;
+  color:#526170;
+  font-size:8px;
+}
+.friendRequestActions{
+  grid-column:1/-1;
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+}
+.friendRequestActions button{
+  min-height:28px;
+  padding:3px 6px;
+  border:2px solid #101820;
+  background:#fff;
+  color:#101820;
+  font-size:8px;
+  font-weight:1000;
+}
+.friendRequestActions button.primary{
+  background:#315fc9;
+  color:#fff;
+}
+.friendRequestEmpty{
+  padding:10px 6px;
+  border:2px dashed #7b8794;
+  background:#e2e8ee;
+  color:#526170;
+  text-align:center;
+  font-size:8px;
+  font-weight:900;
+}
+.socialFriendsHeading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin:10px 0 6px;
+  padding:6px 8px;
+  border:3px solid #101820;
+  background:#eef3f7;
+}
+.socialFriendsHeading b{
+  color:#101820;
+  font-size:11px;
+}
+.socialFriendsHeading span{
+  color:#526170;
+  font-size:8px;
+  font-weight:900;
+}
+
+/* Battle Royale — rebuilt to use the same hard-edged visual language. */
+#brSpawnOverlay{
+  align-items:center!important;
+  justify-content:center!important;
+  padding:14px!important;
+  overflow-y:auto!important;
+  background-color:#1d252d!important;
+  background-image:
+    linear-gradient(#2d3944 2px,transparent 2px),
+    linear-gradient(90deg,#2d3944 2px,transparent 2px)!important;
+  background-size:64px 64px!important;
+}
+#brSpawnOverlay:before{
+  display:none!important;
+}
+#brSpawnCard{
+  width:min(1000px,96vw)!important;
+  max-height:none!important;
+  overflow:visible!important;
+  padding:0!important;
+  border:5px solid #101820!important;
+  border-radius:5px!important;
+  background:#c7d0da!important;
+  color:#101820!important;
+  box-shadow:10px 10px 0 rgba(0,0,0,.32)!important;
+}
+#brSpawnCard:before{
+  content:"BATTLE ROYALE · ENTRY CONTROL"!important;
+  display:block!important;
+  padding:9px 13px!important;
+  border-bottom:4px solid #101820!important;
+  background:#8b2638!important;
+  color:#fff!important;
+  font-size:11px!important;
+  font-weight:1000!important;
+  letter-spacing:.14em!important;
+}
+#brSpawnTop{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) 142px!important;
+  gap:9px!important;
+  margin:0!important;
+  padding:10px!important;
+  border-bottom:4px solid #101820!important;
+  background:#aebac6!important;
+}
+#brSpawnTop>div:first-child{
+  padding:10px!important;
+  border:3px solid #101820!important;
+  background:#eef3f7!important;
+  box-shadow:none!important;
+}
+#brSpawnCard h2{
+  margin:0 0 5px!important;
+  color:#101820!important;
+  font-size:34px!important;
+  line-height:.95!important;
+  letter-spacing:-1px!important;
+  text-shadow:none!important;
+}
+#brSpawnCard p{
+  margin:0!important;
+  color:#526170!important;
+  font-size:11px!important;
+  line-height:1.4!important;
+}
+#brSpawnTimerBox{
+  min-height:84px!important;
+  display:grid!important;
+  place-items:center!important;
+  align-content:center!important;
+  padding:8px!important;
+  border:3px solid #101820!important;
+  background:#ffcf58!important;
+  box-shadow:none!important;
+}
+#brSpawnTimerLabel{
+  color:#101820!important;
+  font-size:9px!important;
+  font-weight:1000!important;
+  letter-spacing:.12em!important;
+}
+#brSpawnTimer{
+  color:#101820!important;
+  font-size:39px!important;
+  line-height:1!important;
+  text-shadow:none!important;
+}
+#brSpawnMap{
+  display:block!important;
+  width:min(900px,calc(100% - 20px))!important;
+  height:auto!important;
+  aspect-ratio:3 / 2!important;
+  max-height:none!important;
+  margin:10px auto!important;
+  border:4px solid #101820!important;
+  border-radius:2px!important;
+  background:#101820!important;
+  box-shadow:none!important;
+  object-fit:contain!important;
+}
+#brSpawnHint{
+  margin:0 10px 10px!important;
+  padding:8px 10px!important;
+  border:3px solid #101820!important;
+  background:#eef3f7!important;
+  color:#526170!important;
+  font-size:9px!important;
+  font-weight:1000!important;
+  letter-spacing:.07em!important;
+  box-shadow:none!important;
+}
+#brDropFlash{
+  background:#101820!important;
+  color:#ffcf58!important;
+  font-size:clamp(34px,7vw,68px)!important;
+  letter-spacing:-1px!important;
+  text-shadow:5px 5px 0 #8b2638!important;
+}
+#brVictory{
+  background:rgba(29,37,45,.95)!important;
+  background-image:
+    linear-gradient(#2d3944 2px,transparent 2px),
+    linear-gradient(90deg,#2d3944 2px,transparent 2px)!important;
+  background-size:64px 64px!important;
+}
+#brVictoryCard{
+  width:min(680px,92vw)!important;
+  padding:28px!important;
+  border:5px solid #101820!important;
+  background:#eef3f7!important;
+  color:#101820!important;
+  box-shadow:10px 10px 0 rgba(0,0,0,.34)!important;
+}
+#brVictoryCard h2{
+  color:#8b2638!important;
+  font-size:44px!important;
+  text-shadow:none!important;
+  animation:none!important;
+}
+#brVictoryCard p{
+  color:#526170!important;
+}
+#brVictoryCard button{
+  min-height:42px;
+  border:3px solid #101820;
+  background:#ffcf58;
+  color:#101820;
+  font-weight:1000;
+}
+
+/* Scrollable, properly sized leaderboard profile viewer. */
+.inGameProfileOverlay{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  padding:14px!important;
+  overflow:hidden!important;
+  background:#1d252df2!important;
+}
+.inGameProfileOverlay.hidden{
+  display:none!important;
+}
+.inGameProfileCard{
+  width:min(930px,calc(100vw - 28px))!important;
+  height:min(820px,calc(100vh - 28px))!important;
+  max-height:none!important;
+  display:grid!important;
+  grid-template-rows:auto minmax(0,1fr)!important;
+  overflow:hidden!important;
+  padding:0!important;
+  border:5px solid var(--pf-border,#101820)!important;
+  border-radius:5px!important;
+  background:var(--pf-shell,#c7d0da)!important;
+  box-shadow:10px 10px 0 rgba(0,0,0,.34)!important;
+}
+.inGameProfileTop{
+  position:relative!important;
+  display:grid!important;
+  grid-template-columns:auto minmax(0,1fr) auto!important;
+  align-items:stretch!important;
+  gap:0!important;
+  padding:0!important;
+  border-bottom:5px solid var(--pf-border,#101820)!important;
+  background:var(--pf-panel,#eef3f7)!important;
+}
+.inGameProfileViewerLabel{
+  min-width:150px;
+  display:grid;
+  align-content:center;
+  gap:3px;
+  padding:10px;
+  border-right:4px solid var(--pf-border,#101820);
+  background:var(--pf-panel-strong,#fff);
+}
+.inGameProfileViewerLabel span{
+  color:var(--pf-text,#101820)!important;
+  font-size:10px!important;
+  font-weight:1000!important;
+  letter-spacing:.12em!important;
+}
+.inGameProfileViewerLabel small{
+  color:var(--pf-muted,#526170)!important;
+  font-size:7px!important;
+  font-weight:900!important;
+}
+.inGameProfileBanner{
+  width:100%!important;
+  height:auto!important;
+  min-height:116px!important;
+  display:grid!important;
+  grid-template-columns:88px minmax(0,1fr)!important;
+  align-items:center!important;
+  gap:13px!important;
+  padding:12px 15px!important;
+  border:0!important;
+  background:var(--pf-shell,#315fc9)!important;
+}
+.inGameProfileBanner canvas{
+  width:84px!important;
+  height:84px!important;
+  margin:0!important;
+  border:4px solid var(--pf-border,#101820)!important;
+  background:var(--pf-panel-strong,#fff)!important;
+}
+.inGameProfileIdentity{
+  min-width:0;
+}
+.inGameProfileIdentity h2{
+  margin:0!important;
+  color:var(--pf-text,#101820)!important;
+  font-size:clamp(24px,4vw,34px)!important;
+  line-height:1!important;
+  overflow-wrap:anywhere;
+}
+.inGameProfileIdentity b,
+.inGameProfileIdentity span{
+  margin-top:5px;
+  color:var(--pf-text,#101820)!important;
+}
+.inGameProfileTop>button{
+  position:sticky!important;
+  top:0!important;
+  width:48px!important;
+  min-width:48px!important;
+  height:48px!important;
+  margin:8px!important;
+  border:4px solid var(--pf-border,#101820)!important;
+  background:var(--pf-panel-strong,#fff)!important;
+  color:var(--pf-text,#101820)!important;
+  z-index:3;
+}
+.inGameProfileScroll{
+  min-height:0!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain!important;
+  touch-action:pan-y!important;
+  scrollbar-gutter:stable!important;
+  padding:10px!important;
+}
+.inGameProfileScroll>p,
+.inGameProfileFavorite,
+.inGameProfileScroll>div:not(.inGameProfileStats){
+  border:3px solid var(--pf-border,#101820)!important;
+  background:var(--pf-panel,#eef3f7)!important;
+}
+.inGameProfileScroll>p{
+  margin:0 0 9px!important;
+  padding:10px!important;
+  color:var(--pf-text,#101820)!important;
+  font-size:11px!important;
+  line-height:1.5!important;
+}
+.inGameProfileFavorite{
+  margin:0 0 9px!important;
+  padding:10px!important;
+}
+.inGameProfileStats{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  gap:7px!important;
+  margin:0 0 9px!important;
+}
+.inGameProfileStats>div{
+  min-height:67px!important;
+  padding:9px 7px 8px 39px!important;
+}
+.inGameProfileStats b{
+  font-size:16px!important;
+}
+.inGameProfileScroll>div>h3{
+  margin:0!important;
+  padding:8px 9px!important;
+  border-bottom:3px solid var(--pf-border,#101820)!important;
+  color:var(--pf-text,#101820)!important;
+  font-size:10px!important;
+  letter-spacing:.1em!important;
+}
+.inGameProfileShowcase{
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  gap:6px!important;
+  padding:8px!important;
+}
+.inGameProfileShowcase .profileVisualCosmetic,
+.inGameProfileShowcase .profileVisualAchievement{
+  min-height:125px!important;
+}
+.inGameProfileShowcase .profileCosmeticVisual{
+  height:64px!important;
+  min-height:64px!important;
+}
+
+@media(max-width:760px){
+  .friendRequestPanels{
+    grid-template-columns:1fr;
+  }
+  #brSpawnTop{
+    grid-template-columns:1fr!important;
+  }
+  #brSpawnCard h2{
+    font-size:28px!important;
+  }
+  .inGameProfileCard{
+    width:calc(100vw - 14px)!important;
+    height:calc(100vh - 14px)!important;
+  }
+  .inGameProfileTop{
+    grid-template-columns:1fr auto!important;
+  }
+  .inGameProfileViewerLabel{
+    display:none!important;
+  }
+  .inGameProfileBanner{
+    grid-template-columns:68px minmax(0,1fr)!important;
+    min-height:98px!important;
+    padding:9px!important;
+  }
+  .inGameProfileBanner canvas{
+    width:64px!important;
+    height:64px!important;
+  }
+  .inGameProfileStats{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  .inGameProfileShowcase{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
   }
 }
 </style>

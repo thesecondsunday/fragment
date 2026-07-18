@@ -13,7 +13,7 @@ const WORLD_W = 9600, WORLD_H = 6400, HALF_W = WORLD_W / 2, HALF_H = WORLD_H / 2
 const MAX_SQUAD_PLAYERS = 6;
 const MAX_FRAME_BYTES = 1024 * 1024;
 const MAX_SOCKET_BACKLOG = 2 * 1024 * 1024;
-const SUPPORTED_MODES = new Set(['normal','test','duo','squad','teams','br','bossrush']);
+const SUPPORTED_MODES = new Set(['normal','duo','squad','teams','br','bossrush']);
 const DROPPABLE_PACKET_TYPES = new Set(['peer_state','bots_state','fragments_state','world_state','bosses_state']);
 const rooms = new Map();
 const clients = new Set();
@@ -27,7 +27,7 @@ const playerReports = [];
 const MODE_RULES = {
   normal:{capacity:15, partyMax:6, targetLow:8, targetMid:12, targetHigh:15, waitMs:8000, joinMid:true, spectate:true},
   duo:{capacity:12, partyMax:2, targetLow:8, targetMid:10, targetHigh:12, waitMs:9000, joinMid:true, spectate:true},
-  squad:{capacity:18, partyMax:6, targetLow:8, targetMid:12, targetHigh:18, waitMs:9000, joinMid:true, spectate:true},
+  squad:{capacity:6, partyMax:6, targetLow:18, targetMid:18, targetHigh:18, waitMs:9000, joinMid:true, spectate:true},
   teams:{capacity:20, partyMax:6, targetLow:12, targetMid:16, targetHigh:20, waitMs:10000, joinMid:true, spectate:true},
   br:{capacity:40, partyMax:4, targetLow:24, targetMid:32, targetHigh:40, waitMs:18000, joinMid:false, spectate:true},
   bossrush:{capacity:6, partyMax:6, targetLow:1, targetMid:3, targetHigh:6, waitMs:7000, joinMid:true, spectate:true},
@@ -118,7 +118,9 @@ function sendDamageToClient(client, payload){
 function sanitizeSnapshot(client, room, raw){
   raw = raw && typeof raw === 'object' ? raw : {};
   const previous = client.snapshot;
-  const maxHp = finiteNumber(raw.maxHp, finiteNumber(previous?.maxHp,100,1,100000), 1, 100000);
+  const debugAuthorized=developerDebugSnapshotAuthorized(client);
+  const playerMaxHpLimit=debugAuthorized?100000:1200;
+  const maxHp = finiteNumber(raw.maxHp, finiteNumber(previous?.maxHp,100,1,playerMaxHpLimit), 1, playerMaxHpLimit);
   const dead = !!raw.dead;
   if((!previous && !dead) || (previous?.dead && !dead)){
     client.spawnProtectedUntil = Date.now() + 2600;
@@ -144,7 +146,13 @@ function sanitizeSnapshot(client, room, raw){
   snap.frags = Math.floor(finiteNumber(raw.frags,0,0,1e6));
   snap.dead = dead;
   snap.team = client.serverTeam || teamForClient(room,client);
-  snap.archetype = safeToken(raw.archetype || 'starter',48) || 'starter';
+  const requestedArchetype=safeToken(raw.archetype || 'starter',48) || 'starter';
+  const previousSafeArchetype=previous?.archetype&&previous.archetype!=='root_admin'
+    ?safeToken(previous.archetype,48)
+    :'starter';
+  snap.archetype=(requestedArchetype==='root_admin'&&!debugAuthorized)
+    ?previousSafeArchetype
+    :requestedArchetype;
   snap.bodyColor = /^#[0-9a-fA-F]{3,8}$/.test(String(raw.bodyColor||'')) ? String(raw.bodyColor) : '#5d8cff';
   snap.skinKind = safeToken(raw.skinKind || 'circle',32) || 'circle';
   snap.spawnInvincible = finiteNumber(raw.spawnInvincible,0,0,20);
@@ -154,7 +162,7 @@ function sanitizeSnapshot(client, room, raw){
   snap.abilities = Array.isArray(raw.abilities) ? raw.abilities.slice(0,5).map(v=>v==null?null:safeToken(v,48)) : [];
   snap.clones = Array.isArray(raw.clones) ? raw.clones.slice(0,3).map((clone,index)=>{
     clone = clone && typeof clone==='object' ? clone : {};
-    const cloneMaxHp=finiteNumber(clone.maxHp,Math.max(1,maxHp*.55),1,100000);
+    const cloneMaxHp=finiteNumber(clone.maxHp,Math.max(1,maxHp*.55),1,debugAuthorized?100000:800);
     return {
       cloneId:safeToken(clone.cloneId||('clone_'+index),64)||('clone_'+index),
       name:safeName(clone.name||`${snap.name} Clone ${index+1}`),
@@ -167,7 +175,9 @@ function sanitizeSnapshot(client, room, raw){
       hp:finiteNumber(clone.hp,cloneMaxHp,0,cloneMaxHp),
       maxHp:cloneMaxHp,
       dead:!!clone.dead,
-      archetype:safeToken(clone.archetype||snap.archetype,48)||snap.archetype,
+      archetype:(safeToken(clone.archetype||snap.archetype,48)==='root_admin'&&!debugAuthorized)
+        ?'starter'
+        :(safeToken(clone.archetype||snap.archetype,48)||snap.archetype),
       bodyColor:/^#[0-9a-fA-F]{3,8}$/.test(String(clone.bodyColor||''))?String(clone.bodyColor):'#66d98b',
       skinKind:safeToken(clone.skinKind||'circle',32)||'circle',
       invisible:finiteNumber(clone.invisible,0,0,30)
@@ -209,6 +219,7 @@ function makeRoom(code){
     lastBackfillAt:0,
     emptySince:0,
     fillBots:true,
+    completeRoster:true,
     matchmaking:false,
     bossRushJoinOpen:false,
     bossRushPhase:'closed'
@@ -273,6 +284,7 @@ function removeFromRoom(client,options={}){
     }
   }
 
+  revokeDeveloperDebug(client,false);
   client.room=null;
   client.ready=false;
   client.inMatch=false;
@@ -335,29 +347,49 @@ function peersFor(client){
 
 const botNames = ['Echo','Mira','Waltz','Kite','Phantom','Ivy','Rook','Bolt','June','Quartz','HomingBug','Needle','Comet','Vector','Orbit','FlareFox','Drift','Cannon','Sable','Nova','Atlas','Vega','Pixel','Frost','Rift','Juno','Nyx','Astra','Mako','Rune','Vale','Onyx','Luma','Cinder','Glitch','Delta','Zero','Solar','Iris','Vortex','Prism','Flux','Ash','Cobalt','Ember','Halo','Zenith','Crow','Pico','Blade'];
 const archetypes = ['starter','swordsman','ronin','azure','solar_lance','hakka','deadeye','hydra','world_eater','black_star','bloodlord','bullet_storm','machine','minigunner','sniper','rocketeer','gravity_mage','stormcaller'];
+const BR_SERVER_BOT_PATHS=[
+  ['starter','swordsman','samurai','ronin'],
+  ['starter','kindler','hellflame','azure'],
+  ['starter','sniper','marksman','deadeye'],
+  ['starter','machine','minigunner','bullet_storm'],
+  ['starter','cloner','doppelgaenger','hakka'],
+  ['starter','gravity_mage','singularity','black_star'],
+  ['starter','rocketeer','destroyer','warhead'],
+  ['starter','spark','stormcaller','thunder_god']
+];
 const colors = ['#ff775d','#6a7cf7','#53b07b','#ffcf58','#76d7ff','#cb80ff','#d84a4a','#9aa9b8'];
 function targetPopulationForMode(mode,humanCount){
-  const rules=modeRules(mode);
-  if(mode==='test') return 7;
+  mode=cleanMode(mode);
   if(mode==='bossrush') return humanCount;
-  if(humanCount<=2) return rules.targetLow;
-  if(humanCount<=5) return rules.targetMid;
-  return rules.targetHigh;
+  if(mode==='squad') return 18;
+  return modeRules(mode).capacity;
 }
 function botCountForMode(mode,humanCount=1,fillBots=true){
-  if(!fillBots || mode==='bossrush') return 0;
-  if(mode==='test') return 6;
+  if(mode==='bossrush') return 0;
   return Math.max(0,targetPopulationForMode(mode,humanCount)-humanCount);
 }
-function teamForBot(mode, i, count){
-  if(mode === 'teams') return i < Math.ceil(count/2) ? 'blue' : 'red';
-  if(['duo','squad','test'].includes(mode)) return 'red';
+function teamForBot(room,i,count){
+  const mode=room?.mode||'normal';
+  if(mode==='teams'){
+    const perTeam=Math.floor(modeRules('teams').capacity/2);
+    const blueHumans=[...room.clients].filter(client=>(client.serverTeam||client.matchTeam)==='blue').length;
+    const redHumans=[...room.clients].filter(client=>(client.serverTeam||client.matchTeam)==='red').length;
+    const blueNeed=Math.max(0,perTeam-blueHumans);
+    return i<blueNeed?'blue':'red';
+  }
+  if(mode==='squad'){
+    const alliedNeed=room.completeRoster!==false
+      ?Math.max(0,6-room.clients.size)
+      :0;
+    return i<alliedNeed?'blue':'red';
+  }
+  if(mode==='duo') return 'red';
   return 'neutral';
 }
 function createServerBot(room,i,count){
-  const team = teamForBot(room.mode, i, count);
-  const passive = room.mode === 'test';
-  const namePrefix = room.mode === 'br' ? 'BR ' : room.mode === 'teams' ? (team === 'blue' ? 'Blue ' : 'Red ') : room.mode === 'squad' ? 'Enemy ' : '';
+  const team = teamForBot(room, i, count);
+  const passive = false;
+  const namePrefix = room.mode === 'br' ? 'BR ' : room.mode === 'teams' ? (team === 'blue' ? 'Blue ' : 'Red ') : room.mode === 'squad' ? (team==='blue'?'Squad ':'Enemy ') : '';
   const point = room.mode === 'test'
     ? {x:((i % 4) - 1.5) * 260, y:(Math.floor(i / 4) - 1) * 230}
     : randomArenaPoint(720,360);
@@ -370,14 +402,15 @@ function createServerBot(room,i,count){
     hp: passive ? 280 : 115, maxHp: passive ? 280 : 115,
     score:0, frags:0, level:1,
     team, ally:team === 'blue', passive,
-    archetype: archetypes[i % archetypes.length],
+    archetype: room.mode==='br'?'starter':archetypes[i % archetypes.length],
+    brPathIndex:i%BR_SERVER_BOT_PATHS.length, brEvolutionStage:0,
     bodyColor: passive ? '#7fd8ff' : colors[i % colors.length],
-    fireCd:rand(1.3,2.1), think:0, strafe:Math.random()<0.5 ? -1 : 1,
-    aimError:rand(-0.10,0.10), dodge:rand(.75,1.25), confidence:rand(.75,1.22),
+    fireCd:room.mode==='br'?rand(3.0,4.2):rand(1.3,2.1), think:0, strafe:Math.random()<0.5 ? -1 : 1,
+    aimError:rand(-0.10,0.10), dodge:rand(.75,1.25), confidence:room.mode==='br'?rand(.52,.88):rand(.75,1.22),
     meleeCd:rand(.9,1.5), lastTargetId:null, targetLockUntil:0,
     personality:['duelist','hunter','scavenger','coward','roamer'][i%5],
     roamX:roam.x, roamY:roam.y,
-    spawnGraceUntil:Date.now()+rand(1700,2600),
+    spawnGraceUntil:room.mode==='br'?Date.now()+32000:Date.now()+rand(1700,2600),
     dead:false, respawnAt:0, lastHitBy:null
   };
 }
@@ -417,6 +450,7 @@ function startMatch(room){
   assignRoomTeams(room);
   const now=Date.now();
   room.startedAt=now;
+  room.brCombatStartsAt=room.mode==='br'?now+30000:now;
   room.lastBackfillAt=now;
   room.bossRushJoinOpen=room.mode==='bossrush';
   room.bossRushPhase=room.mode==='bossrush'?'preparation':'closed';
@@ -1280,7 +1314,12 @@ function sanitizeProjectileOptions(room, client, raw){
     let count=0;
     for(const [key,value] of Object.entries(raw)){
       if(count++>64 || ['owner','hitIds'].includes(key)) continue;
-      if(typeof value==='number' && Number.isFinite(value)) out[key]=clamp(value,-100000,100000);
+      if(typeof value==='number' && Number.isFinite(value)){
+        const debugAuthorized=developerDebugSnapshotAuthorized(client);
+        const damageLike=['damage','dmg','tickDamage','explosionDamage'].includes(key);
+        const limit=damageLike?(debugAuthorized?5000:450):100000;
+        out[key]=clamp(value,-limit,limit);
+      }
       else if(typeof value==='boolean') out[key]=value;
       else if(typeof value==='string') out[key]=value.slice(0,96);
     }
@@ -1790,6 +1829,237 @@ async function developerUpdateReport(client,msg){
   moderatorNotice(client,'Report #'+reportId+' marked '+status+'.');
 }
 
+
+const DEVELOPER_DEBUG_EVOLUTIONS=new Set([
+  'starter','double','triple','hydra','sniper','marksman','deadeye',
+  'devourer','gluttony','world_eater','boomerang','orbiter','planetary',
+  'rocketeer','destroyer','warhead','machine','minigunner','bullet_storm',
+  'swordsman','samurai','ronin','cloner','doppelgaenger','hakka',
+  'kindler','hellflame','azure','laser','laser_cannon','solar_lance',
+  'drone','swarm_master','hive_mind','spark','stormcaller','thunder_god',
+  'shadow','phantom','nightmare','gravity_mage','singularity','black_star',
+  'parasite','leech_king','bloodlord','selfburn','matter_reaper',
+  'black_hole','blood_spark','voidblade','rocket_swarm','railgunner',
+  'storm_core','root_admin'
+]);
+const DEVELOPER_DEBUG_VARIANTS=new Set([
+  'hydra','deadeye','world_eater','planetary','warhead','bullet_storm',
+  'ronin','hakka','azure','solar_lance','hive_mind','thunder_god',
+  'nightmare','black_star','bloodlord','selfburn'
+]);
+const DEVELOPER_DEBUG_FRAGMENTS=new Set([
+  'mirror','void','titan','glass','gravity','blood','frost','memory',
+  'echo','swift','reach','ember'
+]);
+const DEVELOPER_DEBUG_ABILITIES=new Set([
+  'bullet_spam','freeze_ray','gravity_bullet','precision_strike','flare',
+  'magnet','knockback','poison_dart','ricochet_dart','super_speed',
+  'fragment_mine','reflect_shield','loot_radar','swap_position','wall_drop',
+  'judgement_laser','fake_death','copycat','bullet_eater','fragment_storm'
+]);
+const DEVELOPER_DEBUG_WORLDS=Object.freeze({
+  blood:{key:'blood',name:'Blood Moon',color:'#a84343',desc:'Red blood zones bleed fighters and reward risky close combat.'},
+  frozen:{key:'frozen',name:'Frozen World',color:'#6ca7d8',desc:'Ice fields form around the map and heavily slow anyone inside.'},
+  storm:{key:'storm',name:'Storm Front',color:'#5f6f8f',desc:'Warning circles appear before lightning strikes and static fields.'},
+  overgrowth:{key:'overgrowth',name:'Overgrowth',color:'#4d9460',desc:'Vine gardens slow movement but grow natural fragments.'},
+  zero:{key:'zero',name:'Zero Gravity',color:'#8e86cf',desc:'Gravity bubbles make movement floaty and bend projectiles.'},
+  eclipse:{key:'eclipse',name:'Lunar Eclipse',color:'#27334f',desc:'Dark eclipse zones hide movement and punish careless chases.'},
+  meteor:{key:'meteor',name:'Meteor Shower',color:'#bd6b43',desc:'Meteors show warning circles before impact, leaving burning loot zones.'},
+  corruption:{key:'corruption',name:'Corruption Bloom',color:'#70429c',desc:'Void blooms drain health but can crystallize into rare fragments.'},
+  golden:{key:'golden',name:'Golden Rain',color:'#d6a84a',desc:'Golden showers create safe loot zones and bonus fragments.'}
+});
+const DEVELOPER_DEBUG_SESSION_MS=10*60*1000;
+const DEVELOPER_DEBUG_ACTION_GAP_MS=90;
+
+function developerDebugScope(client){
+  if(!isDeveloper(client)) return null;
+
+  if(!client.room){
+    return {kind:'offline',roomCode:null,mode:'offline'};
+  }
+
+  const room=rooms.get(client.room);
+  if(!room||!client.inMatch||!room.matchStarted){
+    return null;
+  }
+
+  return {
+    kind:'active_game',
+    roomCode:room.code,
+    mode:room.mode
+  };
+}
+
+function developerDebugSessionValid(client,token=null){
+  const session=client?.developerDebugSession;
+  if(!session||!isDeveloper(client)) return false;
+  if(Date.now()>=Number(session.expiresAt||0)) return false;
+  if(token!==null&&!crypto.timingSafeEqual(
+    Buffer.from(String(session.token||'')),
+    Buffer.from(String(token||'').padEnd(String(session.token||'').length,'\0').slice(0,String(session.token||'').length))
+  )) return false;
+
+  const currentScope=developerDebugScope(client);
+  if(!currentScope) return false;
+  if(currentScope.kind!==session.scope) return false;
+  if((currentScope.roomCode||null)!==(session.roomCode||null)) return false;
+  return true;
+}
+
+function developerDebugSnapshotAuthorized(client){
+  return developerDebugSessionValid(client,null);
+}
+
+function revokeDeveloperDebug(client,notify=true){
+  if(!client) return;
+  client.developerDebugSession=null;
+  client.developerDebugRootAdminUntil=0;
+  if(notify&&isDeveloper(client)){
+    send(client,{type:'developer_debug_revoked'});
+  }
+}
+
+async function openDeveloperDebugSession(client){
+  // Deliberately silent for ordinary players so the hidden tool is not disclosed.
+  if(!isDeveloper(client)) return;
+
+  const scope=developerDebugScope(client);
+  if(!scope){
+    send(client,{
+      type:'developer_debug_unavailable',
+      message:'Deploy into a match before opening the Debug tool.'
+    });
+    return;
+  }
+
+  const token=crypto.randomBytes(24).toString('base64url');
+  const expiresAt=Date.now()+DEVELOPER_DEBUG_SESSION_MS;
+  client.developerDebugSession={
+    token,
+    scope:scope.kind,
+    roomCode:scope.roomCode,
+    expiresAt,
+    lastActionAt:0
+  };
+
+  send(client,{
+    type:'developer_debug_granted',
+    token,
+    scope:scope.kind,
+    roomCode:scope.roomCode,
+    expiresAt
+  });
+
+  insertModerationAction({
+    moderator:client,
+    action:'debug',
+    reason:'Opened server-validated Developer Debug.',
+    roomCode:scope.roomCode,
+    metadata:{event:'open',scope:scope.kind,expiresAt:new Date(expiresAt).toISOString()}
+  }).catch(error=>console.error('[Fragment.io] Debug audit log failed:',error.message||error));
+}
+
+function normalizeDeveloperDebugPayload(action,payload){
+  payload=payload&&typeof payload==='object'?payload:{};
+
+  if(action==='set_evolution'){
+    const type=safeToken(payload.type,48);
+    if(!DEVELOPER_DEBUG_EVOLUTIONS.has(type)) throw new Error('Invalid evolution.');
+    return {type};
+  }
+
+  if(action==='set_variant'){
+    const type=safeToken(payload.type,48);
+    const fragment=safeToken(payload.fragment,48);
+    if(!DEVELOPER_DEBUG_VARIANTS.has(type)||!DEVELOPER_DEBUG_FRAGMENTS.has(fragment)){
+      throw new Error('Invalid sidegrade.');
+    }
+    if(['echo','swift','reach','ember'].includes(fragment)){
+      throw new Error('A major fragment is required.');
+    }
+    return {type,fragment};
+  }
+
+  if(action==='give_fragment'){
+    const id=safeToken(payload.id,48);
+    if(!DEVELOPER_DEBUG_FRAGMENTS.has(id)) throw new Error('Invalid fragment.');
+    return {id};
+  }
+
+  if(action==='give_ability'){
+    const id=safeToken(payload.id,48);
+    if(!DEVELOPER_DEBUG_ABILITIES.has(id)) throw new Error('Invalid ability.');
+    return {id};
+  }
+
+  if(action==='force_world'){
+    const key=safeToken(payload.key,48);
+    if(!DEVELOPER_DEBUG_WORLDS[key]) throw new Error('Invalid world change.');
+    return {key};
+  }
+
+  throw new Error('Invalid debug action.');
+}
+
+async function executeDeveloperDebugAction(client,msg){
+  // Deliberately silent for ordinary players.
+  if(!isDeveloper(client)) return;
+
+  const session=client.developerDebugSession;
+  if(!developerDebugSessionValid(client,msg.token)){
+    revokeDeveloperDebug(client,true);
+    return;
+  }
+
+  const now=Date.now();
+  if(now-Number(session.lastActionAt||0)<DEVELOPER_DEBUG_ACTION_GAP_MS){
+    return;
+  }
+  session.lastActionAt=now;
+
+  const requestId=safeToken(msg.requestId,64);
+  const action=safeToken(msg.action,48);
+  if(!requestId||!action) return;
+
+  let payload;
+  try{
+    payload=normalizeDeveloperDebugPayload(action,msg.payload);
+  }catch(error){
+    send(client,{type:'developer_debug_action_rejected',requestId});
+    return;
+  }
+
+  if(action==='force_world'&&session.roomCode){
+    const room=rooms.get(session.roomCode);
+    if(!room||!developerDebugSessionValid(client,msg.token)){
+      revokeDeveloperDebug(client,true);
+      return;
+    }
+    activateSharedWorld(room,DEVELOPER_DEBUG_WORLDS[payload.key]);
+    send(client,{type:'developer_debug_action_ok',requestId,action,scope:session.scope});
+  }else{
+    send(client,{
+      type:'developer_debug_apply',
+      requestId,
+      action,
+      payload,
+      scope:session.scope
+    });
+  }
+
+  if(action==='set_evolution'&&payload.type==='root_admin'){
+    client.developerDebugRootAdminUntil=Math.min(session.expiresAt,Date.now()+5*60*1000);
+  }
+
+  insertModerationAction({
+    moderator:client,
+    action:'debug',
+    reason:'Developer Debug action: '+action,
+    roomCode:session.roomCode,
+    metadata:{event:'action',scope:session.scope,action,payload}
+  }).catch(error=>console.error('[Fragment.io] Debug audit log failed:',error.message||error));
+}
+
 async function refreshClientProfile(client){
   if(!client?.authenticated || !client.accessToken || !client.userId) return;
   const rows=await supabaseRequest('/rest/v1/profiles?id=eq.'+encodeURIComponent(client.userId)+'&select=id,username,friend_code,about_me,equipped_title,profile_banner,profile_icon,featured_cosmetics,featured_achievements,profile_settings',client.accessToken,{method:'GET'});
@@ -1832,6 +2102,7 @@ async function authenticateSocket(client, token){
     if(party.members.has(user.id)){ client.partyId=party.id; break; }
   }
   send(client,{type:'auth_ok',userId:user.id,clientId:client.id,name:client.name,accountRole:publicAccountRole(client.accountRole)});
+  try{await sendFriendRequestState(client);}catch(error){console.error('[Fragment.io] Friend request state failed:',error.message||error);}
   sendPartyStateForClient(client);
   sendWatchedPresence(client);
   const reservation=reconnectReservations.get(user.id);
@@ -1941,7 +2212,7 @@ function queueEntry(client,mode,asParty=true,fillBots=true){
     const onlineIds=[...party.members].filter(id=>onlineClientForUser(id));
     if(onlineIds.length!==party.members.size) return send(client,{type:'queue_error',message:'Every party member must be online.'});
     if([...party.members].some(id=>id!==party.leaderId && !party.ready.get(id))) return send(client,{type:'queue_error',message:'Every party member must be ready.'});
-    userIds=[...party.members]; partyId=party.id; party.mode=mode; party.fillBots=fillBots!==false; party.queued=true;
+    userIds=[...party.members]; partyId=party.id; party.mode=mode; party.fillBots=mode==='squad'&&fillBots!==false; party.queued=true;
   }
   const rules=modeRules(mode);
   if(userIds.length>rules.partyMax) return send(client,{type:'queue_error',message:'This mode allows parties of up to '+rules.partyMax+'.'});
@@ -1949,7 +2220,7 @@ function queueEntry(client,mode,asParty=true,fillBots=true){
   for(const list of matchQueues.values()){
     for(let i=list.length-1;i>=0;i--) if(list[i].userIds.some(id=>userIds.includes(id))) list.splice(i,1);
   }
-  const entry={id:'Q-'+id(4),partyId,userIds,mode,fillBots:fillBots!==false,queuedAt:Date.now()};
+  const entry={id:'Q-'+id(4),partyId,userIds,mode,fillBots:true,completeRoster:mode==='squad'&&fillBots!==false,queuedAt:Date.now()};
   if(tryBackfillQueueEntry(entry)) return;
   if(!matchQueues.has(mode)) matchQueues.set(mode,[]);
   matchQueues.get(mode).push(entry);
@@ -2051,7 +2322,7 @@ function tryBackfillQueueEntry(entry){
 }
 function startQueuedMatch(mode,entries){
   const room=getRoom(matchCode());
-  room.mode=mode; room.matchmaking=true; room.fillBots=entries.some(e=>e.fillBots!==false); room.matchStarted=false;
+  room.mode=mode; room.matchmaking=true; room.fillBots=true; room.completeRoster=mode==='squad'&&entries.some(e=>e.completeRoster!==false); room.matchStarted=false;
   assignTeamsForEntries(room,entries);
   for(const entry of entries){
     for(const uid of entry.userIds){
@@ -2142,6 +2413,225 @@ function joinFriend(client,targetUserId){
   joinClientToRoom(client,room,{mode:room.mode,name:client.name,spawnNearClient:target,matchTeam:room.mode==='teams'?target.serverTeam:null});
   send(client,{type:'social_notice',message:'Joined '+target.name+'\'s match.'});
 }
+
+async function friendRequestProfilesByIds(ids){
+  const clean=[...new Set((ids||[]).map(cleanUserId).filter(Boolean))];
+  if(!clean.length)return new Map();
+  const rows=await supabaseAdminRequest(
+    '/rest/v1/profiles'
+    +'?id=in.('+clean.join(',')+')'
+    +'&select=id,username,friend_code,profile_icon,equipped_title',
+    {method:'GET'}
+  );
+  return new Map((Array.isArray(rows)?rows:[]).map(profile=>[profile.id,profile]));
+}
+async function friendRequestStateForUser(userId){
+  userId=cleanUserId(userId);
+  if(!userId)return{incoming:[],outgoing:[]};
+  const rows=await supabaseAdminRequest(
+    '/rest/v1/friend_requests'
+    +'?or=(sender_user_id.eq.'+encodeURIComponent(userId)+',receiver_user_id.eq.'+encodeURIComponent(userId)+')'
+    +'&status=eq.pending'
+    +'&select=id,sender_user_id,receiver_user_id,status,created_at,updated_at'
+    +'&order=created_at.desc',
+    {method:'GET'}
+  );
+  const requests=Array.isArray(rows)?rows:[];
+  const profileIds=requests.flatMap(row=>[row.sender_user_id,row.receiver_user_id]);
+  const profiles=await friendRequestProfilesByIds(profileIds);
+  const view=row=>{
+    const otherId=row.sender_user_id===userId?row.receiver_user_id:row.sender_user_id;
+    const profile=profiles.get(otherId)||{};
+    return{
+      id:Number(row.id),
+      userId:otherId,
+      username:profile.username||'Player',
+      friendCode:profile.friend_code||'',
+      profileIcon:profile.profile_icon||'core:circle',
+      title:profile.equipped_title||'',
+      createdAt:row.created_at
+    };
+  };
+  return{
+    incoming:requests.filter(row=>row.receiver_user_id===userId).map(view),
+    outgoing:requests.filter(row=>row.sender_user_id===userId).map(view)
+  };
+}
+async function sendFriendRequestState(client){
+  if(!client?.authenticated||!client.userId)return;
+  const state=await friendRequestStateForUser(client.userId);
+  send(client,{type:'friend_request_state',...state});
+}
+async function refreshFriendUsers(userIds){
+  const clean=[...new Set((userIds||[]).map(cleanUserId).filter(Boolean))];
+  for(const userId of clean){
+    for(const session of allOnlineClientsForUser(userId)){
+      try{await refreshClientFriends(session);}catch(error){}
+      try{await sendFriendRequestState(session);}catch(error){}
+      sendWatchedPresence(session);
+    }
+    broadcastPresenceForUser(userId);
+  }
+}
+async function sendFriendRequestByCode(client,msg){
+  if(!client.authenticated||!client.userId)throw new Error('Login before sending friend requests.');
+  const now=Date.now();
+  if(now-(client.lastFriendRequestAt||0)<3000)throw new Error('Wait before sending another friend request.');
+  const code=String(msg.friendCode||'').trim().toUpperCase().replace(/[^A-Z0-9-]/g,'').slice(0,16);
+  if(!code)throw new Error('Enter a valid friend code.');
+
+  const profiles=await supabaseAdminRequest(
+    '/rest/v1/profiles'
+    +'?friend_code=eq.'+encodeURIComponent(code)
+    +'&select=id,username,friend_code&limit=1',
+    {method:'GET'}
+  );
+  const target=Array.isArray(profiles)?profiles[0]:null;
+  if(!target)throw new Error('No account uses that friend code.');
+  if(target.id===client.userId)throw new Error('You cannot send a request to yourself.');
+
+  await refreshClientFriends(client);
+  if(client.friendIds.has(target.id))throw new Error(target.username+' is already your friend.');
+
+  const reverse=await supabaseAdminRequest(
+    '/rest/v1/friend_requests'
+    +'?sender_user_id=eq.'+encodeURIComponent(target.id)
+    +'&receiver_user_id=eq.'+encodeURIComponent(client.userId)
+    +'&status=eq.pending'
+    +'&select=id&limit=1',
+    {method:'GET'}
+  );
+  if(Array.isArray(reverse)&&reverse[0]){
+    throw new Error(target.username+' already sent you a request. Accept it from Friends & Party.');
+  }
+
+  client.lastFriendRequestAt=now;
+  await supabaseAdminRequest(
+    '/rest/v1/friend_requests?on_conflict=sender_user_id,receiver_user_id',
+    {
+      method:'POST',
+      headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
+      body:JSON.stringify({
+        sender_user_id:client.userId,
+        receiver_user_id:target.id,
+        status:'pending',
+        created_at:new Date().toISOString(),
+        updated_at:new Date().toISOString(),
+        responded_at:null
+      })
+    }
+  );
+
+  await refreshFriendUsers([client.userId,target.id]);
+  for(const session of allOnlineClientsForUser(target.id)){
+    send(session,{
+      type:'social_notice',
+      message:(client.profile?.username||client.name||'A player')+' sent you a friend request.'
+    });
+  }
+  send(client,{type:'friend_request_sent',targetUserId:target.id,targetName:target.username});
+}
+async function acceptFriendRequest(client,msg){
+  if(!client.authenticated||!client.userId)throw new Error('Login before accepting friend requests.');
+  const requestId=Math.floor(Number(msg.requestId));
+  if(!Number.isSafeInteger(requestId)||requestId<1)throw new Error('Invalid friend request.');
+
+  const rows=await supabaseAdminRequest(
+    '/rest/v1/friend_requests'
+    +'?id=eq.'+requestId
+    +'&receiver_user_id=eq.'+encodeURIComponent(client.userId)
+    +'&status=eq.pending'
+    +'&select=id,sender_user_id,receiver_user_id&limit=1',
+    {method:'GET'}
+  );
+  const request=Array.isArray(rows)?rows[0]:null;
+  if(!request)throw new Error('That friend request is no longer available.');
+
+  await supabaseAdminRequest(
+    '/rest/v1/friend_requests?id=eq.'+requestId,
+    {
+      method:'PATCH',
+      headers:{Prefer:'return=minimal'},
+      body:JSON.stringify({
+        status:'accepted',
+        responded_at:new Date().toISOString(),
+        updated_at:new Date().toISOString()
+      })
+    }
+  );
+
+  await supabaseAdminRequest(
+    '/rest/v1/friendships?on_conflict=user_id,friend_id',
+    {
+      method:'POST',
+      headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
+      body:JSON.stringify([
+        {user_id:request.sender_user_id,friend_id:request.receiver_user_id},
+        {user_id:request.receiver_user_id,friend_id:request.sender_user_id}
+      ])
+    }
+  );
+
+  await supabaseAdminRequest(
+    '/rest/v1/friend_requests'
+    +'?sender_user_id=eq.'+encodeURIComponent(request.receiver_user_id)
+    +'&receiver_user_id=eq.'+encodeURIComponent(request.sender_user_id)
+    +'&status=eq.pending',
+    {
+      method:'PATCH',
+      headers:{Prefer:'return=minimal'},
+      body:JSON.stringify({
+        status:'accepted',
+        responded_at:new Date().toISOString(),
+        updated_at:new Date().toISOString()
+      })
+    }
+  ).catch(()=>{});
+
+  await refreshFriendUsers([request.sender_user_id,request.receiver_user_id]);
+  for(const userId of [request.sender_user_id,request.receiver_user_id]){
+    for(const session of allOnlineClientsForUser(userId)){
+      send(session,{type:'friend_request_accepted',friendUserId:userId===request.sender_user_id?request.receiver_user_id:request.sender_user_id});
+    }
+  }
+}
+async function closeFriendRequest(client,msg,status){
+  if(!client.authenticated||!client.userId)throw new Error('Login before managing friend requests.');
+  const requestId=Math.floor(Number(msg.requestId));
+  if(!Number.isSafeInteger(requestId)||requestId<1)throw new Error('Invalid friend request.');
+  const filter=status==='cancelled'
+    ?'&sender_user_id=eq.'+encodeURIComponent(client.userId)
+    :'&receiver_user_id=eq.'+encodeURIComponent(client.userId);
+  const rows=await supabaseAdminRequest(
+    '/rest/v1/friend_requests?id=eq.'+requestId+filter+'&status=eq.pending&select=id,sender_user_id,receiver_user_id&limit=1',
+    {method:'GET'}
+  );
+  const request=Array.isArray(rows)?rows[0]:null;
+  if(!request)throw new Error('That friend request is no longer available.');
+  await supabaseAdminRequest('/rest/v1/friend_requests?id=eq.'+requestId,{
+    method:'PATCH',
+    headers:{Prefer:'return=minimal'},
+    body:JSON.stringify({
+      status,
+      responded_at:new Date().toISOString(),
+      updated_at:new Date().toISOString()
+    })
+  });
+  await refreshFriendUsers([request.sender_user_id,request.receiver_user_id]);
+}
+async function removeMutualFriend(client,msg){
+  if(!client.authenticated||!client.userId)throw new Error('Login before removing friends.');
+  const targetUserId=cleanUserId(msg.targetUserId);
+  if(!targetUserId||targetUserId===client.userId)throw new Error('Invalid friend.');
+  await supabaseAdminRequest(
+    '/rest/v1/friendships'
+    +'?or=(and(user_id.eq.'+encodeURIComponent(client.userId)+',friend_id.eq.'+encodeURIComponent(targetUserId)+'),and(user_id.eq.'+encodeURIComponent(targetUserId)+',friend_id.eq.'+encodeURIComponent(client.userId)+'))',
+    {method:'DELETE',headers:{Prefer:'return=minimal'}}
+  );
+  await refreshFriendUsers([client.userId,targetUserId]);
+  send(client,{type:'friendship_removed',friendUserId:targetUserId});
+}
+
 function handleMessage(client, msg){
   if(typeof msg !== 'object' || !msg) return;
   client.lastSeen=Date.now();
@@ -2152,15 +2642,42 @@ function handleMessage(client, msg){
   }
   if(msg.type === 'social_refresh'){
     Promise.all([refreshClientProfile(client),refreshClientFriends(client)])
-      .then(()=>{
+      .then(async()=>{
         sendWatchedPresence(client);
         sendPartyStateForClient(client);
+        try{await sendFriendRequestState(client);}catch(error){}
         broadcastPresenceForUser(client.userId);
       })
       .catch(error=>send(client,{type:'social_error',message:error.message||'Could not refresh social data.'}));
     return;
   }
   if(msg.type === 'presence_request'){ sendWatchedPresence(client); return; }
+
+  if(msg.type === 'friend_request_refresh'){
+    sendFriendRequestState(client).catch(error=>send(client,{type:'social_error',message:error.message||'Could not load friend requests.'}));
+    return;
+  }
+  if(msg.type === 'friend_request_send'){
+    sendFriendRequestByCode(client,msg).catch(error=>send(client,{type:'social_error',message:error.message||'Could not send friend request.'}));
+    return;
+  }
+  if(msg.type === 'friend_request_accept'){
+    acceptFriendRequest(client,msg).catch(error=>send(client,{type:'social_error',message:error.message||'Could not accept friend request.'}));
+    return;
+  }
+  if(msg.type === 'friend_request_decline'){
+    closeFriendRequest(client,msg,'declined').catch(error=>send(client,{type:'social_error',message:error.message||'Could not decline friend request.'}));
+    return;
+  }
+  if(msg.type === 'friend_request_cancel'){
+    closeFriendRequest(client,msg,'cancelled').catch(error=>send(client,{type:'social_error',message:error.message||'Could not cancel friend request.'}));
+    return;
+  }
+  if(msg.type === 'friend_remove_mutual'){
+    removeMutualFriend(client,msg).catch(error=>send(client,{type:'social_error',message:error.message||'Could not remove friend.'}));
+    return;
+  }
+
   if(msg.type === 'party_invite'){ handlePartyInvite(client,msg.targetUserId); return; }
   if(msg.type === 'party_accept'){ acceptPartyInvite(client,msg.inviteId); return; }
   if(msg.type === 'party_decline'){ pendingPartyInvites.delete(String(msg.inviteId||'')); return; }
@@ -2254,6 +2771,24 @@ function handleMessage(client, msg){
     return;
   }
 
+
+  if(msg.type === 'developer_debug_open'){
+    openDeveloperDebugSession(client).catch(error=>{
+      if(isDeveloper(client)) send(client,{type:'developer_debug_unavailable',message:'The secure debug session could not be opened.'});
+    });
+    return;
+  }
+  if(msg.type === 'developer_debug_close'){
+    if(isDeveloper(client)) revokeDeveloperDebug(client,false);
+    return;
+  }
+  if(msg.type === 'developer_debug_action'){
+    executeDeveloperDebugAction(client,msg).catch(error=>{
+      if(isDeveloper(client)) send(client,{type:'developer_debug_action_rejected',requestId:safeToken(msg.requestId,64)});
+    });
+    return;
+  }
+
   if(msg.type === 'join'){
     const room=getRoom(msg.room); if(room.clients.size===0){room.mode=cleanMode(msg.mode);room.fillBots=true;}
     joinClientToRoom(client,room,{mode:room.mode,name:msg.name});
@@ -2314,7 +2849,7 @@ function handleMessage(client, msg){
     const target=getClientById(room,String(msg.targetId||''));
     if(!target || target===client || !target.inMatch || !target.snapshot || target.snapshot.dead) return;
     if(sameCombatTeam(client.serverTeam,target.serverTeam)) return;
-    const amount=clamp(finiteNumber(msg.amount,0),0,1000);
+    const amount=clamp(finiteNumber(msg.amount,0),0,developerDebugSnapshotAuthorized(client)?1000:450);
     if(amount<=0) return;
     sendDamageToClient(target,{
       type:'hit',
@@ -2532,7 +3067,8 @@ server.on('upgrade', (req, socket) => {
     authenticated:false, accessToken:'', userId:null, accountRole:'player', profile:null, progress:null, friendIds:new Set(), partyId:null, queueId:null, matchTeam:null,
     lastSeen:Date.now(), lastParseErrorAt:0,
     chatTimes:[], chatMutedUntil:0, moderationMutedUntil:0, lastChatBody:'', lastChatAt:0,
-    lastPartyPingAt:0, lastReportAt:0, lastAnnouncementAt:0,
+    lastPartyPingAt:0, lastReportAt:0, lastAnnouncementAt:0, lastFriendRequestAt:0,
+    developerDebugSession:null, developerDebugRootAdminUntil:0,
     lastDeathDropAt:0
   };
   clients.add(client);
@@ -2913,4 +3449,62 @@ handleMessage=function(client,msg){
   return v1OriginalHandleMessage(client,msg);
 };
 console.log('[Fragment.io] Boss abilities, bot score, curse, and ability sync patch enabled.');
+
+
+
+// -----------------------------------------------------------------------------
+// v1.0 roster, social, and Battle Royale release overhaul
+// -----------------------------------------------------------------------------
+const releaseBaseFragCountsForMode=fragCountsForMode;
+fragCountsForMode=function(mode,playerCount=2){
+  if(mode==='br'){
+    const real=Math.max(1,Math.floor(Number(playerCount)||1));
+    return{
+      xp:96+Math.min(24,real),
+      natural:26+Math.min(8,Math.floor(real/4)),
+      ability:7,
+      evo:4,
+      world:1,
+      cursed:1
+    };
+  }
+  return releaseBaseFragCountsForMode(mode,playerCount);
+};
+
+function releaseUpdateBrBotEvolution(room){
+  if(room?.mode!=='br')return;
+  const now=Date.now();
+  const combatStart=Number(room.brCombatStartsAt)||Number(room.startedAt)||now;
+  const elapsed=Math.max(0,(now-combatStart)/1000);
+  for(const bot of room.bots){
+    if(!bot||bot.dead)continue;
+    const path=BR_SERVER_BOT_PATHS[Number(bot.brPathIndex)||0]||BR_SERVER_BOT_PATHS[0];
+    const scoreLevel=Math.max(Number(bot.level)||1,1+Math.floor((Number(bot.score)||0)/950));
+    let stage=0;
+    if(elapsed>=105||scoreLevel>=4)stage=1;
+    if(elapsed>=260||scoreLevel>=9)stage=2;
+    if(elapsed>=480||scoreLevel>=15)stage=3;
+    stage=Math.min(stage,path.length-1);
+    if(stage!==bot.brEvolutionStage||bot.archetype!==path[stage]){
+      bot.brEvolutionStage=stage;
+      bot.archetype=path[stage];
+      bot.bodyColor=colors[(Number(bot.brPathIndex)||0)%colors.length];
+    }
+  }
+}
+const releaseBaseUpdateServerBots=updateServerBots;
+updateServerBots=function(room,dt){
+  if(room?.mode==='br'&&Date.now()<(Number(room.brCombatStartsAt)||0)){
+    const now=Date.now();
+    if(now-(room.lastBotBroadcast||0)>250){
+      room.lastBotBroadcast=now;
+      broadcast(room.code,{type:'bots_state',mode:room.mode,bots:room.bots.map(botSnapshot)});
+    }
+    return;
+  }
+  releaseUpdateBrBotEvolution(room);
+  return releaseBaseUpdateServerBots(room,dt);
+};
+
+console.log('[Fragment.io] Friend requests, full bot rosters, squad completion, and slower Battle Royale enabled.');
 
