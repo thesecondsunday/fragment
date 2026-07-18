@@ -20122,6 +20122,620 @@ if(v1MenuLogo){
   /* ===== END PROFILE VISUALS / PERFORMANCE / UI SIZE / BOSS RUSH FIX ===== */
 
 
+
+
+
+  /* ===== VERIFIED DEVELOPER ROLE + MODERATION PANEL ===== */
+  let verifiedAccountRole='player';
+  const verifiedAccountRoles=new Map();
+  let developerPanelState={
+    players:[],
+    reports:[],
+    actions:[],
+    sanctions:[],
+    announcements:[],
+    generatedAt:''
+  };
+
+  function isVerifiedDeveloper(){
+    return verifiedAccountRole==='developer'&&!!cloudUser&&!isGuestAccount();
+  }
+  function verifiedDeveloperBadgeHtml(){
+    return'<span class="verifiedDeveloperBadge">DEVELOPER</span>';
+  }
+  function rememberVerifiedRole(userId,accountRole){
+    userId=String(userId||'').trim();
+    if(!userId)return;
+    verifiedAccountRoles.set(userId,accountRole==='developer'?'developer':'player');
+  }
+  function roleForUser(userId){
+    if(userId===cloudUser?.id)return verifiedAccountRole;
+    return verifiedAccountRoles.get(String(userId||''))||'player';
+  }
+  function refreshDeveloperAccess(){
+    const button=$('developerPanelButton');
+    const status=$('developerRoleStatus');
+    const allowed=isVerifiedDeveloper();
+    if(button){
+      button.hidden=!allowed;
+      button.classList.toggle('active',allowed);
+    }
+    if(status){
+      status.hidden=!allowed;
+      status.innerHTML=allowed?verifiedDeveloperBadgeHtml()+' <span>Server verified</span>':'';
+    }
+    document.body.classList.toggle('verifiedDeveloperAccount',allowed);
+    if(!allowed){
+      document.querySelector('[data-modal="developer"]')?.classList.remove('show');
+      ui.debugGui?.classList.add('hidden');
+    }
+  }
+
+  function installDeveloperPanel(){
+    const accountWindow=document.querySelector('[data-modal="account"] .accountWindow');
+    if(accountWindow&&!$('developerPanelButton')){
+      const roleStatus=document.createElement('div');
+      roleStatus.id='developerRoleStatus';
+      roleStatus.className='developerRoleStatus';
+      roleStatus.hidden=true;
+
+      const button=document.createElement('button');
+      button.id='developerPanelButton';
+      button.type='button';
+      button.className='accountSecondary developerPanelButton';
+      button.hidden=true;
+      button.innerHTML='<b>Developer Panel</b><span>Announcements · moderation · reports · debug</span>';
+
+      const hint=accountWindow.querySelector('#accountHint');
+      accountWindow.insertBefore(roleStatus,hint||null);
+      accountWindow.insertBefore(button,hint||null);
+    }
+
+    if(!document.querySelector('[data-modal="developer"]')){
+      document.body.insertAdjacentHTML('beforeend',`
+        <div class="menuModal" data-modal="developer">
+          <div class="modalCard developerPanelWindow">
+            <div class="modalTop">
+              <div class="developerPanelTitle"><h2>Developer Panel</h2><span>${verifiedDeveloperBadgeHtml()} SERVER AUTHORITY</span></div>
+              <div class="developerPanelTopActions">
+                <button id="developerPanelRefresh" type="button">Refresh</button>
+                <button class="modalClose" id="developerPanelClose" type="button">×</button>
+              </div>
+            </div>
+
+            <div class="developerPanelSummary">
+              <div><span>ONLINE</span><b id="developerOnlineCount">0</b></div>
+              <div><span>OPEN REPORTS</span><b id="developerOpenReportCount">0</b></div>
+              <div><span>ACTIVE SANCTIONS</span><b id="developerSanctionCount">0</b></div>
+              <div><span>LAST SYNC</span><b id="developerSyncTime">—</b></div>
+            </div>
+
+            <div class="developerPanelTabs">
+              <button type="button" class="active" data-developer-tab="overview">Command</button>
+              <button type="button" data-developer-tab="players">Players</button>
+              <button type="button" data-developer-tab="reports">Reports</button>
+              <button type="button" data-developer-tab="sanctions">Sanctions</button>
+              <button type="button" data-developer-tab="logs">Logs</button>
+            </div>
+
+            <div class="developerPanelBody">
+              <section class="developerPanelPage active" data-developer-page="overview">
+                <div class="developerCommandGrid">
+                  <article class="developerCommandCard announcementCard">
+                    <div class="developerCardHeading"><span>!</span><div><b>Global Announcement</b><small>Shown to every currently connected player.</small></div></div>
+                    <textarea id="developerAnnouncementInput" maxlength="300" placeholder="Write a global announcement…"></textarea>
+                    <div class="developerCommandActions">
+                      <span id="developerAnnouncementCount">0 / 300</span>
+                      <button id="developerAnnouncementSend" type="button">Broadcast</button>
+                    </div>
+                  </article>
+
+                  <article class="developerCommandCard">
+                    <div class="developerCardHeading"><span>⌘</span><div><b>Developer Debug</b><small>The local game debug tool remains locked to this verified role.</small></div></div>
+                    <button id="developerOpenDebug" type="button">Open Debug Tool</button>
+                  </article>
+                </div>
+                <h3 class="developerListHeading">Recent announcements</h3>
+                <div id="developerAnnouncementHistory" class="developerModerationList"></div>
+              </section>
+
+              <section class="developerPanelPage" data-developer-page="players">
+                <div class="developerListToolbar"><input id="developerPlayerSearch" placeholder="Search online players…" maxlength="40"><span>Developer accounts are protected.</span></div>
+                <div id="developerPlayerList" class="developerModerationList"></div>
+              </section>
+
+              <section class="developerPanelPage" data-developer-page="reports">
+                <div class="developerListToolbar">
+                  <select id="developerReportFilter">
+                    <option value="all">All reports</option>
+                    <option value="open">Open</option>
+                    <option value="reviewing">Reviewing</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="dismissed">Dismissed</option>
+                  </select>
+                  <span>Reports survive Render restarts.</span>
+                </div>
+                <div id="developerReportList" class="developerModerationList"></div>
+              </section>
+
+              <section class="developerPanelPage" data-developer-page="sanctions">
+                <div id="developerSanctionList" class="developerModerationList"></div>
+              </section>
+
+              <section class="developerPanelPage" data-developer-page="logs">
+                <div id="developerActionList" class="developerModerationList"></div>
+              </section>
+            </div>
+          </div>
+        </div>
+      `);
+    }
+
+    $('developerPanelButton')?.addEventListener('click',()=>{
+      if(!isVerifiedDeveloper())return;
+      openMenuModal('developer');
+      requestDeveloperPanelData();
+    });
+    $('developerPanelClose')?.addEventListener('click',closeMenuModals);
+    $('developerPanelRefresh')?.addEventListener('click',requestDeveloperPanelData);
+    $('developerAnnouncementInput')?.addEventListener('input',()=>{
+      $('developerAnnouncementCount').textContent=`${$('developerAnnouncementInput').value.length} / 300`;
+    });
+    $('developerAnnouncementSend')?.addEventListener('click',()=>{
+      const input=$('developerAnnouncementInput');
+      const message=input?.value.trim();
+      if(!message)return;
+      developerSend({type:'developer_announcement',message});
+      input.value='';
+      $('developerAnnouncementCount').textContent='0 / 300';
+    });
+    $('developerOpenDebug')?.addEventListener('click',()=>{
+      closeMenuModals();
+      if(state.screen!=='play'){
+        notify('Deploy first','The Developer Debug tool opens during gameplay.');
+        return;
+      }
+      toggleDebug();
+    });
+    document.querySelectorAll('[data-developer-tab]').forEach(button=>{
+      button.addEventListener('click',()=>setDeveloperTab(button.dataset.developerTab));
+    });
+    $('developerPlayerSearch')?.addEventListener('input',renderDeveloperPlayers);
+    $('developerReportFilter')?.addEventListener('change',renderDeveloperReports);
+
+    const panel=document.querySelector('[data-modal="developer"]');
+    panel?.addEventListener('click',event=>{
+      const action=event.target.closest('[data-developer-action]');
+      if(action)handleDeveloperPlayerAction(action);
+      const report=event.target.closest('[data-developer-report-status]');
+      if(report)handleDeveloperReportAction(report);
+      const lift=event.target.closest('[data-lift-sanction]');
+      if(lift)handleDeveloperLiftSanction(lift);
+      const profileButton=event.target.closest('[data-developer-profile]');
+      if(profileButton)openPlayerProfile(profileButton.dataset.developerProfile);
+    });
+    refreshDeveloperAccess();
+  }
+
+  function setDeveloperTab(name){
+    document.querySelectorAll('[data-developer-tab]').forEach(button=>button.classList.toggle('active',button.dataset.developerTab===name));
+    document.querySelectorAll('[data-developer-page]').forEach(page=>page.classList.toggle('active',page.dataset.developerPage===name));
+  }
+  function developerSend(payload){
+    if(!isVerifiedDeveloper()){
+      notify('Developer access denied','Your account does not have the verified Developer role.');
+      return false;
+    }
+    if(!multiplayer.connected||!socialState.authenticated){
+      ensureSocialConnection().then(()=>setTimeout(()=>netSend(payload),180));
+      return true;
+    }
+    return netSend(payload);
+  }
+  function requestDeveloperPanelData(){
+    if(!isVerifiedDeveloper())return;
+    const button=$('developerPanelRefresh');
+    if(button){button.disabled=true;button.textContent='Syncing…';}
+    developerSend({type:'developer_request_panel'});
+  }
+  function developerDate(value){
+    if(!value)return'—';
+    const date=new Date(value);
+    return Number.isNaN(date.getTime())?'—':date.toLocaleString();
+  }
+  function developerDurationText(expiresAt){
+    if(!expiresAt)return'No expiry';
+    const ms=new Date(expiresAt)-Date.now();
+    if(ms<=0)return'Expired';
+    const minutes=Math.ceil(ms/60000);
+    if(minutes<60)return minutes+'m remaining';
+    const hours=Math.ceil(minutes/60);
+    if(hours<48)return hours+'h remaining';
+    return Math.ceil(hours/24)+'d remaining';
+  }
+  function renderDeveloperPanel(){
+    const openReports=developerPanelState.reports.filter(report=>['open','reviewing'].includes(report.status)).length;
+    if($('developerOnlineCount'))$('developerOnlineCount').textContent=developerPanelState.players.length;
+    if($('developerOpenReportCount'))$('developerOpenReportCount').textContent=openReports;
+    if($('developerSanctionCount'))$('developerSanctionCount').textContent=developerPanelState.sanctions.length;
+    if($('developerSyncTime'))$('developerSyncTime').textContent=developerPanelState.generatedAt?new Date(developerPanelState.generatedAt).toLocaleTimeString():'—';
+    const refresh=$('developerPanelRefresh');
+    if(refresh){refresh.disabled=false;refresh.textContent='Refresh';}
+    renderDeveloperPlayers();
+    renderDeveloperReports();
+    renderDeveloperSanctions();
+    renderDeveloperActions();
+    renderDeveloperAnnouncements();
+  }
+  function renderDeveloperPlayers(){
+    const container=$('developerPlayerList');
+    if(!container)return;
+    const query=String($('developerPlayerSearch')?.value||'').trim().toLowerCase();
+    const players=developerPanelState.players.filter(player=>
+      !query
+      ||String(player.name||'').toLowerCase().includes(query)
+      ||String(player.userId||'').toLowerCase().includes(query)
+      ||String(player.roomCode||'').toLowerCase().includes(query)
+    );
+    container.innerHTML=players.length?players.map(player=>{
+      const developer=player.accountRole==='developer';
+      const muted=Number(player.mutedUntil)>Date.now();
+      return`<article class="developerPlayerRow ${developer?'protected':''}">
+        <div class="developerPlayerIdentity">
+          <div class="developerAvatar">${developer?'D':escapeHtml(String(player.name||'?').slice(0,1).toUpperCase())}</div>
+          <div><b>${escapeHtml(player.name||'Player')} ${developer?verifiedDeveloperBadgeHtml():''}</b><small>${escapeHtml(player.status||'online')} · ${escapeHtml(player.mode||'menu')} · ${escapeHtml(player.roomCode||'no room')} · ${Number(player.connectedSessions)||1} session${Number(player.connectedSessions)===1?'':'s'}${muted?' · MUTED':''}</small></div>
+        </div>
+        <div class="developerPlayerActions">
+          <button type="button" data-developer-profile="${escapeHtml(player.userId)}">Profile</button>
+          ${developer?'':`
+            <button type="button" data-developer-action="warn" data-target-user="${escapeHtml(player.userId)}" data-target-name="${escapeHtml(player.name)}">Warn</button>
+            <button type="button" data-developer-action="mute" data-target-user="${escapeHtml(player.userId)}" data-target-name="${escapeHtml(player.name)}">Mute</button>
+            <button type="button" data-developer-action="kick" data-target-user="${escapeHtml(player.userId)}" data-target-name="${escapeHtml(player.name)}">Kick</button>
+            <button class="danger" type="button" data-developer-action="ban" data-target-user="${escapeHtml(player.userId)}" data-target-name="${escapeHtml(player.name)}">Suspend</button>
+          `}
+        </div>
+      </article>`;
+    }).join(''):'<div class="developerEmptyState">No matching online players.</div>';
+  }
+  function reportStatusClass(status){
+    return['open','reviewing','resolved','dismissed'].includes(status)?status:'open';
+  }
+  function renderDeveloperReports(){
+    const container=$('developerReportList');
+    if(!container)return;
+    const filter=$('developerReportFilter')?.value||'all';
+    const reports=developerPanelState.reports.filter(report=>filter==='all'||report.status===filter);
+    container.innerHTML=reports.length?reports.map(report=>`<article class="developerReportRow">
+      <div class="developerReportTop">
+        <div><b>#${Number(report.id)||0} · ${escapeHtml(report.target_name||'Unknown target')}</b><small>Reported by ${escapeHtml(report.reporter_name||'Unknown')} · ${developerDate(report.created_at)}${report.room_code?' · '+escapeHtml(report.room_code):''}</small></div>
+        <span class="developerStatus ${reportStatusClass(report.status)}">${escapeHtml(String(report.status||'open').toUpperCase())}</span>
+      </div>
+      <div class="developerReportReason"><b>${escapeHtml(report.reason||'unspecified')}</b>${report.details?`<p>${escapeHtml(report.details)}</p>`:''}</div>
+      ${report.review_note?`<div class="developerReviewNote"><b>Review note</b><span>${escapeHtml(report.review_note)}</span></div>`:''}
+      <div class="developerReportActions">
+        ${report.target_user_id?`<button type="button" data-developer-profile="${escapeHtml(report.target_user_id)}">Profile</button>`:''}
+        <button type="button" data-developer-report-status="reviewing" data-report-id="${Number(report.id)}">Review</button>
+        <button type="button" data-developer-report-status="resolved" data-report-id="${Number(report.id)}">Resolve</button>
+        <button type="button" data-developer-report-status="dismissed" data-report-id="${Number(report.id)}">Dismiss</button>
+        ${report.target_user_id?`
+          <button type="button" data-developer-action="mute" data-target-user="${escapeHtml(report.target_user_id)}" data-target-name="${escapeHtml(report.target_name||'Unknown')}">Mute</button>
+          <button class="danger" type="button" data-developer-action="ban" data-target-user="${escapeHtml(report.target_user_id)}" data-target-name="${escapeHtml(report.target_name||'Unknown')}">Suspend</button>
+        `:''}
+      </div>
+    </article>`).join(''):'<div class="developerEmptyState">No reports in this category.</div>';
+  }
+  function renderDeveloperSanctions(){
+    const container=$('developerSanctionList');
+    if(!container)return;
+    container.innerHTML=developerPanelState.sanctions.length?developerPanelState.sanctions.map(sanction=>`<article class="developerSanctionRow">
+      <div class="developerSanctionIcon">${sanction.sanction_type==='ban'?'⊘':'×'}</div>
+      <div><b>${escapeHtml(sanction.target_name||'Unknown')} · ${escapeHtml(String(sanction.sanction_type||'sanction').toUpperCase())}</b><span>${escapeHtml(sanction.reason||'No reason')} · ${developerDurationText(sanction.expires_at)}</span><small>By ${escapeHtml(sanction.creator_name||'Developer')} · ${developerDate(sanction.created_at)}</small></div>
+      <button type="button" data-lift-sanction="${Number(sanction.id)}">Lift</button>
+    </article>`).join(''):'<div class="developerEmptyState">No active sanctions.</div>';
+  }
+  function renderDeveloperActions(){
+    const container=$('developerActionList');
+    if(!container)return;
+    container.innerHTML=developerPanelState.actions.length?developerPanelState.actions.map(action=>`<article class="developerActionRow">
+      <span>${escapeHtml(String(action.action||'action').toUpperCase())}</span>
+      <div><b>${escapeHtml(action.moderator_name||'Developer')}${action.target_name?' → '+escapeHtml(action.target_name):''}</b><small>${escapeHtml(action.reason||'No note')} · ${developerDate(action.created_at)}</small></div>
+    </article>`).join(''):'<div class="developerEmptyState">No moderation actions recorded.</div>';
+  }
+  function renderDeveloperAnnouncements(){
+    const container=$('developerAnnouncementHistory');
+    if(!container)return;
+    container.innerHTML=developerPanelState.announcements.length?developerPanelState.announcements.map(item=>`<article class="developerAnnouncementHistoryRow">
+      <span>!</span><div><b>${escapeHtml(item.message||'')}</b><small>${escapeHtml(item.creator_name||'Developer')} · ${developerDate(item.created_at)}</small></div>
+    </article>`).join(''):'<div class="developerEmptyState">No announcements recorded.</div>';
+  }
+
+  function moderationReason(action,targetName){
+    const labels={
+      warn:'Reason for warning',
+      kick:'Reason for kicking',
+      mute:'Reason for muting',
+      ban:'Reason for suspension'
+    };
+    const reason=prompt(`${labels[action]||'Reason'} ${targetName||'this player'}:`,action==='warn'?'Please follow the game rules.':'');
+    return reason===null?null:reason.trim();
+  }
+  function handleDeveloperPlayerAction(button){
+    const action=button.dataset.developerAction;
+    const targetUserId=button.dataset.targetUser;
+    const targetName=button.dataset.targetName||'player';
+    const reason=moderationReason(action,targetName);
+    if(reason===null)return;
+    const payload={targetUserId,targetName,reason};
+    if(action==='warn')developerSend({type:'developer_warn',...payload});
+    if(action==='kick'){
+      if(confirm(`Kick ${targetName} from every active session?`))developerSend({type:'developer_kick',...payload});
+    }
+    if(action==='mute'){
+      const raw=prompt('Mute duration: 5, 15, 60, or 360 minutes.','15');
+      if(raw===null)return;
+      const minutes=Number(raw);
+      const seconds=({5:300,15:900,60:3600,360:21600})[minutes];
+      if(!seconds){notify('Invalid duration','Use 5, 15, 60, or 360 minutes.');return;}
+      developerSend({type:'developer_mute',durationSeconds:seconds,...payload});
+    }
+    if(action==='ban'){
+      const raw=prompt('Suspension duration: 1, 24, 168, or 720 hours.','24');
+      if(raw===null)return;
+      const hours=Number(raw);
+      const seconds=({1:3600,24:86400,168:604800,720:2592000})[hours];
+      if(!seconds){notify('Invalid duration','Use 1, 24, 168, or 720 hours.');return;}
+      if(confirm(`Suspend ${targetName} for ${hours} hour${hours===1?'':'s'}?`)){
+        developerSend({type:'developer_ban',durationSeconds:seconds,...payload});
+      }
+    }
+    setTimeout(requestDeveloperPanelData,500);
+  }
+  function handleDeveloperReportAction(button){
+    const reportId=Number(button.dataset.reportId);
+    const status=button.dataset.developerReportStatus;
+    const reviewNote=prompt(`Optional note for report #${reportId}:`,'');
+    if(reviewNote===null)return;
+    developerSend({type:'developer_update_report',reportId,status,reviewNote});
+    setTimeout(requestDeveloperPanelData,500);
+  }
+  function handleDeveloperLiftSanction(button){
+    const sanctionId=Number(button.dataset.liftSanction);
+    if(!confirm('Lift this active sanction?'))return;
+    const reason=prompt('Optional reason for lifting the sanction:','')||'';
+    developerSend({type:'developer_lift_sanction',sanctionId,reason});
+    setTimeout(requestDeveloperPanelData,500);
+  }
+
+  function showGlobalDeveloperAnnouncement(message,author){
+    let banner=$('globalDeveloperAnnouncement');
+    if(!banner){
+      banner=document.createElement('div');
+      banner.id='globalDeveloperAnnouncement';
+      banner.className='globalDeveloperAnnouncement';
+      document.body.appendChild(banner);
+    }
+    banner.innerHTML=`<div class="globalAnnouncementMark">!</div><div><small>GLOBAL ANNOUNCEMENT</small><b>${escapeHtml(message||'')}</b><span>${escapeHtml(author||'Developer')} ${verifiedDeveloperBadgeHtml()}</span></div><button type="button" aria-label="Close announcement">×</button>`;
+    banner.classList.add('show');
+    banner.querySelector('button').onclick=()=>banner.classList.remove('show');
+    clearTimeout(showGlobalDeveloperAnnouncement.timer);
+    showGlobalDeveloperAnnouncement.timer=setTimeout(()=>banner.classList.remove('show'),10000);
+    if(typeof audioDuck==='function')audioDuck(.18,.8);
+  }
+
+  function decorateVerifiedProfileBadge(root,userId){
+    const identity=root?.querySelector?.('.profileIdentity');
+    if(!identity)return;
+    identity.querySelector('.verifiedDeveloperProfileBadge')?.remove();
+    if(roleForUser(userId)!=='developer')return;
+    const badge=document.createElement('span');
+    badge.className='verifiedDeveloperProfileBadge';
+    badge.innerHTML=verifiedDeveloperBadgeHtml()+' <small>VERIFIED SERVER ROLE</small>';
+    identity.appendChild(badge);
+  }
+
+  const developerBaseRenderPlayerProfile=renderPlayerProfile;
+  renderPlayerProfile=function(profile,progress){
+    const result=developerBaseRenderPlayerProfile.apply(this,arguments);
+    decorateVerifiedProfileBadge(document.querySelector('[data-modal="profile"]'),profile?.id);
+    if(profile?.id&&roleForUser(profile.id)==='player'&&socialState.authenticated){
+      netSend({type:'public_role_request',userId:profile.id});
+    }
+    return result;
+  };
+
+  const developerBaseRenderInGameProfile=renderInGameProfile;
+  renderInGameProfile=function(data){
+    const result=developerBaseRenderInGameProfile.apply(this,arguments);
+    decorateVerifiedProfileBadge($('inGameProfileOverlay'),data?.profile?.id);
+    if(data?.profile?.id&&roleForUser(data.profile.id)==='player'&&socialState.authenticated){
+      netSend({type:'public_role_request',userId:data.profile.id});
+    }
+    return result;
+  };
+
+  const developerBaseOpenPlayerProfile=openPlayerProfile;
+  openPlayerProfile=async function(userId){
+    if(userId&&socialState.authenticated)netSend({type:'public_role_request',userId});
+    return developerBaseOpenPlayerProfile.apply(this,arguments);
+  };
+
+  const developerBaseNetApplySnapshot=netApplySnapshot;
+  netApplySnapshot=function(snapshot){
+    if(snapshot?.userId)rememberVerifiedRole(snapshot.userId,snapshot.accountRole);
+    const result=developerBaseNetApplySnapshot.apply(this,arguments);
+    const ent=snapshot?.id?multiplayer.remoteById.get(snapshot.id):null;
+    if(ent)ent.accountRole=snapshot.accountRole==='developer'?'developer':'player';
+    return result;
+  };
+
+  addChat=function(name,msg,accountRole='player'){
+    if(gameMode==='bossrush'&&String(name).toUpperCase()==='SERVER')return;
+    chatMessages.push({
+      name:filterChat(name),
+      msg:filterChat(msg),
+      accountRole:accountRole==='developer'?'developer':'player'
+    });
+    chatMessages=chatMessages.slice(-60);
+    renderChat();
+  };
+  renderChat=function(){
+    if(!ui?.chatMessages)return;
+    const box=ui.chatMessages;
+    const distanceFromBottom=box.scrollHeight-box.scrollTop-box.clientHeight;
+    const shouldFollow=distanceFromBottom<28;
+    box.innerHTML=chatMessages.map(message=>`<div class="chatMsg ${message.accountRole==='developer'?'developerChatMessage':''}"><b>${escapeHtml(message.name)}${message.accountRole==='developer'?' '+verifiedDeveloperBadgeHtml():''}:</b> ${escapeHtml(message.msg)}</div>`).join('');
+    if(shouldFollow)box.scrollTop=box.scrollHeight;
+  };
+
+  const developerBaseRenderSocial=renderSocial;
+  renderSocial=function(){
+    const result=developerBaseRenderSocial.apply(this,arguments);
+    const members=socialState.party?.members||[];
+    ui.partyList?.querySelectorAll('.socialPartyMember').forEach((row,index)=>{
+      const member=members[index];
+      if(member?.accountRole==='developer'&&!row.querySelector('.verifiedDeveloperBadge')){
+        row.querySelector('b')?.insertAdjacentHTML('beforeend',' '+verifiedDeveloperBadgeHtml());
+      }
+    });
+    ui.friendList?.querySelectorAll('.socialFriendCard').forEach(card=>{
+      const button=card.querySelector('[data-profile-user]');
+      if(button&&roleForUser(button.dataset.profileUser)==='developer'&&!card.querySelector('.verifiedDeveloperBadge')){
+        card.querySelector('.socialFriendMeta b')?.insertAdjacentHTML('beforeend',' '+verifiedDeveloperBadgeHtml());
+      }
+    });
+    return result;
+  };
+
+  const developerBaseToggleDebug=toggleDebug;
+  toggleDebug=function(){
+    if(!isVerifiedDeveloper()){
+      notify('Developer access required','Only server-verified Developer accounts can open this tool.');
+      return;
+    }
+    return developerBaseToggleDebug.apply(this,arguments);
+  };
+
+  const developerBaseHandleFragmentNetworkMessage=handleFragmentNetworkMessage;
+  handleFragmentNetworkMessage=function(msg){
+    if(msg?.type==='auth_ok'){
+      verifiedAccountRole=msg.accountRole==='developer'?'developer':'player';
+      rememberVerifiedRole(msg.userId,verifiedAccountRole);
+      refreshDeveloperAccess();
+    }
+    if(msg?.type==='auth_error'){
+      verifiedAccountRole='player';
+      refreshDeveloperAccess();
+    }
+    if(msg?.type==='presence_state'){
+      for(const friend of (msg.friends||[]))rememberVerifiedRole(friend.userId,friend.accountRole);
+    }
+    if(msg?.type==='party_state'){
+      for(const member of (msg.members||[]))rememberVerifiedRole(member.userId,member.accountRole);
+    }
+    if(msg?.type==='match_start'){
+      for(const card of (msg.playerCards||[]))rememberVerifiedRole(card.userId,card.accountRole);
+    }
+    if(msg?.type==='peer_state'&&msg.snapshot?.userId){
+      rememberVerifiedRole(msg.snapshot.userId,msg.snapshot.accountRole);
+    }
+    if(msg?.type==='peers'){
+      for(const peer of (msg.peers||[])){
+        if(peer?.snapshot?.userId)rememberVerifiedRole(peer.snapshot.userId,peer.snapshot.accountRole);
+      }
+    }
+
+    if(msg?.type==='public_account_role'){
+      rememberVerifiedRole(msg.userId,msg.accountRole);
+      const current=socialState.currentProfile?.profile;
+      if(current?.id===msg.userId)decorateVerifiedProfileBadge(document.querySelector('[data-modal="profile"]'),msg.userId);
+      renderSocial();
+      return;
+    }
+    if(msg?.type==='chat'){
+      addChat(msg.name||'Friend',msg.msg||'',msg.accountRole);
+      return;
+    }
+    if(msg?.type==='global_announcement'){
+      showGlobalDeveloperAnnouncement(msg.message,msg.author);
+      return;
+    }
+    if(msg?.type==='developer_panel_data'){
+      developerPanelState={
+        players:Array.isArray(msg.players)?msg.players:[],
+        reports:Array.isArray(msg.reports)?msg.reports:[],
+        actions:Array.isArray(msg.actions)?msg.actions:[],
+        sanctions:Array.isArray(msg.sanctions)?msg.sanctions:[],
+        announcements:Array.isArray(msg.announcements)?msg.announcements:[],
+        generatedAt:msg.generatedAt||new Date().toISOString()
+      };
+      renderDeveloperPanel();
+      return;
+    }
+    if(msg?.type==='developer_notice'){
+      notify('Developer',msg.message||'Action completed.');
+      if(document.querySelector('[data-modal="developer"].show'))setTimeout(requestDeveloperPanelData,250);
+      return;
+    }
+    if(msg?.type==='developer_error'){
+      notify('Developer Error',msg.message||'Permission denied.');
+      const refresh=$('developerPanelRefresh');
+      if(refresh){refresh.disabled=false;refresh.textContent='Refresh';}
+      return;
+    }
+    if(msg?.type==='moderator_warning'){
+      notify('OFFICIAL WARNING',`${msg.reason||'Please review the game rules.'} · ${msg.moderator||'Developer'}`);
+      return;
+    }
+    if(msg?.type==='moderator_mute'){
+      notify('CHAT MUTED',`${msg.reason||'Chat access restricted.'} · until ${developerDate(msg.expiresAt)}`);
+      return;
+    }
+    if(msg?.type==='moderator_unmute'){
+      notify('Chat restored','Your moderation mute has been lifted.');
+      return;
+    }
+    if(msg?.type==='moderator_kick'){
+      notify('REMOVED FROM SERVER',msg.reason||'You were removed by a Developer.');
+      setTimeout(()=>{
+        netDisconnect();
+        returnToTitle();
+      },500);
+      return;
+    }
+    if(msg?.type==='moderator_ban'){
+      notify('ACCOUNT SUSPENDED',`${msg.reason||'Your account was suspended.'} · until ${developerDate(msg.expiresAt)}`);
+      setTimeout(()=>{
+        netDisconnect();
+        returnToTitle();
+      },650);
+      return;
+    }
+    return developerBaseHandleFragmentNetworkMessage.apply(this,arguments);
+  };
+
+  const developerBaseNetDisconnect=netDisconnect;
+  netDisconnect=function(){
+    const result=developerBaseNetDisconnect.apply(this,arguments);
+    verifiedAccountRole='player';
+    refreshDeveloperAccess();
+    return result;
+  };
+
+  const developerBaseRenderAccountStatus=renderAccountStatus;
+  renderAccountStatus=function(){
+    const result=developerBaseRenderAccountStatus.apply(this,arguments);
+    if(isGuestAccount()){
+      verifiedAccountRole='player';
+      refreshDeveloperAccess();
+    }
+    return result;
+  };
+
+  installDeveloperPanel();
+  refreshDeveloperAccess();
+  /* ===== END VERIFIED DEVELOPER ROLE + MODERATION PANEL ===== */
+
+
 })();
 </script>
 
@@ -23107,6 +23721,617 @@ body[data-game-ui-size="big"] #pendingUpgradeTab{
   }
   body[data-game-ui-size="big"] #bottomCenter{
     transform:translateX(-50%) scale(1.06)!important;
+  }
+}
+</style>
+
+
+<style id="fragment-v1-verified-developer-moderation-style">
+.verifiedDeveloperBadge{
+  display:inline-grid;
+  place-items:center;
+  min-height:18px;
+  padding:1px 5px;
+  border:2px solid #101820;
+  background:#ffcf58;
+  color:#101820!important;
+  font-size:7px!important;
+  font-weight:1000!important;
+  letter-spacing:.09em!important;
+  line-height:1!important;
+  text-shadow:none!important;
+  vertical-align:middle;
+}
+.developerRoleStatus{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  margin:9px 0;
+  padding:7px;
+  border:3px solid #101820;
+  background:#fff3b8;
+}
+.developerRoleStatus span{
+  color:#101820!important;
+  font-size:9px;
+  font-weight:1000;
+}
+.developerPanelButton{
+  display:none;
+  grid-template-columns:1fr!important;
+  gap:2px!important;
+  text-align:left!important;
+  margin-bottom:9px;
+  background:#ffcf58!important;
+  color:#101820!important;
+}
+.developerPanelButton.active{
+  display:grid!important;
+}
+.developerPanelButton b,
+.developerPanelButton span{
+  color:#101820!important;
+}
+.developerPanelButton b{
+  font-size:12px;
+}
+.developerPanelButton span{
+  font-size:8px;
+  opacity:.78;
+}
+
+.developerPanelWindow{
+  width:min(1020px,96vw)!important;
+  max-height:min(820px,92vh)!important;
+  overflow:hidden!important;
+  background:#c7d0da!important;
+}
+.developerPanelTitle{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+.developerPanelTitle h2{
+  margin:0;
+}
+.developerPanelTitle>span{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  color:#526170;
+  font-size:8px;
+  font-weight:1000;
+}
+.developerPanelTopActions{
+  display:flex;
+  align-items:center;
+  gap:7px;
+}
+.developerPanelTopActions>button{
+  min-height:34px;
+  border:3px solid #101820;
+  background:#eef3f7;
+  color:#101820;
+  font-weight:1000;
+}
+.developerPanelTopActions .modalClose{
+  min-width:38px;
+}
+.developerPanelSummary{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:7px;
+  padding:10px;
+  border-bottom:4px solid #101820;
+  background:#aebac6;
+}
+.developerPanelSummary>div{
+  min-height:57px;
+  padding:8px;
+  border:3px solid #101820;
+  background:#eef3f7;
+}
+.developerPanelSummary span,
+.developerPanelSummary b{
+  display:block;
+}
+.developerPanelSummary span{
+  color:#526170;
+  font-size:8px;
+  font-weight:1000;
+  letter-spacing:.08em;
+}
+.developerPanelSummary b{
+  margin-top:4px;
+  color:#101820;
+  font-size:18px;
+}
+.developerPanelTabs{
+  display:flex;
+  gap:5px;
+  padding:8px 10px;
+  border-bottom:4px solid #101820;
+  background:#dce4ec;
+}
+.developerPanelTabs button{
+  min-height:34px;
+  padding:5px 11px;
+  border:3px solid #101820;
+  background:#eef3f7;
+  color:#101820;
+  font-size:9px;
+  font-weight:1000;
+}
+.developerPanelTabs button.active{
+  background:#101820;
+  color:#fff;
+}
+.developerPanelBody{
+  max-height:min(610px,65vh);
+  overflow-y:auto;
+  padding:10px;
+}
+.developerPanelPage{
+  display:none;
+}
+.developerPanelPage.active{
+  display:block;
+}
+.developerCommandGrid{
+  display:grid;
+  grid-template-columns:minmax(0,1.5fr) minmax(260px,.7fr);
+  gap:10px;
+}
+.developerCommandCard{
+  display:grid;
+  align-content:start;
+  gap:9px;
+  padding:11px;
+  border:4px solid #101820;
+  background:#eef3f7;
+  box-shadow:5px 5px 0 rgba(0,0,0,.13);
+}
+.developerCommandCard.announcementCard{
+  background:
+    linear-gradient(135deg,rgba(255,207,88,.34),transparent 48%),
+    #eef3f7;
+}
+.developerCardHeading{
+  display:flex;
+  align-items:center;
+  gap:9px;
+}
+.developerCardHeading>span{
+  width:38px;
+  height:38px;
+  display:grid;
+  place-items:center;
+  flex:0 0 38px;
+  border:3px solid #101820;
+  background:#ffcf58;
+  color:#101820;
+  font-size:20px;
+  font-weight:1000;
+}
+.developerCardHeading div{
+  display:grid;
+  gap:2px;
+}
+.developerCardHeading b{
+  color:#101820;
+  font-size:13px;
+}
+.developerCardHeading small{
+  color:#526170;
+  font-size:9px;
+}
+.developerCommandCard textarea{
+  width:100%;
+  min-height:112px;
+  resize:vertical;
+  border:3px solid #101820;
+  background:#fff;
+  color:#101820;
+  padding:9px;
+  font:900 11px Arial;
+}
+.developerCommandCard>button,
+.developerCommandActions button{
+  min-height:39px;
+  border:3px solid #101820;
+  background:#315fc9;
+  color:#fff;
+  font-weight:1000;
+}
+.developerCommandActions{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.developerCommandActions span{
+  color:#526170;
+  font-size:8px;
+  font-weight:1000;
+}
+.developerListHeading{
+  margin:15px 0 7px;
+  color:#101820;
+  font-size:10px;
+  letter-spacing:.11em;
+}
+.developerListToolbar{
+  display:grid;
+  grid-template-columns:minmax(220px,.7fr) 1fr;
+  align-items:center;
+  gap:8px;
+  margin-bottom:8px;
+  padding:8px;
+  border:3px solid #101820;
+  background:#eef3f7;
+}
+.developerListToolbar input,
+.developerListToolbar select{
+  height:38px!important;
+  margin:0!important;
+  padding:6px 9px!important;
+  border:3px solid #101820!important;
+  background:#fff!important;
+  color:#101820!important;
+}
+.developerListToolbar span{
+  color:#526170;
+  font-size:9px;
+  font-weight:900;
+}
+.developerModerationList{
+  display:grid;
+  gap:8px;
+}
+.developerPlayerRow,
+.developerReportRow,
+.developerSanctionRow,
+.developerActionRow,
+.developerAnnouncementHistoryRow{
+  border:3px solid #101820;
+  background:#eef3f7;
+  color:#101820;
+}
+.developerPlayerRow{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:10px;
+  padding:8px;
+}
+.developerPlayerRow.protected{
+  background:#fff3b8;
+}
+.developerPlayerIdentity{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+}
+.developerAvatar{
+  width:42px;
+  height:42px;
+  display:grid;
+  place-items:center;
+  flex:0 0 42px;
+  border:3px solid #101820;
+  background:#dce6ef;
+  color:#101820;
+  font-size:16px;
+  font-weight:1000;
+}
+.developerPlayerIdentity>div:last-child{
+  min-width:0;
+}
+.developerPlayerIdentity b,
+.developerPlayerIdentity small{
+  display:block;
+}
+.developerPlayerIdentity b{
+  color:#101820;
+  font-size:11px;
+}
+.developerPlayerIdentity small{
+  margin-top:3px;
+  color:#526170;
+  font-size:8px;
+  overflow-wrap:anywhere;
+}
+.developerPlayerActions,
+.developerReportActions{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:5px;
+}
+.developerPlayerActions button,
+.developerReportActions button,
+.developerSanctionRow>button{
+  min-height:30px;
+  padding:4px 7px;
+  border:2px solid #101820;
+  background:#fff;
+  color:#101820;
+  font-size:8px;
+  font-weight:1000;
+}
+.developerPlayerActions button.danger,
+.developerReportActions button.danger{
+  background:#8b2638;
+  color:#fff;
+}
+.developerReportRow{
+  display:grid;
+  gap:7px;
+  padding:9px;
+}
+.developerReportTop{
+  display:flex;
+  align-items:start;
+  justify-content:space-between;
+  gap:9px;
+}
+.developerReportTop b,
+.developerReportTop small{
+  display:block;
+}
+.developerReportTop b{
+  color:#101820;
+  font-size:11px;
+}
+.developerReportTop small{
+  margin-top:3px;
+  color:#526170;
+  font-size:8px;
+}
+.developerStatus{
+  padding:4px 6px;
+  border:2px solid #101820;
+  background:#dce6ef;
+  color:#101820;
+  font-size:8px;
+  font-weight:1000;
+}
+.developerStatus.open{background:#ffd9df}
+.developerStatus.reviewing{background:#fff3b8}
+.developerStatus.resolved{background:#c8f2d6}
+.developerStatus.dismissed{background:#c7d0da}
+.developerReportReason{
+  padding:7px;
+  border:2px solid #101820;
+  background:#fff;
+}
+.developerReportReason b{
+  color:#101820;
+  font-size:10px;
+}
+.developerReportReason p{
+  margin:4px 0 0;
+  color:#526170;
+  font-size:9px;
+  line-height:1.4;
+}
+.developerReviewNote{
+  display:grid;
+  gap:2px;
+  padding:6px;
+  border-left:5px solid #315fc9;
+  background:#dce6ef;
+}
+.developerReviewNote b{
+  color:#101820;
+  font-size:8px;
+}
+.developerReviewNote span{
+  color:#526170;
+  font-size:9px;
+}
+.developerSanctionRow{
+  display:grid;
+  grid-template-columns:43px minmax(0,1fr) auto;
+  align-items:center;
+  gap:9px;
+  padding:8px;
+}
+.developerSanctionIcon{
+  width:40px;
+  height:40px;
+  display:grid;
+  place-items:center;
+  border:3px solid #101820;
+  background:#8b2638;
+  color:#fff;
+  font-size:18px;
+  font-weight:1000;
+}
+.developerSanctionRow b,
+.developerSanctionRow span,
+.developerSanctionRow small{
+  display:block;
+}
+.developerSanctionRow b{
+  color:#101820;
+  font-size:10px;
+}
+.developerSanctionRow span{
+  margin-top:2px;
+  color:#526170;
+  font-size:9px;
+}
+.developerSanctionRow small{
+  margin-top:3px;
+  color:#71808f;
+  font-size:8px;
+}
+.developerActionRow,
+.developerAnnouncementHistoryRow{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  align-items:center;
+  gap:8px;
+  padding:8px;
+}
+.developerActionRow>span,
+.developerAnnouncementHistoryRow>span{
+  min-width:38px;
+  min-height:31px;
+  display:grid;
+  place-items:center;
+  padding:3px 6px;
+  border:2px solid #101820;
+  background:#ffcf58;
+  color:#101820;
+  font-size:8px;
+  font-weight:1000;
+}
+.developerActionRow b,
+.developerActionRow small,
+.developerAnnouncementHistoryRow b,
+.developerAnnouncementHistoryRow small{
+  display:block;
+}
+.developerActionRow b,
+.developerAnnouncementHistoryRow b{
+  color:#101820;
+  font-size:10px;
+}
+.developerActionRow small,
+.developerAnnouncementHistoryRow small{
+  margin-top:3px;
+  color:#526170;
+  font-size:8px;
+}
+.developerEmptyState{
+  padding:18px;
+  border:3px dashed #526170;
+  background:#eef3f7;
+  color:#526170;
+  text-align:center;
+  font-size:9px;
+  font-weight:1000;
+}
+
+.globalDeveloperAnnouncement{
+  position:fixed;
+  left:50%;
+  top:22px;
+  z-index:100000;
+  width:min(760px,calc(100vw - 24px));
+  display:grid;
+  grid-template-columns:48px minmax(0,1fr) 34px;
+  align-items:center;
+  gap:9px;
+  padding:9px;
+  border:4px solid #101820;
+  background:#ffcf58;
+  color:#101820;
+  box-shadow:8px 8px 0 rgba(0,0,0,.28);
+  opacity:0;
+  pointer-events:none;
+  transform:translate(-50%,-24px) scale(.96);
+  transition:opacity .18s ease,transform .32s cubic-bezier(.18,1.34,.3,1);
+}
+.globalDeveloperAnnouncement.show{
+  opacity:1;
+  pointer-events:auto;
+  transform:translate(-50%,0) scale(1);
+}
+.globalAnnouncementMark{
+  width:44px;
+  height:44px;
+  display:grid;
+  place-items:center;
+  border:3px solid #101820;
+  background:#101820;
+  color:#ffcf58;
+  font-size:25px;
+  font-weight:1000;
+}
+.globalDeveloperAnnouncement>div:nth-child(2){
+  display:grid;
+  gap:3px;
+  min-width:0;
+}
+.globalDeveloperAnnouncement small{
+  color:#526170;
+  font-size:8px;
+  font-weight:1000;
+  letter-spacing:.12em;
+}
+.globalDeveloperAnnouncement b{
+  color:#101820;
+  font-size:13px;
+  line-height:1.25;
+  overflow-wrap:anywhere;
+}
+.globalDeveloperAnnouncement span{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  color:#101820;
+  font-size:8px;
+  font-weight:1000;
+}
+.globalDeveloperAnnouncement>button{
+  width:32px;
+  height:32px;
+  border:3px solid #101820;
+  background:#eef3f7;
+  color:#101820;
+  font-weight:1000;
+}
+.verifiedDeveloperProfileBadge{
+  display:flex!important;
+  align-items:center;
+  gap:6px;
+  width:max-content;
+  margin-top:4px;
+}
+.verifiedDeveloperProfileBadge small{
+  color:#ffcf58!important;
+  font-size:7px!important;
+  font-weight:1000!important;
+  text-shadow:0 1px 2px rgba(0,0,0,.9)!important;
+}
+.developerChatMessage{
+  border-left:3px solid #ffcf58;
+  padding-left:5px;
+}
+.developerChatMessage>b{
+  color:#ffcf58!important;
+}
+
+@media(max-width:780px){
+  .developerPanelSummary{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .developerCommandGrid{
+    grid-template-columns:1fr;
+  }
+  .developerPanelTabs{
+    overflow-x:auto;
+  }
+  .developerPlayerRow{
+    grid-template-columns:1fr;
+  }
+  .developerPlayerActions,
+  .developerReportActions{
+    justify-content:flex-start;
+  }
+  .developerListToolbar{
+    grid-template-columns:1fr;
+  }
+  .developerSanctionRow{
+    grid-template-columns:38px minmax(0,1fr);
+  }
+  .developerSanctionRow>button{
+    grid-column:1/-1;
   }
 }
 </style>

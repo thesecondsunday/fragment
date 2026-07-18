@@ -126,6 +126,7 @@ function sanitizeSnapshot(client, room, raw){
   const snap = {...raw};
   snap.id = client.id;
   snap.userId = client.userId || "";
+  snap.accountRole = publicAccountRole(client.accountRole);
   snap.entityId = safeToken(raw.entityId || '',64);
   snap.name = safeName(raw.name || client.name);
   snap.title = String(raw.title || '').replace(/[<>]/g,'').slice(0,40);
@@ -406,7 +407,7 @@ function reconcileServerBots(room){
 
 function publicPlayerCard(client){
   const profile=client?.profile||{},progress=client?.progress||{},stats=progress.stats||{};
-  return {userId:client?.userId||'',username:profile.username||client?.name||'Player',title:profile.equipped_title||'',banner:profile.profile_banner||'default',icon:profile.profile_icon||'core:circle',level:Number(progress.account_level)||1,achievementPoints:Number(progress.achievement_points)||0,favoriteEvolution:String(stats.favorite_evolution||''),showcasedAchievement:(profile.featured_achievements||progress.showcased_achievements||[])[0]||''};
+  return {userId:client?.userId||'',username:profile.username||client?.name||'Player',title:profile.equipped_title||'',banner:profile.profile_banner||'default',icon:profile.profile_icon||'core:circle',level:Number(progress.account_level)||1,achievementPoints:Number(progress.achievement_points)||0,favoriteEvolution:String(stats.favorite_evolution||''),showcasedAchievement:(profile.featured_achievements||progress.showcased_achievements||[])[0]||'',accountRole:publicAccountRole(client?.accountRole)};
 }
 function roomPlayerCards(room){return [...room.clients].filter(c=>c.authenticated&&c.userId).map(publicPlayerCard);}
 
@@ -1335,6 +1336,460 @@ async function supabaseRequest(endpoint, token, options={}){
   if(!response.ok) throw new Error(body?.message||body?.msg||body?.error_description||('Supabase HTTP '+response.status));
   return body;
 }
+
+function supabaseAdminConfigured(){
+  return !!(
+    String(process.env.SUPABASE_URL||'').trim()
+    && String(process.env.SUPABASE_SECRET_KEY||process.env.SUPABASE_SERVICE_ROLE_KEY||'').trim()
+  );
+}
+async function supabaseAdminRequest(endpoint, options={}){
+  const base=String(process.env.SUPABASE_URL||'').replace(/\/+$/,'');
+  const secret=String(process.env.SUPABASE_SECRET_KEY||process.env.SUPABASE_SERVICE_ROLE_KEY||'').trim();
+  if(!base || !secret) throw new Error('SUPABASE_SECRET_KEY is not configured on the Render server.');
+  const headers={
+    apikey:secret,
+    Authorization:'Bearer '+secret,
+    'Content-Type':'application/json',
+    ...(options.headers||{})
+  };
+  const response=await fetch(base+endpoint,{...options,headers});
+  let body=null;
+  try{body=await response.json();}catch(_error){}
+  if(!response.ok){
+    throw new Error(
+      body?.message
+      ||body?.msg
+      ||body?.error
+      ||body?.error_description
+      ||body?.hint
+      ||('Supabase admin HTTP '+response.status)
+    );
+  }
+  return body;
+}
+function safeModeratorText(value,maxLength=500){
+  return String(value||'')
+    .replace(/[<>]/g,'')
+    .replace(/\s+/g,' ')
+    .trim()
+    .slice(0,maxLength);
+}
+function publicAccountRole(value){
+  return value==='developer'?'developer':'player';
+}
+async function loadAccountRole(userId){
+  userId=cleanUserId(userId);
+  if(!userId || !supabaseAdminConfigured()) return 'player';
+  try{
+    const rows=await supabaseAdminRequest(
+      '/rest/v1/account_roles'
+      +'?user_id=eq.'+encodeURIComponent(userId)
+      +'&select=role&limit=1',
+      {method:'GET'}
+    );
+    return publicAccountRole(Array.isArray(rows)?rows[0]?.role:null);
+  }catch(error){
+    console.error('[Fragment.io] Account role lookup failed:',error.message||error);
+    return 'player';
+  }
+}
+function isDeveloper(client){
+  return !!(
+    client?.authenticated
+    &&client?.userId
+    &&client.accountRole==='developer'
+  );
+}
+function requireDeveloper(client){
+  if(isDeveloper(client)) return true;
+  send(client,{type:'developer_error',message:'Verified Developer permission required.'});
+  return false;
+}
+function broadcastGlobal(payload){
+  for(const target of clients) send(target,payload);
+}
+function moderatorNotice(client,message){
+  send(client,{type:'developer_notice',message:safeModeratorText(message,300)||'Action completed.'});
+}
+function moderatorError(client,error,fallback='Developer action failed.'){
+  send(client,{type:'developer_error',message:safeModeratorText(error?.message||error||fallback,300)||fallback});
+}
+async function insertModerationAction({
+  moderator,
+  targetUserId=null,
+  targetName=null,
+  action,
+  reason='',
+  roomCode=null,
+  metadata={}
+}){
+  if(!moderator?.userId || !action) return;
+  await supabaseAdminRequest('/rest/v1/moderation_actions',{
+    method:'POST',
+    headers:{Prefer:'return=minimal'},
+    body:JSON.stringify({
+      moderator_user_id:moderator.userId,
+      moderator_name:moderator.name,
+      target_user_id:targetUserId||null,
+      target_name:targetName||null,
+      action:safeToken(action,48),
+      reason:safeModeratorText(reason,500),
+      room_code:roomCode||null,
+      metadata:metadata&&typeof metadata==='object'?metadata:{}
+    })
+  });
+}
+async function activeSanctionsForUser(userId){
+  userId=cleanUserId(userId);
+  if(!userId || !supabaseAdminConfigured()) return [];
+  const rows=await supabaseAdminRequest(
+    '/rest/v1/moderation_sanctions'
+    +'?target_user_id=eq.'+encodeURIComponent(userId)
+    +'&active=eq.true'
+    +'&select=id,target_user_id,target_name,sanction_type,reason,expires_at,active,created_by,creator_name,created_at'
+    +'&order=created_at.desc',
+    {method:'GET'}
+  );
+  const now=Date.now();
+  const active=[];
+  for(const row of (Array.isArray(rows)?rows:[])){
+    const expiry=row.expires_at?Date.parse(row.expires_at):Infinity;
+    if(Number.isFinite(expiry)&&expiry<=now){
+      supabaseAdminRequest('/rest/v1/moderation_sanctions?id=eq.'+encodeURIComponent(row.id),{
+        method:'PATCH',
+        headers:{Prefer:'return=minimal'},
+        body:JSON.stringify({active:false,lifted_at:new Date().toISOString()})
+      }).catch(()=>{});
+      continue;
+    }
+    active.push(row);
+  }
+  return active;
+}
+async function refreshClientSanctions(client){
+  client.moderationMutedUntil=0;
+  if(!client?.userId || client.accountRole==='developer') return;
+  const sanctions=await activeSanctionsForUser(client.userId);
+  const ban=sanctions.find(row=>row.sanction_type==='ban');
+  if(ban){
+    const until=ban.expires_at?new Date(ban.expires_at).toLocaleString('en-GB',{timeZone:'UTC'})+' UTC':'further notice';
+    throw new Error('This account is suspended until '+until+'. Reason: '+(ban.reason||'No reason supplied.'));
+  }
+  for(const row of sanctions){
+    if(row.sanction_type!=='mute') continue;
+    const expiry=row.expires_at?Date.parse(row.expires_at):Date.now()+3600000;
+    client.moderationMutedUntil=Math.max(client.moderationMutedUntil||0,expiry);
+  }
+}
+async function resolveTargetRole(targetUserId){
+  const online=onlineClientForUser(targetUserId);
+  if(online) return online.accountRole;
+  return loadAccountRole(targetUserId);
+}
+async function ensureModeratableTarget(targetUserId){
+  targetUserId=cleanUserId(targetUserId);
+  if(!targetUserId) throw new Error('Invalid moderation target.');
+  if(await resolveTargetRole(targetUserId)==='developer'){
+    throw new Error('Verified Developer accounts cannot be moderated from this panel.');
+  }
+  return targetUserId;
+}
+function developerOnlinePlayers(){
+  const result=[];
+  const seen=new Set();
+  for(const online of clients){
+    if(!online.authenticated||!online.userId||seen.has(online.userId)) continue;
+    seen.add(online.userId);
+    const room=online.room?rooms.get(online.room):null;
+    const sessions=allOnlineClientsForUser(online.userId);
+    result.push({
+      userId:online.userId,
+      name:online.profile?.username||online.name||'Player',
+      accountRole:publicAccountRole(online.accountRole),
+      roomCode:online.room||null,
+      mode:room?.mode||online.mode||null,
+      inMatch:!!online.inMatch,
+      status:online.role==='spectator'?'spectating':online.inMatch?'in_match':online.queueId?'searching':'online',
+      connectedSessions:sessions.length,
+      mutedUntil:Math.max(0,...sessions.map(session=>Number(session.moderationMutedUntil)||0))
+    });
+  }
+  return result.sort((a,b)=>a.name.localeCompare(b.name));
+}
+async function developerPanelData(){
+  const [reports,actions,sanctions,announcements]=await Promise.all([
+    supabaseAdminRequest(
+      '/rest/v1/player_reports'
+      +'?select=id,reporter_user_id,reporter_name,target_user_id,target_name,reason,details,room_code,status,created_at,reviewed_at,review_note'
+      +'&order=created_at.desc&limit=100',
+      {method:'GET'}
+    ),
+    supabaseAdminRequest(
+      '/rest/v1/moderation_actions'
+      +'?select=id,moderator_user_id,moderator_name,target_user_id,target_name,action,reason,room_code,metadata,created_at'
+      +'&order=created_at.desc&limit=100',
+      {method:'GET'}
+    ),
+    supabaseAdminRequest(
+      '/rest/v1/moderation_sanctions'
+      +'?active=eq.true'
+      +'&select=id,target_user_id,target_name,sanction_type,reason,expires_at,active,creator_name,created_at'
+      +'&order=created_at.desc&limit=100',
+      {method:'GET'}
+    ),
+    supabaseAdminRequest(
+      '/rest/v1/global_announcements'
+      +'?select=id,creator_name,message,created_at'
+      +'&order=created_at.desc&limit=20',
+      {method:'GET'}
+    )
+  ]);
+  const now=Date.now();
+  return {
+    players:developerOnlinePlayers(),
+    reports:Array.isArray(reports)?reports:[],
+    actions:Array.isArray(actions)?actions:[],
+    sanctions:(Array.isArray(sanctions)?sanctions:[]).filter(row=>!row.expires_at||Date.parse(row.expires_at)>now),
+    announcements:Array.isArray(announcements)?announcements:[],
+    generatedAt:new Date().toISOString()
+  };
+}
+async function submitPersistentPlayerReport(client,msg){
+  if(!client.authenticated||!client.userId) throw new Error('Login before reporting a player.');
+  const now=Date.now();
+  if(now-(client.lastReportAt||0)<15000) throw new Error('Wait 15 seconds before submitting another report.');
+  const targetUserId=cleanUserId(msg.targetUserId);
+  if(!targetUserId||targetUserId===client.userId) throw new Error('Invalid report target.');
+  const target=onlineClientForUser(targetUserId);
+  const reason=safeToken(msg.reason||'unspecified',48)||'unspecified';
+  const details=safeModeratorText(msg.details,500);
+  client.lastReportAt=now;
+  await supabaseAdminRequest('/rest/v1/player_reports',{
+    method:'POST',
+    headers:{Prefer:'return=minimal'},
+    body:JSON.stringify({
+      reporter_user_id:client.userId,
+      reporter_name:client.profile?.username||client.name||'Player',
+      target_user_id:targetUserId,
+      target_name:target?.profile?.username||target?.name||safeName(msg.targetName||'Unknown'),
+      reason,
+      details,
+      room_code:client.room||null,
+      status:'open'
+    })
+  });
+}
+async function developerCreateAnnouncement(client,msg){
+  if(!requireDeveloper(client)) return;
+  const now=Date.now();
+  if(now-(client.lastAnnouncementAt||0)<10000) throw new Error('Wait 10 seconds before sending another global announcement.');
+  const message=safeModeratorText(msg.message,300);
+  if(message.length<2) throw new Error('Announcement is empty.');
+  client.lastAnnouncementAt=now;
+  await supabaseAdminRequest('/rest/v1/global_announcements',{
+    method:'POST',
+    headers:{Prefer:'return=minimal'},
+    body:JSON.stringify({
+      created_by:client.userId,
+      creator_name:client.profile?.username||client.name||'Developer',
+      message
+    })
+  });
+  await insertModerationAction({
+    moderator:client,
+    action:'announcement',
+    reason:message,
+    roomCode:client.room||null
+  });
+  broadcastGlobal({
+    type:'global_announcement',
+    message,
+    author:client.profile?.username||client.name||'Developer',
+    createdAt:new Date().toISOString()
+  });
+  moderatorNotice(client,'Global announcement sent.');
+}
+async function developerWarnPlayer(client,msg){
+  if(!requireDeveloper(client)) return;
+  const targetUserId=await ensureModeratableTarget(msg.targetUserId);
+  if(targetUserId===client.userId) throw new Error('You cannot warn yourself.');
+  const sessions=allOnlineClientsForUser(targetUserId);
+  if(!sessions.length) throw new Error('That player is no longer online.');
+  const reason=safeModeratorText(msg.reason,240)||'Please review the game rules.';
+  const target=sessions[0];
+  await insertModerationAction({
+    moderator:client,
+    targetUserId,
+    targetName:target.profile?.username||target.name,
+    action:'warn',
+    reason,
+    roomCode:target.room||null
+  });
+  for(const session of sessions){
+    send(session,{
+      type:'moderator_warning',
+      reason,
+      moderator:client.profile?.username||client.name||'Developer'
+    });
+  }
+  moderatorNotice(client,(target.profile?.username||target.name)+' was warned.');
+}
+async function developerKickPlayer(client,msg){
+  if(!requireDeveloper(client)) return;
+  const targetUserId=await ensureModeratableTarget(msg.targetUserId);
+  if(targetUserId===client.userId) throw new Error('You cannot kick yourself.');
+  const sessions=allOnlineClientsForUser(targetUserId);
+  if(!sessions.length) throw new Error('That player is no longer online.');
+  const target=sessions[0];
+  const reason=safeModeratorText(msg.reason,240)||'Removed by a Developer.';
+  await insertModerationAction({
+    moderator:client,
+    targetUserId,
+    targetName:target.profile?.username||target.name,
+    action:'kick',
+    reason,
+    roomCode:target.room||null
+  });
+  for(const session of sessions){
+    send(session,{
+      type:'moderator_kick',
+      reason,
+      moderator:client.profile?.username||client.name||'Developer'
+    });
+    setTimeout(()=>{try{session.socket.destroy();}catch(_error){}},500);
+  }
+  moderatorNotice(client,(target.profile?.username||target.name)+' was kicked.');
+}
+function allowedModerationDuration(raw,allowed,fallback){
+  const value=Math.floor(Number(raw)||fallback);
+  return allowed.includes(value)?value:fallback;
+}
+async function createSanction(client,msg,type){
+  if(!requireDeveloper(client)) return;
+  const targetUserId=await ensureModeratableTarget(msg.targetUserId);
+  if(targetUserId===client.userId) throw new Error('You cannot moderate yourself.');
+  const allowed=type==='mute'?[300,900,3600,21600]:[3600,86400,604800,2592000];
+  const durationSeconds=allowedModerationDuration(msg.durationSeconds,allowed,allowed[1]);
+  const expiresAt=new Date(Date.now()+durationSeconds*1000).toISOString();
+  const sessions=allOnlineClientsForUser(targetUserId);
+  const target=sessions[0];
+  const targetName=target?.profile?.username||target?.name||safeName(msg.targetName||'Unknown');
+  const reason=safeModeratorText(msg.reason,300)||(type==='mute'?'Chat moderation.':'Account suspended by a Developer.');
+
+  await supabaseAdminRequest('/rest/v1/moderation_sanctions',{
+    method:'POST',
+    headers:{Prefer:'return=minimal'},
+    body:JSON.stringify({
+      target_user_id:targetUserId,
+      target_name:targetName,
+      sanction_type:type,
+      reason,
+      expires_at:expiresAt,
+      active:true,
+      created_by:client.userId,
+      creator_name:client.profile?.username||client.name||'Developer'
+    })
+  });
+  await insertModerationAction({
+    moderator:client,
+    targetUserId,
+    targetName,
+    action:type,
+    reason,
+    roomCode:target?.room||null,
+    metadata:{durationSeconds,expiresAt}
+  });
+
+  if(type==='mute'){
+    for(const session of sessions){
+      session.moderationMutedUntil=Math.max(session.moderationMutedUntil||0,Date.parse(expiresAt));
+      send(session,{
+        type:'moderator_mute',
+        reason,
+        expiresAt,
+        moderator:client.profile?.username||client.name||'Developer'
+      });
+    }
+    moderatorNotice(client,targetName+' was muted.');
+    return;
+  }
+
+  for(const session of sessions){
+    send(session,{
+      type:'moderator_ban',
+      reason,
+      expiresAt,
+      moderator:client.profile?.username||client.name||'Developer'
+    });
+    setTimeout(()=>{try{session.socket.destroy();}catch(_error){}},650);
+  }
+  moderatorNotice(client,targetName+' was suspended.');
+}
+async function developerLiftSanction(client,msg){
+  if(!requireDeveloper(client)) return;
+  const sanctionId=Math.floor(Number(msg.sanctionId));
+  if(!Number.isSafeInteger(sanctionId)||sanctionId<1) throw new Error('Invalid sanction ID.');
+  const rows=await supabaseAdminRequest(
+    '/rest/v1/moderation_sanctions?id=eq.'+encodeURIComponent(sanctionId)
+    +'&active=eq.true'
+    +'&select=id,target_user_id,target_name,sanction_type,reason&limit=1',
+    {method:'GET'}
+  );
+  const sanction=Array.isArray(rows)?rows[0]:null;
+  if(!sanction) throw new Error('That sanction is no longer active.');
+  await supabaseAdminRequest('/rest/v1/moderation_sanctions?id=eq.'+encodeURIComponent(sanctionId),{
+    method:'PATCH',
+    headers:{Prefer:'return=minimal'},
+    body:JSON.stringify({
+      active:false,
+      lifted_at:new Date().toISOString(),
+      lifted_by:client.userId
+    })
+  });
+  if(sanction.sanction_type==='mute'){
+    for(const session of allOnlineClientsForUser(sanction.target_user_id)){
+      const remaining=await activeSanctionsForUser(sanction.target_user_id);
+      session.moderationMutedUntil=Math.max(0,...remaining.filter(row=>row.sanction_type==='mute').map(row=>Date.parse(row.expires_at)||0));
+      send(session,{type:'moderator_unmute'});
+    }
+  }
+  await insertModerationAction({
+    moderator:client,
+    targetUserId:sanction.target_user_id,
+    targetName:sanction.target_name,
+    action:sanction.sanction_type==='ban'?'unban':'unmute',
+    reason:safeModeratorText(msg.reason,240)||'Sanction lifted.',
+    metadata:{sanctionId}
+  });
+  moderatorNotice(client,'Sanction lifted for '+(sanction.target_name||'player')+'.');
+}
+async function developerUpdateReport(client,msg){
+  if(!requireDeveloper(client)) return;
+  const reportId=Math.floor(Number(msg.reportId));
+  const status=String(msg.status||'');
+  if(!Number.isSafeInteger(reportId)||reportId<1) throw new Error('Invalid report ID.');
+  if(!['reviewing','resolved','dismissed'].includes(status)) throw new Error('Invalid report status.');
+  const reviewNote=safeModeratorText(msg.reviewNote,500);
+  await supabaseAdminRequest('/rest/v1/player_reports?id=eq.'+encodeURIComponent(reportId),{
+    method:'PATCH',
+    headers:{Prefer:'return=minimal'},
+    body:JSON.stringify({
+      status,
+      reviewed_by:client.userId,
+      review_note:reviewNote,
+      reviewed_at:new Date().toISOString()
+    })
+  });
+  await insertModerationAction({
+    moderator:client,
+    action:'report_'+status,
+    reason:reviewNote,
+    metadata:{reportId}
+  });
+  moderatorNotice(client,'Report #'+reportId+' marked '+status+'.');
+}
+
 async function refreshClientProfile(client){
   if(!client?.authenticated || !client.accessToken || !client.userId) return;
   const rows=await supabaseRequest('/rest/v1/profiles?id=eq.'+encodeURIComponent(client.userId)+'&select=id,username,friend_code,about_me,equipped_title,profile_banner,profile_icon,featured_cosmetics,featured_achievements,profile_settings',client.accessToken,{method:'GET'});
@@ -1355,16 +1810,28 @@ async function authenticateSocket(client, token){
   client.accessToken=token;
   client.userId=user.id;
   client.authenticated=true;
+  client.accountRole=await loadAccountRole(user.id);
   client.name=safeName(user.user_metadata?.username||client.name||'Player');
   client.profile={id:user.id,username:client.name,friend_code:'',profile_settings:{}};
   try{ await refreshClientProfile(client); }catch(_e){}
+  try{
+    await refreshClientSanctions(client);
+  }catch(error){
+    client.authenticated=false;
+    client.accessToken='';
+    client.userId=null;
+    client.accountRole='player';
+    client.profile=null;
+    client.progress=null;
+    throw error;
+  }
   if(!userClients.has(user.id)) userClients.set(user.id,new Set());
   userClients.get(user.id).add(client);
   await refreshClientFriends(client);
   for(const party of parties.values()){
     if(party.members.has(user.id)){ client.partyId=party.id; break; }
   }
-  send(client,{type:'auth_ok',userId:user.id,clientId:client.id,name:client.name});
+  send(client,{type:'auth_ok',userId:user.id,clientId:client.id,name:client.name,accountRole:publicAccountRole(client.accountRole)});
   sendPartyStateForClient(client);
   sendWatchedPresence(client);
   const reservation=reconnectReservations.get(user.id);
@@ -1403,6 +1870,7 @@ function presenceFor(viewer,target){
   const allowJoin=room && target.inMatch && roomJoinWindowOpen(room) && room.clients.size<roomCapacity(room) && privacyAllows(settings.allow_join||'friends',isFriend,isParty);
   return {
     status,
+    accountRole:publicAccountRole(target.accountRole),
     mode:room?.mode||party?.mode||null,
     players:room?.clients?.size||0,
     capacity:room?roomCapacity(room):0,
@@ -1428,7 +1896,7 @@ function partyPayload(party){
   const members=[];
   for(const userId of party.members){
     const c=onlineClientForUser(userId);
-    members.push({userId,name:c?.profile?.username||c?.name||party.memberNames.get(userId)||'Player',online:!!c,ready:!!party.ready.get(userId),leader:userId===party.leaderId,status:c?presenceFor(c,c).status:'offline'});
+    members.push({userId,name:c?.profile?.username||c?.name||party.memberNames.get(userId)||'Player',online:!!c,ready:!!party.ready.get(userId),leader:userId===party.leaderId,status:c?presenceFor(c,c).status:'offline',accountRole:publicAccountRole(c?.accountRole)});
   }
   return {type:'party_state',partyId:party.id,leaderId:party.leaderId,mode:party.mode,fillBots:party.fillBots,queued:party.queued,members};
 }
@@ -1441,7 +1909,7 @@ function broadcastParty(party){
 function sendPartyStateForClient(client){
   const party=partyForClient(client);
   if(party) send(client,partyPayload(party));
-  else send(client,{type:'party_state',partyId:null,leaderId:null,mode:'normal',fillBots:true,queued:false,members:client.authenticated?[{userId:client.userId,name:client.name,online:true,ready:false,leader:true,status:'online'}]:[]});
+  else send(client,{type:'party_state',partyId:null,leaderId:null,mode:'normal',fillBots:true,queued:false,members:client.authenticated?[{userId:client.userId,name:client.name,online:true,ready:false,leader:true,status:'online',accountRole:publicAccountRole(client.accountRole)}]:[]});
 }
 function ensureParty(client){
   let party=partyForClient(client);
@@ -1711,13 +2179,9 @@ function handleMessage(client, msg){
   if(msg.type === 'join_friend'){ joinFriend(client,msg.friendUserId); return; }
 
   if(msg.type === 'report_player'){
-    if(!client.authenticated) return send(client,{type:'social_error',message:'Login before reporting a player.'});
-    const targetUserId=cleanUserId(msg.targetUserId);
-    if(!targetUserId || targetUserId===client.userId) return;
-    playerReports.push({id:'R-'+id(5),reporterUserId:client.userId,targetUserId,reason:safeToken(msg.reason||'unspecified',48),createdAt:new Date().toISOString(),room:client.room||null});
-    while(playerReports.length>500) playerReports.shift();
-    console.warn('[Fragment.io] Player report',playerReports[playerReports.length-1]);
-    send(client,{type:'social_notice',message:'Report submitted for moderator review.'});
+    submitPersistentPlayerReport(client,msg)
+      .then(()=>send(client,{type:'social_notice',message:'Report submitted for moderator review.'}))
+      .catch(error=>send(client,{type:'social_error',message:error.message||'Could not submit report.'}));
     return;
   }
   if(msg.type === 'party_ping'){
@@ -1745,6 +2209,51 @@ function handleMessage(client, msg){
     sendWatchedPresence(client);
     return;
   }
+
+  if(msg.type === 'public_role_request'){
+    const targetUserId=cleanUserId(msg.userId);
+    if(!client.authenticated||!targetUserId) return;
+    loadAccountRole(targetUserId)
+      .then(accountRole=>send(client,{type:'public_account_role',userId:targetUserId,accountRole:publicAccountRole(accountRole)}))
+      .catch(()=>send(client,{type:'public_account_role',userId:targetUserId,accountRole:'player'}));
+    return;
+  }
+  if(msg.type === 'developer_request_panel'){
+    if(!requireDeveloper(client)) return;
+    developerPanelData()
+      .then(data=>send(client,{type:'developer_panel_data',...data}))
+      .catch(error=>moderatorError(client,error,'Could not load Developer Panel data.'));
+    return;
+  }
+  if(msg.type === 'developer_announcement'){
+    developerCreateAnnouncement(client,msg).catch(error=>moderatorError(client,error,'Could not send announcement.'));
+    return;
+  }
+  if(msg.type === 'developer_warn'){
+    developerWarnPlayer(client,msg).catch(error=>moderatorError(client,error,'Could not warn that player.'));
+    return;
+  }
+  if(msg.type === 'developer_kick'){
+    developerKickPlayer(client,msg).catch(error=>moderatorError(client,error,'Could not kick that player.'));
+    return;
+  }
+  if(msg.type === 'developer_mute'){
+    createSanction(client,msg,'mute').catch(error=>moderatorError(client,error,'Could not mute that player.'));
+    return;
+  }
+  if(msg.type === 'developer_ban'){
+    createSanction(client,msg,'ban').catch(error=>moderatorError(client,error,'Could not suspend that account.'));
+    return;
+  }
+  if(msg.type === 'developer_lift_sanction'){
+    developerLiftSanction(client,msg).catch(error=>moderatorError(client,error,'Could not lift that sanction.'));
+    return;
+  }
+  if(msg.type === 'developer_update_report'){
+    developerUpdateReport(client,msg).catch(error=>moderatorError(client,error,'Could not update that report.'));
+    return;
+  }
+
   if(msg.type === 'join'){
     const room=getRoom(msg.room); if(room.clients.size===0){room.mode=cleanMode(msg.mode);room.fillBots=true;}
     joinClientToRoom(client,room,{mode:room.mode,name:msg.name});
@@ -1868,6 +2377,12 @@ function handleMessage(client, msg){
       return;
     }
 
+    if(now<(client.moderationMutedUntil||0)){
+      const seconds=Math.max(1,Math.ceil((client.moderationMutedUntil-now)/1000));
+      send(client,{type:'chat',name:'SERVER',msg:`You are muted for another ${seconds}s.`});
+      return;
+    }
+
     if(now<(client.chatMutedUntil||0)){
       const seconds=Math.max(1,Math.ceil((client.chatMutedUntil-now)/1000));
       send(client,{type:'chat',name:'SERVER',msg:`Chat cooldown: wait ${seconds}s.`});
@@ -1891,7 +2406,7 @@ function handleMessage(client, msg){
     client.chatTimes.push(now);
     client.lastChatBody=body;
     client.lastChatAt=now;
-    broadcast(room.code,{type:'chat',name:client.name,msg:body});
+    broadcast(room.code,{type:'chat',name:client.name,msg:body,accountRole:publicAccountRole(client.accountRole),userId:client.userId||''});
   }else if(msg.type === 'event'){
     const eventType=safeToken(msg.eventType||msg.name||'',48);
     broadcast(room.code,{...msg,eventType,sourceId:client.id},client);
@@ -2014,10 +2529,10 @@ server.on('upgrade', (req, socket) => {
   const client = {
     id:id(), socket, room:null, name:'Player', snapshot:null, buffer:null,
     ready:false, inMatch:false, role:'social', serverTeam:'neutral', spawnProtectedUntil:0,
-    authenticated:false, accessToken:'', userId:null, profile:null, progress:null, friendIds:new Set(), partyId:null, queueId:null, matchTeam:null,
+    authenticated:false, accessToken:'', userId:null, accountRole:'player', profile:null, progress:null, friendIds:new Set(), partyId:null, queueId:null, matchTeam:null,
     lastSeen:Date.now(), lastParseErrorAt:0,
-    chatTimes:[], chatMutedUntil:0, lastChatBody:'', lastChatAt:0,
-    lastPartyPingAt:0,
+    chatTimes:[], chatMutedUntil:0, moderationMutedUntil:0, lastChatBody:'', lastChatAt:0,
+    lastPartyPingAt:0, lastReportAt:0, lastAnnouncementAt:0,
     lastDeathDropAt:0
   };
   clients.add(client);
