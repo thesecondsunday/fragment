@@ -3856,3 +3856,141 @@ handleMessage=function(client,msg){
 
 console.log('[Fragment.io] Friend request accept, decline, and cancel acknowledgements enabled.');
 
+
+
+// -----------------------------------------------------------------------------
+// Fragment.io v1.0 performance / BR timer / friend dedupe / Developer Remnant
+// -----------------------------------------------------------------------------
+const V13_MAX_REMNANT_BALANCE=2000000000;
+const V13_MAX_REMNANT_GRANT=2000000000;
+
+async function v13ResolveRemnantTarget(msg){
+  const direct=cleanUserId(msg?.targetUserId);
+  if(direct){
+    const rows=await supabaseAdminRequest(
+      '/rest/v1/profiles?id=eq.'+encodeURIComponent(direct)
+      +'&select=id,username,friend_code&limit=1',
+      {method:'GET'}
+    );
+    const profile=Array.isArray(rows)?rows[0]:null;
+    if(!profile)throw new Error('That account does not exist.');
+    return profile;
+  }
+
+  const reference=String(msg?.targetRef||'')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g,'')
+    .slice(0,36);
+  if(!reference)throw new Error('Choose a player or enter a Friend Code.');
+
+  const asUserId=cleanUserId(reference);
+  if(asUserId){
+    const rows=await supabaseAdminRequest(
+      '/rest/v1/profiles?id=eq.'+encodeURIComponent(asUserId)
+      +'&select=id,username,friend_code&limit=1',
+      {method:'GET'}
+    );
+    const profile=Array.isArray(rows)?rows[0]:null;
+    if(!profile)throw new Error('That account does not exist.');
+    return profile;
+  }
+
+  const rows=await supabaseAdminRequest(
+    '/rest/v1/profiles?friend_code=eq.'+encodeURIComponent(reference)
+    +'&select=id,username,friend_code&limit=1',
+    {method:'GET'}
+  );
+  const profile=Array.isArray(rows)?rows[0]:null;
+  if(!profile)throw new Error('No account uses that Friend Code.');
+  return profile;
+}
+
+async function v13DeveloperGrantRemnant(client,msg){
+  if(!requireDeveloper(client))return;
+
+  const amountText=String(msg?.amount??'').replace(/[,_\s]/g,'');
+  if(!/^\d+$/.test(amountText))throw new Error('Enter a whole positive Remnant amount.');
+  const amount=Number(amountText);
+  if(!Number.isSafeInteger(amount)||amount<1||amount>V13_MAX_REMNANT_GRANT){
+    throw new Error('The grant must be between 1 and 2,000,000,000 Remnant.');
+  }
+
+  const target=await v13ResolveRemnantTarget(msg);
+  const saveRows=await supabaseAdminRequest(
+    '/rest/v1/player_data?user_id=eq.'+encodeURIComponent(target.id)
+    +'&select=user_id,remnant&limit=1',
+    {method:'GET'}
+  );
+  const existing=Array.isArray(saveRows)?saveRows[0]:null;
+  const oldBalance=Math.max(0,Math.floor(Number(existing?.remnant)||0));
+
+  if(oldBalance>V13_MAX_REMNANT_BALANCE-amount){
+    throw new Error('That grant would exceed the 2,000,000,000 Remnant account limit.');
+  }
+  const newBalance=oldBalance+amount;
+
+  if(existing){
+    await supabaseAdminRequest(
+      '/rest/v1/player_data?user_id=eq.'+encodeURIComponent(target.id),
+      {
+        method:'PATCH',
+        headers:{Prefer:'return=minimal'},
+        body:JSON.stringify({remnant:newBalance})
+      }
+    );
+  }else{
+    await supabaseAdminRequest('/rest/v1/player_data',{
+      method:'POST',
+      headers:{Prefer:'return=minimal'},
+      body:JSON.stringify({user_id:target.id,remnant:newBalance})
+    });
+  }
+
+  await insertModerationAction({
+    moderator:client,
+    targetUserId:target.id,
+    targetName:target.username||'Player',
+    action:'remnant_grant',
+    reason:'Granted '+amount.toLocaleString('en-US')+' Remnant.',
+    roomCode:onlineClientForUser(target.id)?.room||null,
+    metadata:{amount,oldBalance,newBalance,friendCode:target.friend_code||null}
+  });
+
+  const payload={
+    type:'developer_remnant_balance',
+    amount,
+    balance:newBalance,
+    targetUserId:target.id,
+    targetName:target.username||'Player',
+    grantedBy:client.profile?.username||client.name||'Developer'
+  };
+  for(const session of allOnlineClientsForUser(target.id))send(session,payload);
+
+  send(client,{
+    type:'developer_remnant_result',
+    ok:true,
+    amount,
+    balance:newBalance,
+    targetUserId:target.id,
+    targetName:target.username||'Player',
+    friendCode:target.friend_code||''
+  });
+}
+
+const v13BaseHandleMessage=handleMessage;
+handleMessage=function(client,msg){
+  if(msg?.type==='developer_grant_remnant'){
+    v13DeveloperGrantRemnant(client,msg)
+      .catch(error=>send(client,{
+        type:'developer_remnant_result',
+        ok:false,
+        message:error.message||'Could not grant Remnant.'
+      }));
+    return;
+  }
+  return v13BaseHandleMessage(client,msg);
+};
+
+console.log('[Fragment.io] Secure Developer Remnant grants enabled.');
+
