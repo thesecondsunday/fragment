@@ -382,11 +382,17 @@ function createServerBot(room,i,count){
 }
 function spawnServerBots(room){
   room.bots = [];
+  if(room.mode==='bossrush') return;
   const count = botCountForMode(room.mode,room.clients.size,room.fillBots!==false);
   for(let i=0;i<count;i++) room.bots.push(createServerBot(room,i,count));
 }
 function reconcileServerBots(room){
   if(!room || !room.matchStarted || room.mode==='br') return;
+  if(room.mode==='bossrush'){
+    room.bots=[];
+    broadcast(room.code,{type:'bots_state',mode:room.mode,bots:[],immediate:true});
+    return;
+  }
   const desired=botCountForMode(room.mode,room.clients.size,room.fillBots!==false);
   while(room.bots.length>desired){
     const deadIndex=room.bots.findIndex(b=>b.dead);

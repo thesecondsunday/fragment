@@ -18960,6 +18960,1168 @@ if(v1MenuLogo){
   /* ===== END DYNAMIC MUSIC + SOUND DESIGN OVERHAUL ===== */
 
 
+
+
+
+  /* ===== ELASTIC CORE MOTION OVERHAUL ===== */
+  const ELASTIC_MOTION_VERSION='elastic-v1';
+  document.documentElement.dataset.fragmentElasticMotion=ELASTIC_MOTION_VERSION;
+  console.log('[Fragment.io] Elastic core motion overhaul enabled.');
+
+  let elasticMotionEnabled=localStorage.getItem('fragmentio_elastic_motion')!=='0';
+  let elasticAfterimagesEnabled=localStorage.getItem('fragmentio_elastic_afterimages')!=='0';
+  let elasticMotionStrength=clamp(Number(localStorage.getItem('fragmentio_elastic_strength')||'1'),.25,1.35);
+  if(matchMedia?.('(prefers-reduced-motion: reduce)')?.matches && localStorage.getItem('fragmentio_elastic_strength')==null){
+    elasticMotionStrength=.55;
+  }
+
+  const elasticAfterimages=[];
+  const elasticDeathBursts=[];
+  const elasticRawDrawSkin=drawSkin;
+  const elasticRawDrawEntityHat=drawEntityHat;
+
+  function elasticState(ent){
+    if(!ent)return null;
+    if(!ent._elasticMotion){
+      const now=performance.now();
+      ent._elasticMotion={
+        stretch:0,stretchV:0,
+        offsetX:0,offsetXV:0,
+        offsetY:0,offsetYV:0,
+        tilt:0,tiltV:0,
+        hatBounce:0,hatBounceV:0,
+        direction:Number.isFinite(ent.angle)?ent.angle:0,
+        phase:Math.random()*Math.PI*2,
+        lastStep:now,
+        spawnStarted:now,
+        spawnUntil:now+440,
+        dashStarted:0,dashUntil:0,
+        evolveStarted:0,evolveUntil:0,
+        hitStarted:0,hitUntil:0,
+        fireReadyAt:0,
+        lastX:Number(ent.x)||0,lastY:Number(ent.y)||0
+      };
+    }
+    return ent._elasticMotion;
+  }
+
+  function elasticAngleLerp(from,to,amount){
+    let delta=(to-from+Math.PI)%(Math.PI*2)-Math.PI;
+    if(delta<-Math.PI)delta+=Math.PI*2;
+    return from+delta*amount;
+  }
+
+  function elasticSpring(state,key,velocityKey,stiffness,damping,dt){
+    const acceleration=-stiffness*state[key]-damping*state[velocityKey];
+    state[velocityKey]+=acceleration*dt;
+    state[key]+=state[velocityKey]*dt;
+    if(Math.abs(state[key])<.0002&&Math.abs(state[velocityKey])<.0002){
+      state[key]=0;
+      state[velocityKey]=0;
+    }
+  }
+
+  function elasticStep(ent){
+    const state=elasticState(ent);
+    if(!state)return null;
+    const now=performance.now();
+    const dt=clamp((now-state.lastStep)/1000,0,.05);
+    if(dt<=0)return state;
+    state.lastStep=now;
+
+    const speed=Math.hypot(Number(ent.vx)||0,Number(ent.vy)||0);
+    if(speed>.08){
+      state.direction=elasticAngleLerp(state.direction,Math.atan2(ent.vy,ent.vx),clamp(dt*11,0,1));
+      state.phase+=dt*(4.5+speed*1.1);
+    }else{
+      state.direction=elasticAngleLerp(state.direction,Number.isFinite(ent.angle)?ent.angle:state.direction,clamp(dt*2.2,0,1));
+      state.phase+=dt*1.2;
+    }
+
+    elasticSpring(state,'stretch','stretchV',118,17.5,dt);
+    elasticSpring(state,'offsetX','offsetXV',155,20,dt);
+    elasticSpring(state,'offsetY','offsetYV',155,20,dt);
+    elasticSpring(state,'tilt','tiltV',122,18,dt);
+    elasticSpring(state,'hatBounce','hatBounceV',142,16.5,dt);
+
+    state.lastX=Number(ent.x)||state.lastX;
+    state.lastY=Number(ent.y)||state.lastY;
+    return state;
+  }
+
+  function elasticTransform(ent){
+    if(!elasticMotionEnabled||!ent||ent._elasticGhost){
+      return{sx:1,sy:1,angle:0,offsetX:0,offsetY:0,rotation:0,hatY:0};
+    }
+
+    const state=elasticStep(ent);
+    const now=performance.now();
+    const speed=Math.hypot(Number(ent.vx)||0,Number(ent.vy)||0);
+    const movement=clamp(speed/(ent.boss?8.5:10.5),0,1);
+    const movementStretch=movement*(ent.boss?.045:.075)*elasticMotionStrength;
+    const movementBounce=Math.sin(state.phase)*(ent.boss?.008:.014)*movement*elasticMotionStrength;
+
+    let dashStretch=0;
+    if(now<state.dashUntil){
+      const duration=Math.max(1,state.dashUntil-state.dashStarted);
+      const progress=clamp((now-state.dashStarted)/duration,0,1);
+      dashStretch=Math.sin(progress*Math.PI)*.17*elasticMotionStrength+(1-progress)*.06*elasticMotionStrength;
+    }
+
+    let evolvePulse=0;
+    let evolveScale=1;
+    if(now<state.evolveUntil){
+      const duration=Math.max(1,state.evolveUntil-state.evolveStarted);
+      const progress=clamp((now-state.evolveStarted)/duration,0,1);
+      const envelope=Math.sin(progress*Math.PI);
+      evolvePulse=Math.sin(progress*Math.PI*7)*.09*envelope*elasticMotionStrength;
+      evolveScale=1+envelope*.13*elasticMotionStrength;
+    }
+
+    let spawnScale=1;
+    if(now<state.spawnUntil){
+      const duration=Math.max(1,state.spawnUntil-state.spawnStarted);
+      const progress=clamp((now-state.spawnStarted)/duration,0,1);
+      spawnScale=clamp(1-Math.exp(-6.7*progress)*Math.cos(10.5*progress)*.72,.38,1.12);
+    }
+
+    const totalStretch=clamp(
+      movementStretch+movementBounce+state.stretch+dashStretch+evolvePulse,
+      -.24,
+      ent.boss?.34:.46
+    );
+
+    const sx=clamp(spawnScale*evolveScale*(1+totalStretch),.66,1.58);
+    const sy=clamp(spawnScale*evolveScale*(1-totalStretch*.54+movementBounce*.28),.67,1.42);
+    return{
+      sx,sy,
+      angle:state.direction,
+      offsetX:state.offsetX,
+      offsetY:state.offsetY,
+      rotation:state.tilt+Math.sin(state.phase*.5)*movement*.012*elasticMotionStrength,
+      hatY:state.hatBounce-Math.max(0,totalStretch)*2.6
+    };
+  }
+
+  function elasticImpulse(ent,kind,options={}){
+    if(!elasticMotionEnabled||!ent)return;
+    const state=elasticState(ent);
+    const strength=elasticMotionStrength*(Number(options.strength)||1);
+    const angle=Number.isFinite(options.angle)?options.angle:(Number.isFinite(ent.angle)?ent.angle:state.direction);
+    state.direction=angle;
+    const cos=Math.cos(angle),sin=Math.sin(angle);
+    const now=performance.now();
+
+    if(kind==='dash'){
+      state.stretch+=.27*strength;
+      state.stretchV+=2.65*strength;
+      state.offsetX+=cos*2.2*strength;
+      state.offsetY+=sin*2.2*strength;
+      state.offsetXV+=cos*44*strength;
+      state.offsetYV+=sin*44*strength;
+      state.hatBounceV-=46*strength;
+      state.tiltV+=(Math.random()-.5)*.52*strength;
+      state.dashStarted=now;
+      state.dashUntil=now+270;
+    }else if(kind==='fire'){
+      if(now<state.fireReadyAt)return;
+      state.fireReadyAt=now+(options.automatic?58:84);
+      state.stretch-=.085*strength;
+      state.stretchV-=.82*strength;
+      state.offsetX-=cos*2.8*strength;
+      state.offsetY-=sin*2.8*strength;
+      state.offsetXV-=cos*30*strength;
+      state.offsetYV-=sin*30*strength;
+      state.hatBounceV-=14*strength;
+      state.tiltV+=(Math.random()-.5)*.25*strength;
+    }else if(kind==='heavyFire'){
+      state.stretch-=.16*strength;
+      state.stretchV-=1.65*strength;
+      state.offsetX-=cos*5.2*strength;
+      state.offsetY-=sin*5.2*strength;
+      state.offsetXV-=cos*50*strength;
+      state.offsetYV-=sin*50*strength;
+      state.hatBounceV-=30*strength;
+    }else if(kind==='hit'){
+      state.stretch-=.13*strength;
+      state.stretchV-=1.35*strength;
+      state.offsetX+=cos*4.2*strength;
+      state.offsetY+=sin*4.2*strength;
+      state.offsetXV+=cos*37*strength;
+      state.offsetYV+=sin*37*strength;
+      state.tiltV+=(Math.random()-.5)*1.15*strength;
+      state.hatBounceV-=26*strength;
+      state.hitStarted=now;
+      state.hitUntil=now+220;
+    }else if(kind==='ability'){
+      state.stretch-=.08*strength;
+      state.stretchV+=1.1*strength;
+      state.hatBounceV-=26*strength;
+      state.tiltV+=(Math.random()-.5)*.42*strength;
+    }else if(kind==='evolve'){
+      state.stretch+=.13*strength;
+      state.stretchV+=2.05*strength;
+      state.hatBounceV-=62*strength;
+      state.evolveStarted=now;
+      state.evolveUntil=now+930;
+    }else if(kind==='spawn'){
+      state.spawnStarted=now;
+      state.spawnUntil=now+440;
+      state.stretch=.1*strength;
+      state.stretchV=1.5*strength;
+      state.hatBounce=-8*strength;
+    }else if(kind==='bossWarn'){
+      state.stretch-=.11*strength;
+      state.stretchV-=1.15*strength;
+      state.hatBounceV-=18*strength;
+      state.tiltV+=(Math.random()-.5)*.34*strength;
+    }else if(kind==='bossAttack'){
+      state.stretch+=.19*strength;
+      state.stretchV+=1.85*strength;
+      state.offsetXV+=cos*30*strength;
+      state.offsetYV+=sin*30*strength;
+    }
+  }
+
+  function elasticCreateDashAfterimages(ent,startX,startY,endX,endY,angle){
+    if(!elasticMotionEnabled||!elasticAfterimagesEnabled||!ent)return;
+    const distance=Math.hypot(endX-startX,endY-startY);
+    if(distance<24)return;
+    const count=clamp(Math.round(distance/35),3,7);
+    const now=performance.now();
+    for(let index=0;index<count;index++){
+      const progress=(index+1)/(count+1);
+      elasticAfterimages.push({
+        ownerId:ent.id,
+        ent,
+        x:lerp(startX,endX,progress),
+        y:lerp(startY,endY,progress),
+        angle,
+        born:now+index*6,
+        duration:225,
+        stretch:1.18+(1-progress)*.25,
+        cross:.72+progress*.12
+      });
+    }
+    if(elasticAfterimages.length>90)elasticAfterimages.splice(0,elasticAfterimages.length-90);
+  }
+
+  function elasticDrawAfterimages(ent,camX,camY){
+    if(!elasticAfterimagesEnabled||!ent)return;
+    const now=performance.now();
+    for(let index=elasticAfterimages.length-1;index>=0;index--){
+      const ghost=elasticAfterimages[index];
+      if(now-ghost.born>ghost.duration){
+        elasticAfterimages.splice(index,1);
+        continue;
+      }
+      if(ghost.ownerId!==ent.id||now<ghost.born)continue;
+      const progress=clamp((now-ghost.born)/ghost.duration,0,1);
+      const alpha=(1-progress)*.22*elasticMotionStrength;
+      const x=ghost.x-camX,y=ghost.y-camY;
+      const fake=Object.create(ghost.ent);
+      fake._elasticGhost=true;
+      fake.formShiftAnim=0;
+      fake.spawnAnim=0;
+      fake.spawnInvincible=0;
+      fake.bodyColor=ghost.ent.archetype==='voidblade'||isShadowPath(ghost.ent)?'#9b7dff':ghost.ent.bodyColor;
+      fake.cosmetics={trail:'none',aura:'none',hat:'none'};
+      ctx.save();
+      ctx.globalAlpha=alpha;
+      ctx.globalCompositeOperation='lighter';
+      ctx.translate(x,y);
+      ctx.rotate(ghost.angle);
+      ctx.scale(ghost.stretch*(1-progress*.18),ghost.cross+progress*.12);
+      ctx.rotate(-ghost.angle);
+      ctx.translate(-x,-y);
+      elasticRawDrawSkin(fake,x,y);
+      ctx.restore();
+    }
+  }
+
+  function elasticDrawDeathBursts(camX,camY){
+    if(!elasticDeathBursts.length)return;
+    const now=performance.now();
+    for(let index=elasticDeathBursts.length-1;index>=0;index--){
+      const burst=elasticDeathBursts[index];
+      const progress=(now-burst.born)/burst.duration;
+      if(progress>=1){
+        elasticDeathBursts.splice(index,1);
+        continue;
+      }
+      const x=burst.x-camX,y=burst.y-camY;
+      ctx.save();
+      ctx.globalAlpha=(1-progress)*.28;
+      ctx.strokeStyle=burst.color;
+      ctx.lineWidth=3*(1-progress)+1;
+      ctx.translate(x,y);
+      ctx.rotate(burst.angle+progress*.6);
+      ctx.scale(1+progress*2.2,Math.max(.18,1-progress*.72));
+      ctx.beginPath();
+      ctx.arc(0,0,burst.r,0,Math.PI*2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  drawSkin=function(ent,x,y){
+    if(!ent||ent._elasticGhost)return elasticRawDrawSkin(ent,x,y);
+    const transform=elasticTransform(ent);
+
+    ctx.save();
+    ctx.globalAlpha*=ent.boss?.12:.10;
+    ctx.fillStyle='#071018';
+    ctx.beginPath();
+    ctx.ellipse(
+      x+transform.offsetX*.35,
+      y+(ent.r||18)*.68+6+transform.offsetY*.18,
+      (ent.r||18)*(1.02+Math.abs(transform.sx-transform.sy)*.24),
+      Math.max(3,(ent.r||18)*.28),
+      0,0,Math.PI*2
+    );
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(x+transform.offsetX,y+transform.offsetY);
+    ctx.rotate(transform.rotation);
+    ctx.rotate(transform.angle);
+    ctx.scale(transform.sx,transform.sy);
+    ctx.rotate(-transform.angle);
+    ctx.translate(-x,-y);
+    elasticRawDrawSkin(ent,x,y);
+    ctx.restore();
+  };
+
+  drawEntityHat=function(ent,x,y){
+    if(!ent||ent._elasticGhost)return elasticRawDrawEntityHat(ent,x,y);
+    const transform=elasticTransform(ent);
+    const sx=1+(transform.sx-1)*.62;
+    const sy=1+(transform.sy-1)*.62;
+    ctx.save();
+    ctx.translate(x+transform.offsetX*.86,y+transform.offsetY*.86+transform.hatY);
+    ctx.rotate(transform.rotation*.74);
+    ctx.rotate(transform.angle);
+    ctx.scale(sx,sy);
+    ctx.rotate(-transform.angle);
+    ctx.translate(-x,-y);
+    elasticRawDrawEntityHat(ent,x,y);
+    ctx.restore();
+  };
+
+  const elasticBaseDrawEntity=drawEntity;
+  drawEntity=function(ent,camX,camY){
+    elasticDrawAfterimages(ent,camX,camY);
+    return elasticBaseDrawEntity.apply(this,arguments);
+  };
+
+  const elasticBaseDrawParticles=drawParticles;
+  drawParticles=function(camX,camY){
+    const result=elasticBaseDrawParticles.apply(this,arguments);
+    elasticDrawDeathBursts(camX,camY);
+    return result;
+  };
+
+  const elasticBaseCreateEntity=createEntity;
+  createEntity=function(){
+    const ent=elasticBaseCreateEntity.apply(this,arguments);
+    elasticState(ent);
+    elasticImpulse(ent,'spawn');
+    return ent;
+  };
+
+  const elasticBaseDashPlayer=dashPlayer;
+  dashPlayer=function(){
+    const actor=controlledEntity();
+    const startX=actor?.x,startY=actor?.y;
+    const result=elasticBaseDashPlayer.apply(this,arguments);
+    if(actor&&Number.isFinite(startX)&&Number.isFinite(startY)){
+      const distance=Math.hypot(actor.x-startX,actor.y-startY);
+      if(distance>18){
+        const angle=Math.atan2(actor.y-startY,actor.x-startX);
+        elasticImpulse(actor,'dash',{angle,strength:clamp(distance/120,.85,1.45)});
+        elasticCreateDashAfterimages(actor,startX,startY,actor.x,actor.y,angle);
+      }
+    }
+    return result;
+  };
+
+  function elasticAutomaticArchetype(ent){
+    return ['machine','minigunner','bullet_storm','azure','hellflame','hive_mind','stormcaller','thunder_god'].includes(ent?.archetype);
+  }
+
+  const elasticBaseFirePrimary=firePrimary;
+  firePrimary=function(ent){
+    const beforeShot=ent?.shotCounter||0;
+    const beforeCooldown=ent?.primaryCooldown||0;
+    const beforeProjectiles=projectiles.length;
+    const beforeLasers=lasers.length;
+    const result=elasticBaseFirePrimary.apply(this,arguments);
+    const fired=!!ent&&(
+      (ent.shotCounter||0)!==beforeShot
+      ||(ent.primaryCooldown||0)>beforeCooldown+.01
+      ||projectiles.length>beforeProjectiles
+      ||lasers.length>beforeLasers
+    );
+    if(fired){
+      const heavy=['rocket','destroyer','warhead','laser_cannon','solar_lance','selfburn','root_admin'].includes(ent.archetype);
+      elasticImpulse(ent,heavy?'heavyFire':'fire',{
+        angle:ent.angle,
+        strength:heavy?1.15:1,
+        automatic:elasticAutomaticArchetype(ent)
+      });
+    }
+    return result;
+  };
+
+  const elasticBaseUseAbility=useAbility;
+  useAbility=function(slotIndex){
+    const actor=controlledEntity();
+    const ability=actor?.abilities?.[slotIndex];
+    const before=ability?(actor.abilityUse?.[ability]||0):0;
+    const result=elasticBaseUseAbility.apply(this,arguments);
+    if(actor&&ability&&(actor.abilityUse?.[ability]||0)>before){
+      const heavy=['judgement_laser','fragment_storm','knockback','fragment_mine'].includes(ability);
+      elasticImpulse(actor,heavy?'heavyFire':'ability',{
+        angle:actor.angle,
+        strength:heavy?1.08:.92
+      });
+    }
+    return result;
+  };
+
+  const elasticBaseHitEntity=hitEntity;
+  hitEntity=function(target,damage,source){
+    const beforeHp=Number(target?.hp);
+    const result=elasticBaseHitEntity.apply(this,arguments);
+    if(target&&Number.isFinite(beforeHp)&&Number(target.hp)<beforeHp){
+      const angle=source&&Number.isFinite(source.x)&&Number.isFinite(source.y)
+        ?Math.atan2(target.y-source.y,target.x-source.x)
+        :Number.isFinite(target.angle)?target.angle:0;
+      elasticImpulse(target,'hit',{angle,strength:clamp((beforeHp-target.hp)/35,.65,1.45)});
+    }
+    return result;
+  };
+
+  const elasticBaseRecordIncomingDamage=recordIncomingDamage;
+  recordIncomingDamage=function(amount,source){
+    if(player){
+      const angle=source&&Number.isFinite(source.x)&&Number.isFinite(source.y)
+        ?Math.atan2(player.y-source.y,player.x-source.x)
+        :player.angle||0;
+      elasticImpulse(player,'hit',{angle,strength:clamp((Number(amount)||1)/35,.65,1.45)});
+    }
+    return elasticBaseRecordIncomingDamage.apply(this,arguments);
+  };
+
+
+
+  const elasticBasePlayFormShiftAnimation=playFormShiftAnimation;
+  playFormShiftAnimation=function(ent){
+    elasticImpulse(ent,'evolve',{angle:ent?.angle||0,strength:1});
+    return elasticBasePlayFormShiftAnimation.apply(this,arguments);
+  };
+
+  const elasticBaseSpawnBoss=spawnBoss;
+  spawnBoss=function(){
+    const previous=new Set(bosses.filter(boss=>!boss.dead));
+    const result=elasticBaseSpawnBoss.apply(this,arguments);
+    for(const boss of bosses){
+      if(!boss.dead&&!previous.has(boss))elasticImpulse(boss,'spawn',{strength:1.3});
+    }
+    return result;
+  };
+
+  const elasticBaseBossStartAttack=bossStartAttack;
+  bossStartAttack=function(boss){
+    elasticImpulse(boss,'bossWarn',{angle:boss?.angle||0,strength:1.05});
+    const result=elasticBaseBossStartAttack.apply(this,arguments);
+    setTimeout(()=>{
+      if(boss&&!boss.dead)elasticImpulse(boss,'bossAttack',{angle:boss.angle||0,strength:1.1});
+    },Math.max(80,Number(boss?.attackWarn||boss?.warn||.25)*650));
+    return result;
+  };
+
+  const elasticBaseV1AddBossEffect=v1AddBossEffect;
+  v1AddBossEffect=function(effect){
+    const boss=effect?.bossId?multiplayer.bossById.get(effect.bossId):null;
+    if(boss){
+      elasticImpulse(boss,Number(effect?.warn)>0||effect?.phase==='warn'?'bossWarn':'bossAttack',{
+        angle:Number.isFinite(effect.angle)?effect.angle:boss.angle||0,
+        strength:1.05
+      });
+    }
+    return elasticBaseV1AddBossEffect.apply(this,arguments);
+  };
+
+  const elasticBaseV1ReplayBossAction=v1ReplayBossAction;
+  v1ReplayBossAction=function(message){
+    const boss=multiplayer.bossById.get(message?.bossId);
+    if(boss){
+      elasticImpulse(boss,message?.phase==='warn'||Number(message?.warn)>0?'bossWarn':'bossAttack',{
+        angle:Number.isFinite(message.angle)?message.angle:boss.angle||0,
+        strength:1.08
+      });
+    }
+    return elasticBaseV1ReplayBossAction.apply(this,arguments);
+  };
+
+  const elasticBaseNetApplySnapshot=netApplySnapshot;
+  netApplySnapshot=function(snapshot){
+    const existing=snapshot?.id?multiplayer.remoteById.get(snapshot.id):null;
+    const beforeX=existing?.tx??existing?.x;
+    const beforeY=existing?.ty??existing?.y;
+    const result=elasticBaseNetApplySnapshot.apply(this,arguments);
+    const ent=snapshot?.id?multiplayer.remoteById.get(snapshot.id):null;
+    if(existing&&ent&&Number.isFinite(beforeX)&&Number.isFinite(beforeY)){
+      const distance=Math.hypot((snapshot.x??beforeX)-beforeX,(snapshot.y??beforeY)-beforeY);
+      if(distance>58&&distance<520){
+        const angle=Math.atan2((snapshot.y??beforeY)-beforeY,(snapshot.x??beforeX)-beforeX);
+        elasticImpulse(ent,'dash',{angle,strength:clamp(distance/120,.75,1.35)});
+        elasticCreateDashAfterimages(ent,beforeX,beforeY,snapshot.x,snapshot.y,angle);
+      }
+    }
+    return result;
+  };
+
+  const elasticBaseNetSpawnProjectile=netSpawnProjectile;
+  netSpawnProjectile=function(message){
+    const owner=multiplayer.remoteById.get(message?.ownerId);
+    const result=elasticBaseNetSpawnProjectile.apply(this,arguments);
+    if(owner){
+      let source=owner;
+      if(message?.originEntityId&&owner.remoteCloneById?.has(message.originEntityId)){
+        source=owner.remoteCloneById.get(message.originEntityId);
+      }
+      elasticImpulse(source,elasticAutomaticArchetype(source)?'fire':'fire',{
+        angle:Number.isFinite(message.angle)?message.angle:source.angle||0,
+        automatic:elasticAutomaticArchetype(source),
+        strength:.82
+      });
+    }
+    return result;
+  };
+
+  const elasticBaseNetReplayBotAction=netReplayBotAction;
+  netReplayBotAction=function(message){
+    const bot=multiplayer.botById.get(message?.botId);
+    if(bot){
+      const heavy=['beam','aura','lightning','slam'].includes(String(message.action||''));
+      elasticImpulse(bot,heavy?'heavyFire':'fire',{
+        angle:Number.isFinite(message.angle)?message.angle:bot.angle||0,
+        strength:heavy?1.05:.82,
+        automatic:!heavy
+      });
+    }
+    return elasticBaseNetReplayBotAction.apply(this,arguments);
+  };
+
+  const elasticBaseNetReplayAbilityEvent=netReplayAbilityEvent;
+  netReplayAbilityEvent=function(message){
+    const owner=multiplayer.remoteById.get(message?.ownerId||message?.clientId);
+    if(owner){
+      elasticImpulse(owner,['judgement_laser','fragment_storm','knockback'].includes(message?.abilityId)?'heavyFire':'ability',{
+        angle:Number.isFinite(message.angle)?message.angle:owner.angle||0,
+        strength:.9
+      });
+    }
+    return elasticBaseNetReplayAbilityEvent.apply(this,arguments);
+  };
+
+  const elasticBaseKillEntity=killEntity;
+  killEntity=function(target,killer){
+    const alive=target&&!target.dead;
+    if(alive){
+      const angle=killer&&Number.isFinite(killer.x)&&Number.isFinite(killer.y)
+        ?Math.atan2(target.y-killer.y,target.x-killer.x)
+        :target.angle||0;
+      elasticDeathBursts.push({
+        x:target.x,y:target.y,r:target.r||18,
+        angle,
+        color:target.bodyColor||'#ffffff',
+        born:performance.now(),
+        duration:420
+      });
+      if(elasticDeathBursts.length>36)elasticDeathBursts.shift();
+    }
+    return elasticBaseKillEntity.apply(this,arguments);
+  };
+
+  function elasticInstallSettings(){
+    const panel=document.querySelector('[data-modal="settings"] .settingsPanel');
+    if(!panel||panel.dataset.elasticMotion)return;
+    panel.dataset.elasticMotion='1';
+
+    const section=document.createElement('section');
+    section.className='elasticMotionSettings';
+    section.innerHTML=`
+      <div class="elasticMotionHead">
+        <div><small>GRAPHICS MOTION</small><b>Elastic Core Animation</b></div>
+        <span>SMOOTH + STRETCHY</span>
+      </div>
+      <label class="elasticMotionToggle">
+        <input id="elasticMotionToggle" type="checkbox" ${elasticMotionEnabled?'checked':''}/>
+        <span><b>Squash and stretch</b><small>Dashes, recoil, damage, evolutions, bosses, and movement use spring motion.</small></span>
+      </label>
+      <label class="elasticMotionRange">
+        <span>Motion intensity <b id="elasticMotionValue">${Math.round(elasticMotionStrength*100)}%</b></span>
+        <input id="elasticMotionSlider" type="range" min="25" max="135" value="${Math.round(elasticMotionStrength*100)}"/>
+      </label>
+      <label class="elasticMotionToggle">
+        <input id="elasticAfterimagesToggle" type="checkbox" ${elasticAfterimagesEnabled?'checked':''}/>
+        <span><b>Dash afterimages</b><small>Leaves short stretched core echoes behind fast dashes.</small></span>
+      </label>
+    `;
+
+    const audioSection=panel.querySelector('.audioToggleGrid');
+    if(audioSection)audioSection.after(section);
+    else panel.appendChild(section);
+
+    const toggle=$('elasticMotionToggle');
+    const slider=$('elasticMotionSlider');
+    const value=$('elasticMotionValue');
+    const afterimages=$('elasticAfterimagesToggle');
+
+    toggle?.addEventListener('change',()=>{
+      elasticMotionEnabled=toggle.checked;
+      localStorage.setItem('fragmentio_elastic_motion',elasticMotionEnabled?'1':'0');
+      document.body.classList.toggle('elasticMotionOff',!elasticMotionEnabled);
+    });
+    slider?.addEventListener('input',()=>{
+      elasticMotionStrength=clamp(Number(slider.value)/100,.25,1.35);
+      value.textContent=Math.round(elasticMotionStrength*100)+'%';
+      localStorage.setItem('fragmentio_elastic_strength',String(elasticMotionStrength));
+    });
+    afterimages?.addEventListener('change',()=>{
+      elasticAfterimagesEnabled=afterimages.checked;
+      localStorage.setItem('fragmentio_elastic_afterimages',elasticAfterimagesEnabled?'1':'0');
+      if(!elasticAfterimagesEnabled)elasticAfterimages.length=0;
+    });
+    document.body.classList.toggle('elasticMotionOff',!elasticMotionEnabled);
+  }
+
+  elasticInstallSettings();
+
+  const elasticBaseOpenMenuModal=openMenuModal;
+  openMenuModal=function(name){
+    const result=elasticBaseOpenMenuModal.apply(this,arguments);
+    if(name==='settings')elasticInstallSettings();
+    return result;
+  };
+  /* ===== END ELASTIC CORE MOTION OVERHAUL ===== */
+
+
+
+
+
+  /* ===== PROFILE VISUALS / PERFORMANCE / UI SIZE / BOSS RUSH FIX ===== */
+  const PROFILE_VISUAL_PATCH_VERSION='profile-visuals-v1';
+  document.documentElement.dataset.fragmentProfileVisuals=PROFILE_VISUAL_PATCH_VERSION;
+  console.log('[Fragment.io] Profile visuals, performance mode, UI sizing, and Boss Rush bot guard enabled.');
+
+  function profileTitlePresentation(title){
+    const value=String(title||'').trim();
+    if(!value)return{rarity:'none',color:'#aeb8c2',label:'NO TITLE'};
+    if(/\bdeveloper\b/i.test(value)){
+      return{rarity:'developer',color:'#ffcf58',label:'DEVELOPER'};
+    }
+    const item=allCosmetics().find(cosmetic=>
+      cosmetic?.type==='title'
+      &&(cosmetic.value===value||cosmetic.name===value)
+    );
+    if(!item)return{rarity:'custom',color:'#d7e0e8',label:'CUSTOM'};
+    const rarity=rarityInfo(item.rarity);
+    return{rarity:item.rarity,color:rarity.color,label:rarity.name};
+  }
+
+  function applyProfileTitlePresentation(element,title){
+    if(!element)return;
+    const info=profileTitlePresentation(title);
+    element.dataset.titleRarity=info.rarity;
+    element.style.setProperty('--profile-title-color',info.color);
+    element.classList.toggle('profileDeveloperTitle',info.rarity==='developer');
+    element.title=title?`${title} · ${info.label}`:'No displayed title';
+  }
+
+  function profileAchievementWeight(points){
+    const ap=Math.max(0,Number(points)||0);
+    if(ap>=300)return 1000;
+    if(ap>=200)return 950;
+    if(ap>=150)return 900;
+    if(ap>=100)return 850;
+    if(ap>=75)return 800;
+    if(ap>=50)return 725;
+    if(ap>=25)return 625;
+    return 500;
+  }
+
+  function profileAchievementIcon(points){
+    const ap=Math.max(0,Number(points)||0);
+    if(ap>=300)return'✦';
+    if(ap>=200)return'♛';
+    if(ap>=150)return'✹';
+    if(ap>=100)return'★';
+    if(ap>=75)return'◆';
+    if(ap>=50)return'✧';
+    if(ap>=25)return'◇';
+    return'○';
+  }
+
+  function profileAchievementAccent(points){
+    const ap=Math.max(0,Number(points)||0);
+    if(ap>=300)return'#ffcf58';
+    if(ap>=200)return'#ff78d8';
+    if(ap>=150)return'#c18cff';
+    if(ap>=100)return'#6fa8ff';
+    if(ap>=75)return'#67d9b0';
+    if(ap>=50)return'#8cc7e8';
+    if(ap>=25)return'#aeb8c2';
+    return'#d7e0e8';
+  }
+
+  cosmeticShowcaseCard=function(id){
+    const cosmetic=cosmeticById(id);
+    if(!cosmetic){
+      return`<div class="profileCosmeticCard profileShowcaseEmpty">
+        <div class="profileShowcaseEmptyIcon">＋</div>
+        <div class="profileShowcaseCopy"><b>EMPTY SLOT</b><span>Choose a cosmetic</span></div>
+      </div>`;
+    }
+    const rarity=rarityInfo(cosmetic.rarity);
+    return`<div class="profileCosmeticCard profileVisualCosmetic" data-cosmetic-type="${escapeHtml(cosmetic.type)}" style="--showcase-rarity:${rarity.color};--showcase-rarity-soft:${rarity.color}33">
+      <div class="profileCosmeticVisual">
+        <canvas width="150" height="76" data-profile-cosmetic-preview="${escapeHtml(cosmetic.id)}" aria-label="${escapeHtml(cosmetic.name)} preview"></canvas>
+        <span class="profileCosmeticTypeIcon">${escapeHtml(profileCosmeticTypeIcon(cosmetic.type))}</span>
+      </div>
+      <div class="profileShowcaseCopy">
+        <b>${escapeHtml(cosmetic.name)}</b>
+        <span style="color:${rarity.color}">${escapeHtml(rarity.name)} · ${escapeHtml(typeLabel(cosmetic.type))}</span>
+      </div>
+    </div>`;
+  };
+
+  achievementShowcaseCard=function(id){
+    const achievement=ACHIEVEMENTS[id];
+    if(!achievement){
+      return`<div class="achievementCard profileShowcaseEmpty">
+        <div class="profileShowcaseEmptyIcon">☆</div>
+        <div class="profileShowcaseCopy"><b>EMPTY SLOT</b><span>Select an achievement</span></div>
+      </div>`;
+    }
+    const points=Math.max(0,Number(achievement.points)||0);
+    const weight=profileAchievementWeight(points);
+    const accent=profileAchievementAccent(points);
+    return`<div class="achievementCard profileVisualAchievement" style="--achievement-accent:${accent};--achievement-name-weight:${weight}">
+      <div class="profileAchievementTop">
+        <span class="profileAchievementIcon">${profileAchievementIcon(points)}</span>
+        <span class="profileAchievementAp">${points} AP</span>
+      </div>
+      <b>${escapeHtml(achievement.name)}</b>
+      <span>${escapeHtml(achievement.desc)}</span>
+    </div>`;
+  };
+
+  function profileCosmeticTypeIcon(type){
+    return({
+      hat:'⌃',
+      aura:'◉',
+      shape:'◆',
+      trail:'≈',
+      title:'T',
+      profilebanner:'▰',
+      profilebackground:'▦'
+    })[type]||'◆';
+  }
+
+  function drawProfileShowcasePreview(canvas,cosmetic){
+    if(!canvas||!cosmetic)return;
+    const context=canvas.getContext('2d');
+    const width=canvas.width,height=canvas.height,cx=width/2,cy=height/2;
+    const rarity=rarityInfo(cosmetic.rarity);
+    context.clearRect(0,0,width,height);
+
+    const gradient=context.createLinearGradient(0,0,width,height);
+    gradient.addColorStop(0,blendHex(rarity.color,'#ffffff',.76));
+    gradient.addColorStop(.52,blendHex(rarity.color,'#eef3f7',.52));
+    gradient.addColorStop(.53,blendHex(rarity.color,'#101820',.08));
+    gradient.addColorStop(1,blendHex(rarity.color,'#101820',.34));
+    context.fillStyle=gradient;
+    context.fillRect(0,0,width,height);
+
+    context.globalAlpha=.16;
+    context.strokeStyle='#101820';
+    context.lineWidth=2;
+    for(let x=-height;x<width+height;x+=20){
+      context.beginPath();
+      context.moveTo(x,0);
+      context.lineTo(x-height,height);
+      context.stroke();
+    }
+    context.globalAlpha=1;
+
+    context.save();
+    context.translate(cx,cy);
+    const type=cosmetic.type;
+    try{
+      if(type==='hat'){
+        context.translate(0,22);
+        context.scale(.86,.86);
+        context.translate(-cx,-cy);
+        drawHatShape(context,cx,cy,cosmetic.value||'none');
+      }else if(type==='shape'){
+        drawPreviewCore(context,0,0,cosmetic.value||'circle',rarity.color);
+      }else if(type==='aura'){
+        drawAuraEffect(context,0,0,cosmetic.value||'none',27,true);
+        drawPreviewCore(context,0,0,'circle','#5d8cff');
+      }else if(type==='trail'){
+        for(let i=0;i<7;i++){
+          const x=-42+i*14;
+          const y=Math.sin(i*.9)*8;
+          context.globalAlpha=.28+i*.1;
+          context.fillStyle=i%2?rarity.color:'#ffffff';
+          context.beginPath();
+          context.arc(x,y,3+i*.35,0,Math.PI*2);
+          context.fill();
+        }
+        context.globalAlpha=1;
+        drawPreviewCore(context,42,0,'diamond','#5d8cff');
+      }else if(type==='title'){
+        context.fillStyle='#101820';
+        context.fillRect(-48,-18,96,36);
+        context.strokeStyle=rarity.color;
+        context.lineWidth=4;
+        context.strokeRect(-48,-18,96,36);
+        context.fillStyle=rarity.color;
+        context.font='1000 22px Arial';
+        context.textAlign='center';
+        context.textBaseline='middle';
+        context.fillText(cosmetic.value==='The Anomaly'?'A':'T',0,1);
+      }else if(type==='profilebanner'){
+        context.fillStyle='#101820';
+        context.fillRect(-53,-25,106,50);
+        context.fillStyle=rarity.color;
+        context.fillRect(-48,-20,96,40);
+        context.strokeStyle='#ffffff';
+        context.lineWidth=3;
+        context.strokeRect(-48,-20,96,40);
+      }else if(type==='profilebackground'){
+        context.fillStyle='#101820';
+        context.fillRect(-44,-30,88,60);
+        context.fillStyle=rarity.color;
+        context.fillRect(-39,-25,78,50);
+        context.fillStyle='rgba(255,255,255,.82)';
+        context.fillRect(-30,-16,60,10);
+        context.fillRect(-30,0,60,16);
+      }else{
+        drawPreviewCore(context,0,0,'circle',rarity.color);
+      }
+    }catch(_error){
+      drawPreviewCore(context,0,0,'circle',rarity.color);
+    }
+    context.restore();
+
+    context.fillStyle=rarity.color;
+    context.fillRect(0,height-5,width,5);
+  }
+
+  function decorateProfileShowcase(root=document){
+    root.querySelectorAll('[data-profile-cosmetic-preview]').forEach(canvas=>{
+      const cosmetic=cosmeticById(canvas.dataset.profileCosmeticPreview);
+      if(cosmetic)drawProfileShowcasePreview(canvas,cosmetic);
+    });
+  }
+
+  const PROFILE_SECTION_ICONS={
+    'about me':'✎',
+    'favourite evolution':'✦',
+    'favorite evolution':'✦',
+    'featured cosmetics':'◆',
+    'showcased achievements':'★',
+    'achievement showcase':'★',
+    'lifetime stats':'▦'
+  };
+
+  function decorateProfileSectionHeadings(root=document){
+    root.querySelectorAll('.profileSection>h3,.inGameProfileCard>div>h3').forEach(heading=>{
+      if(heading.querySelector('.profileSectionIcon'))return;
+      const key=heading.textContent.trim().toLowerCase();
+      const icon=PROFILE_SECTION_ICONS[key]||'◆';
+      const badge=document.createElement('span');
+      badge.className='profileSectionIcon';
+      badge.textContent=icon;
+      heading.prepend(badge);
+      heading.closest('.profileSection')?.setAttribute('data-profile-section',key.replaceAll(' ','-'));
+    });
+  }
+
+  const PROFILE_STAT_ICONS={
+    matches:'▦',
+    wins:'★',
+    eliminations:'✕',
+    bosses:'♛',
+    fragments:'◆',
+    'highest score':'↑',
+    'high score':'↑',
+    'battle royale wins':'◉',
+    'br wins':'◉',
+    playtime:'◷'
+  };
+
+  function decorateProfileStats(root=document){
+    root.querySelectorAll('.profileStat,.inGameProfileStats>div').forEach(card=>{
+      if(card.querySelector('.profileStatIcon'))return;
+      const label=card.querySelector('span')?.textContent.trim().toLowerCase()||'';
+      const icon=document.createElement('i');
+      icon.className='profileStatIcon';
+      icon.textContent=PROFILE_STAT_ICONS[label]||'•';
+      card.prepend(icon);
+    });
+  }
+
+  function decorateFavoriteEvolution(favoriteId){
+    const card=$('profileFavoriteEvolution');
+    if(!card)return;
+    card.querySelector('.profileEvolutionGlyph')?.remove();
+    const glyph=document.createElement('i');
+    glyph.className='profileEvolutionGlyph';
+    glyph.textContent=favoriteId?evoIcon(favoriteId):'◇';
+    card.prepend(glyph);
+  }
+
+  const profileBaseRenderPlayerProfile=renderPlayerProfile;
+  renderPlayerProfile=function(profile,progress){
+    const result=profileBaseRenderPlayerProfile.apply(this,arguments);
+    applyProfileTitlePresentation($('profileTitle'),profile?.equipped_title||'');
+    const normalized=normalizeAccountProgress(progress);
+    const mastery=normalized.stats.evolution_mastery||{};
+    const favoriteId=(normalized.stats.favorite_evolution&&mastery[normalized.stats.favorite_evolution])
+      ?normalized.stats.favorite_evolution
+      :Object.entries(mastery)
+        .sort((a,b)=>normalizedMasteryEntry(b[1]).level-normalizedMasteryEntry(a[1]).level||normalizedMasteryEntry(b[1]).xp-normalizedMasteryEntry(a[1]).xp)[0]?.[0];
+    decorateFavoriteEvolution(favoriteId);
+    decorateProfileSectionHeadings(document.querySelector('[data-modal="profile"]'));
+    decorateProfileShowcase($('profileFeaturedCosmetics'));
+    decorateProfileStats($('profileStats'));
+    return result;
+  };
+
+  const profileBaseRenderInGameProfile=renderInGameProfile;
+  renderInGameProfile=function(data){
+    const result=profileBaseRenderInGameProfile.apply(this,arguments);
+    applyProfileTitlePresentation($('inGameProfileTitle'),data?.profile?.equipped_title||'');
+    decorateProfileSectionHeadings($('inGameProfileOverlay'));
+    decorateProfileShowcase($('inGameProfileCosmetics'));
+    decorateProfileStats($('inGameProfileStats'));
+    return result;
+  };
+
+  const profileBaseShowMatchPlayerCards=showMatchPlayerCards;
+  showMatchPlayerCards=function(cards,mode){
+    const result=profileBaseShowMatchPlayerCards.apply(this,arguments);
+    const list=Array.isArray(cards)&&cards.length?cards:(cloudProfile?[{title:cloudProfile.equipped_title}]:[]);
+    document.querySelectorAll('#matchPlayerCardsGrid .matchPlayerCard').forEach((card,index)=>{
+      applyProfileTitlePresentation(card.querySelector('b'),list[index]?.title||'');
+    });
+    return result;
+  };
+
+  const profileBaseRenderGachaMenu=renderGachaMenu;
+  renderGachaMenu=function(){
+    const result=profileBaseRenderGachaMenu.apply(this,arguments);
+    const count=$('ownedCount');
+    if(count){
+      const ownedTotal=new Set(ownedCosmetics.filter(id=>!!cosmeticById(id))).size;
+      const availableTotal=new Set(allCosmetics().filter(Boolean).map(cosmetic=>cosmetic.id)).size;
+      count.textContent=`${ownedTotal}/${availableTotal} Owned`;
+    }
+    return result;
+  };
+
+  /* Settings: performance mode and in-game UI size. */
+  let fragmentPerformanceMode=localStorage.getItem('fragmentio_performance_mode')==='1';
+  let fragmentGameUiSize=['small','medium','big'].includes(localStorage.getItem('fragmentio_game_ui_size'))
+    ?localStorage.getItem('fragmentio_game_ui_size')
+    :'medium';
+  const fragmentDefaultParticleLimit=PERF_LIMITS.particles;
+
+  function applyFragmentPerformanceMode(){
+    document.body.classList.toggle('fragmentPerformanceMode',fragmentPerformanceMode);
+    PERF_LIMITS.particles=fragmentPerformanceMode?150:fragmentDefaultParticleLimit;
+    if(fragmentPerformanceMode){
+      if(typeof elasticAfterimages!=='undefined')elasticAfterimages.length=0;
+      if(typeof elasticDeathBursts!=='undefined')elasticDeathBursts.length=0;
+      if(camera){
+        camera.shake=0;
+        camera.zoomKick=0;
+      }
+    }
+  }
+
+  function applyFragmentGameUiSize(){
+    document.body.dataset.gameUiSize=fragmentGameUiSize;
+  }
+
+  const profileBaseDrawAuraEffect=drawAuraEffect;
+  drawAuraEffect=function(targetCtx,x,y,aura,radius,preview=false){
+    if(fragmentPerformanceMode&&!preview)return;
+    return profileBaseDrawAuraEffect.apply(this,arguments);
+  };
+
+  const profileBaseUpdateCosmeticTrail=updateCosmeticTrail;
+  updateCosmeticTrail=function(ent,dt){
+    if(fragmentPerformanceMode)return;
+    return profileBaseUpdateCosmeticTrail.apply(this,arguments);
+  };
+
+  if(typeof elasticDrawAfterimages==='function'){
+    const profileBaseElasticDrawAfterimages=elasticDrawAfterimages;
+    elasticDrawAfterimages=function(ent,camX,camY){
+      if(fragmentPerformanceMode)return;
+      return profileBaseElasticDrawAfterimages.apply(this,arguments);
+    };
+  }
+
+  if(typeof elasticDrawDeathBursts==='function'){
+    const profileBaseElasticDrawDeathBursts=elasticDrawDeathBursts;
+    elasticDrawDeathBursts=function(camX,camY){
+      if(fragmentPerformanceMode)return;
+      return profileBaseElasticDrawDeathBursts.apply(this,arguments);
+    };
+  }
+
+  const profileBaseDrawParticles=drawParticles;
+  drawParticles=function(camX,camY){
+    if(fragmentPerformanceMode&&particles.length>150){
+      let extra=particles.length-150;
+      for(let index=particles.length-1;index>=0&&extra>0;index--){
+        const particle=particles[index];
+        if(particle?.dot&&!particle?.text){
+          particles.splice(index,1);
+          extra--;
+        }
+      }
+      if(extra>0)particles.splice(0,extra);
+    }
+    return profileBaseDrawParticles.apply(this,arguments);
+  };
+
+  const profileBaseUpdate=update;
+  update=function(dt){
+    const result=profileBaseUpdate.apply(this,arguments);
+    if(fragmentPerformanceMode&&camera){
+      camera.shake=0;
+      camera.zoomKick=0;
+    }
+    return result;
+  };
+
+  function installProfilePerformanceSettings(){
+    const panel=document.querySelector('[data-modal="settings"] .settingsPanel');
+    if(!panel||panel.dataset.profilePerformanceSettings)return;
+    panel.dataset.profilePerformanceSettings='1';
+
+    const section=document.createElement('section');
+    section.className='profilePerformanceSettings';
+    section.innerHTML=`
+      <div class="profileSettingsHeader">
+        <div><small>GAMEPLAY DISPLAY</small><b>Performance & HUD</b></div>
+        <span>LOCAL DEVICE</span>
+      </div>
+      <label class="profileSettingsToggle">
+        <input id="fragmentPerformanceToggle" type="checkbox" ${fragmentPerformanceMode?'checked':''}/>
+        <span><b>Performance Mode</b><small>Removes decorative gameplay auras, trails, dash echoes, death bursts, excess particles, and camera shake. Gameplay telegraphs remain.</small></span>
+      </label>
+      <label class="profileSettingsSelect">
+        <span><b>UI Size</b><small>Changes the in-game HUD only. Medium is the original size.</small></span>
+        <select id="fragmentGameUiSizeSelect">
+          <option value="small">Small</option>
+          <option value="medium">Medium</option>
+          <option value="big">Big</option>
+        </select>
+      </label>
+    `;
+
+    panel.appendChild(section);
+
+    const performanceToggle=$('fragmentPerformanceToggle');
+    const uiSizeSelect=$('fragmentGameUiSizeSelect');
+    if(uiSizeSelect)uiSizeSelect.value=fragmentGameUiSize;
+
+    performanceToggle?.addEventListener('change',()=>{
+      fragmentPerformanceMode=performanceToggle.checked;
+      localStorage.setItem('fragmentio_performance_mode',fragmentPerformanceMode?'1':'0');
+      applyFragmentPerformanceMode();
+      notify('Performance Mode',fragmentPerformanceMode?'Decorative gameplay details reduced.':'Full gameplay details restored.');
+    });
+
+    uiSizeSelect?.addEventListener('change',()=>{
+      fragmentGameUiSize=['small','medium','big'].includes(uiSizeSelect.value)?uiSizeSelect.value:'medium';
+      localStorage.setItem('fragmentio_game_ui_size',fragmentGameUiSize);
+      applyFragmentGameUiSize();
+      notify('UI Size',fragmentGameUiSize.charAt(0).toUpperCase()+fragmentGameUiSize.slice(1));
+    });
+  }
+
+  /* Boss Rush never uses bots. This also removes any stale synchronized bot. */
+  function clearBossRushBots(){
+    if(gameMode!=='bossrush')return;
+    for(const ent of multiplayer.botById.values()){
+      const index=bots.indexOf(ent);
+      if(index>=0)bots.splice(index,1);
+    }
+    multiplayer.botById.clear();
+    for(let index=bots.length-1;index>=0;index--){
+      if(!bots[index]?.boss)bots.splice(index,1);
+    }
+  }
+
+  const profileBaseNetApplyBotSnapshots=netApplyBotSnapshots;
+  netApplyBotSnapshots=function(list,partial=false){
+    if(gameMode==='bossrush'){
+      clearBossRushBots();
+      return;
+    }
+    return profileBaseNetApplyBotSnapshots.apply(this,arguments);
+  };
+
+  const profileBaseNetApplySnapshot=netApplySnapshot;
+  netApplySnapshot=function(snapshot){
+    const sameUser=!!cloudUser?.id&&snapshot?.userId===cloudUser.id;
+    const unnamedSelfDuplicate=!snapshot?.userId&&!!player&&snapshot?.name===player.name;
+    if(gameMode==='bossrush'&&snapshot?.id!==multiplayer.clientId&&(sameUser||unnamedSelfDuplicate)){
+      const duplicate=multiplayer.remoteById.get(snapshot.id);
+      if(duplicate){
+        multiplayer.remoteById.delete(snapshot.id);
+        remotePlayers=[...multiplayer.remoteById.values()];
+      }
+      return;
+    }
+    return profileBaseNetApplySnapshot.apply(this,arguments);
+  };
+
+  const profileBaseOpenMenuModal=openMenuModal;
+  openMenuModal=function(name){
+    const result=profileBaseOpenMenuModal.apply(this,arguments);
+    if(name==='settings')installProfilePerformanceSettings();
+    if(name==='profile'){
+      requestAnimationFrame(()=>{
+        decorateProfileSectionHeadings(document.querySelector('[data-modal="profile"]'));
+        decorateProfileShowcase($('profileFeaturedCosmetics'));
+      });
+    }
+    return result;
+  };
+
+  applyFragmentPerformanceMode();
+  applyFragmentGameUiSize();
+  installProfilePerformanceSettings();
+  setTimeout(()=>{
+    renderGachaMenu();
+    decorateProfileSectionHeadings(document.querySelector('[data-modal="profile"]'));
+  },100);
+  /* ===== END PROFILE VISUALS / PERFORMANCE / UI SIZE / BOSS RUSH FIX ===== */
+
+
 })();
 </script>
 
@@ -21329,6 +22491,623 @@ body.bossRushMinimal #leaveGameBtn{
 }
 @media(max-width:620px){
   .audioToggleGrid{grid-template-columns:1fr}
+}
+</style>
+
+
+<style id="fragment-v1-elastic-motion-overhaul-style">
+.elasticMotionSettings{
+  display:grid;
+  gap:8px;
+  padding:10px;
+  border:3px solid #101820;
+  background:#c7d0da;
+}
+.elasticMotionHead{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:center;
+  padding-bottom:7px;
+  border-bottom:3px solid #101820;
+}
+.elasticMotionHead small,
+.elasticMotionHead b{
+  display:block;
+}
+.elasticMotionHead small{
+  color:#526170;
+  font-size:8px;
+  font-weight:1000;
+  letter-spacing:.13em;
+}
+.elasticMotionHead b{
+  margin-top:2px;
+  color:#101820;
+  font-size:13px;
+}
+.elasticMotionHead>span{
+  padding:5px 7px;
+  border:2px solid #101820;
+  background:#eef3f7;
+  color:#315fc9;
+  font-size:8px;
+  font-weight:1000;
+}
+.elasticMotionToggle{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:9px;
+  align-items:start;
+  padding:8px;
+  border:3px solid #101820;
+  background:#eef3f7;
+  cursor:pointer;
+}
+.elasticMotionToggle input{
+  width:19px;
+  height:19px;
+  margin-top:1px;
+  accent-color:#315fc9;
+}
+.elasticMotionToggle span{
+  display:grid;
+  gap:2px;
+}
+.elasticMotionToggle b{
+  color:#101820;
+  font-size:10px;
+}
+.elasticMotionToggle small{
+  color:#526170;
+  font-size:9px;
+  line-height:1.35;
+}
+.elasticMotionRange{
+  display:grid;
+  gap:6px;
+  padding:8px;
+  border:3px solid #101820;
+  background:#eef3f7;
+}
+.elasticMotionRange>span{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  color:#101820;
+  font-size:10px;
+  font-weight:1000;
+}
+.elasticMotionRange input{
+  width:100%;
+  accent-color:#315fc9;
+}
+
+/* The same springy language is used by the menus without making them floaty. */
+.menuModal.show .modalCard{
+  animation:fragmentElasticPanelIn .32s cubic-bezier(.16,1.28,.3,1) both;
+}
+#menu button,
+.menuModal button,
+#hud button,
+#spectatorHud button{
+  transition:transform .10s cubic-bezier(.2,1.55,.4,1),filter .10s ease;
+  transform-origin:center;
+}
+#menu button:active,
+.menuModal button:active,
+#hud button:active,
+#spectatorHud button:active{
+  transform:scale(.955,1.045);
+}
+.notification,
+.toast,
+#notification{
+  animation:fragmentElasticNoticeIn .34s cubic-bezier(.18,1.34,.3,1) both;
+}
+
+@keyframes fragmentElasticPanelIn{
+  0%{opacity:0;transform:translateY(13px) scale(.965,.93)}
+  58%{opacity:1;transform:translateY(-2px) scale(1.012,1.018)}
+  100%{opacity:1;transform:translateY(0) scale(1)}
+}
+@keyframes fragmentElasticNoticeIn{
+  0%{opacity:0;transform:translateY(10px) scale(.9)}
+  62%{opacity:1;transform:translateY(-2px) scale(1.035)}
+  100%{opacity:1;transform:translateY(0) scale(1)}
+}
+
+body.elasticMotionOff .menuModal.show .modalCard,
+body.elasticMotionOff .notification,
+body.elasticMotionOff .toast,
+body.elasticMotionOff #notification{
+  animation:none!important;
+}
+body.elasticMotionOff #menu button,
+body.elasticMotionOff .menuModal button,
+body.elasticMotionOff #hud button,
+body.elasticMotionOff #spectatorHud button{
+  transition:filter .1s ease!important;
+}
+body.elasticMotionOff #menu button:active,
+body.elasticMotionOff .menuModal button:active,
+body.elasticMotionOff #hud button:active,
+body.elasticMotionOff #spectatorHud button:active{
+  transform:none!important;
+}
+
+@media(prefers-reduced-motion:reduce){
+  .menuModal.show .modalCard,
+  .notification,
+  .toast,
+  #notification{
+    animation-duration:.01ms!important;
+  }
+}
+</style>
+
+
+<style id="fragment-v1-profile-performance-ui-bossrush-fix-style">
+/* Profile title rarity coloring */
+#profileTitle,
+#inGameProfileTitle,
+.matchPlayerCard> b{
+  color:var(--profile-title-color,#d7e0e8)!important;
+  text-shadow:0 0 10px color-mix(in srgb,var(--profile-title-color,#d7e0e8) 70%,transparent),0 1px 0 rgba(0,0,0,.82)!important;
+}
+body #profileTitle[data-title-rarity],
+body #inGameProfileTitle[data-title-rarity],
+body .matchPlayerCard> b[data-title-rarity]{
+  color:var(--profile-title-color,#d7e0e8)!important;
+}
+#profileTitle[data-title-rarity="mythic"],
+#inGameProfileTitle[data-title-rarity="mythic"],
+.matchPlayerCard> b[data-title-rarity="mythic"]{
+  letter-spacing:.12em!important;
+}
+#profileTitle.profileDeveloperTitle,
+#inGameProfileTitle.profileDeveloperTitle,
+.matchPlayerCard> b.profileDeveloperTitle{
+  color:#ffcf58!important;
+  text-shadow:0 0 12px rgba(255,207,88,.95),0 2px 0 #101820!important;
+}
+
+/* Section headings receive restrained visual identifiers. */
+.profileSection>h3,
+.inGameProfileCard>div>h3{
+  display:flex!important;
+  align-items:center!important;
+  gap:7px!important;
+}
+.profileSectionIcon{
+  width:25px;
+  height:25px;
+  display:inline-grid;
+  place-items:center;
+  flex:0 0 25px;
+  border:2px solid var(--pf-border,#101820);
+  background:var(--pf-panel-strong,#fff);
+  color:var(--pf-text,#101820);
+  font-size:12px;
+  font-style:normal;
+  box-shadow:2px 2px 0 color-mix(in srgb,var(--pf-border,#101820) 22%,transparent);
+}
+.profileSection[data-profile-section="about-me"]{
+  background:
+    linear-gradient(90deg,color-mix(in srgb,var(--pf-glow,#6a7cf7) 12%,transparent),transparent 28%),
+    var(--pf-panel,#eef3f7)!important;
+}
+.profileSection[data-profile-section="favourite-evolution"]{
+  background:
+    linear-gradient(135deg,color-mix(in srgb,#6fa8ff 14%,transparent),transparent 34%),
+    var(--pf-panel,#eef3f7)!important;
+}
+.profileSection[data-profile-section="featured-cosmetics"]{
+  background:
+    linear-gradient(135deg,color-mix(in srgb,#ff78d8 10%,transparent),transparent 32%),
+    var(--pf-panel,#eef3f7)!important;
+}
+.profileSection[data-profile-section="showcased-achievements"]{
+  background:
+    linear-gradient(135deg,color-mix(in srgb,#ffcf58 12%,transparent),transparent 32%),
+    var(--pf-panel,#eef3f7)!important;
+}
+.profileSection[data-profile-section="lifetime-stats"]{
+  background:
+    linear-gradient(135deg,color-mix(in srgb,#67d9b0 10%,transparent),transparent 32%),
+    var(--pf-panel,#eef3f7)!important;
+}
+
+/* Favourite evolution icon */
+.profileEvolutionCard{
+  grid-template-columns:52px minmax(0,1fr) auto!important;
+}
+.profileEvolutionGlyph{
+  grid-column:1!important;
+  grid-row:1/3!important;
+  width:48px;
+  height:48px;
+  display:grid!important;
+  place-items:center;
+  border:3px solid var(--pf-border,#101820);
+  background:linear-gradient(145deg,#d9e8ff,#6fa8ff);
+  color:#101820!important;
+  font-size:23px!important;
+  font-style:normal;
+  box-shadow:3px 3px 0 rgba(0,0,0,.14);
+}
+.profileEvolutionCard>div{
+  grid-column:2!important;
+}
+.profileEvolutionCard>small{
+  grid-column:3!important;
+  grid-row:1/3!important;
+}
+
+/* Cosmetic showcase cards */
+.profileShowcaseGrid,
+.achievementShowcaseGrid{
+  align-items:stretch;
+}
+.profileCosmeticCard,
+.achievementCard{
+  position:relative;
+  overflow:hidden;
+}
+.profileVisualCosmetic{
+  min-height:132px!important;
+  padding:6px!important;
+  gap:6px!important;
+  border-color:var(--showcase-rarity,#101820)!important;
+  background:
+    linear-gradient(145deg,var(--showcase-rarity-soft,transparent),transparent 44%),
+    var(--pf-panel-strong,#fff)!important;
+}
+.profileCosmeticVisual{
+  position:relative;
+  height:72px;
+  min-height:72px;
+  border:2px solid var(--pf-border,#101820);
+  background:#dce6ef;
+  overflow:hidden;
+}
+.profileCosmeticVisual canvas{
+  width:100%;
+  height:100%;
+  display:block;
+}
+.profileCosmeticTypeIcon{
+  position:absolute;
+  right:4px;
+  top:4px;
+  min-width:22px;
+  height:22px;
+  padding:0 4px;
+  display:grid;
+  place-items:center;
+  border:2px solid #101820;
+  background:var(--showcase-rarity,#fff);
+  color:#101820!important;
+  font-size:10px!important;
+  font-weight:1000;
+}
+.profileShowcaseCopy{
+  display:grid;
+  gap:3px;
+  min-width:0;
+}
+.profileShowcaseCopy b{
+  overflow-wrap:anywhere;
+  line-height:1.12;
+}
+.profileShowcaseCopy span{
+  line-height:1.2;
+}
+.profileShowcaseEmpty{
+  min-height:110px!important;
+  align-items:center;
+  justify-content:center!important;
+  text-align:center;
+  border-style:dashed!important;
+  opacity:.68;
+}
+.profileShowcaseEmptyIcon{
+  width:36px;
+  height:36px;
+  display:grid;
+  place-items:center;
+  margin:auto;
+  border:2px solid var(--pf-border,#101820);
+  background:var(--pf-panel,#eef3f7);
+  color:var(--pf-muted,#526170);
+  font-size:20px;
+}
+
+/* AP controls achievement-name weight. */
+.profileVisualAchievement{
+  min-height:132px!important;
+  padding:8px!important;
+  gap:5px!important;
+  border-color:var(--achievement-accent,#101820)!important;
+  background:
+    linear-gradient(150deg,color-mix(in srgb,var(--achievement-accent,#101820) 17%,transparent),transparent 45%),
+    var(--pf-panel-strong,#fff)!important;
+}
+.profileVisualAchievement:after{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  height:5px;
+  background:var(--achievement-accent,#101820);
+}
+.profileVisualAchievement>b{
+  font-weight:var(--achievement-name-weight,600)!important;
+  line-height:1.12;
+  overflow-wrap:anywhere;
+}
+.profileVisualAchievement>span:last-child{
+  line-height:1.25;
+}
+.profileAchievementTop{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:6px;
+}
+.profileAchievementIcon{
+  width:30px;
+  height:30px;
+  display:grid;
+  place-items:center;
+  border:2px solid var(--pf-border,#101820);
+  background:var(--achievement-accent,#eef3f7);
+  color:#101820!important;
+  font-size:15px!important;
+  font-weight:1000;
+}
+.profileAchievementAp{
+  padding:3px 5px;
+  border:2px solid var(--pf-border,#101820);
+  background:var(--pf-panel,#eef3f7);
+  color:var(--pf-text,#101820)!important;
+  font-size:8px!important;
+  font-weight:1000;
+  white-space:nowrap;
+}
+
+/* Stats use visual symbols without adding more text. */
+.profileStat,
+.inGameProfileStats>div{
+  position:relative;
+  padding-left:38px!important;
+  min-height:52px;
+}
+.profileStatIcon{
+  position:absolute;
+  left:7px;
+  top:50%;
+  transform:translateY(-50%);
+  width:25px;
+  height:25px;
+  display:grid!important;
+  place-items:center;
+  border:2px solid var(--pf-border,#101820);
+  background:var(--pf-panel,#eef3f7);
+  color:var(--pf-text,#101820)!important;
+  font-size:11px!important;
+  font-style:normal;
+  font-weight:1000;
+}
+
+/* Rich cards remain compact in the in-game quick profile. */
+.inGameProfileShowcase .profileVisualCosmetic,
+.inGameProfileShowcase .profileVisualAchievement{
+  min-height:112px!important;
+}
+.inGameProfileShowcase .profileCosmeticVisual{
+  height:56px;
+  min-height:56px;
+}
+.inGameProfileShowcase .profileShowcaseCopy b,
+.inGameProfileShowcase .profileVisualAchievement>b{
+  font-size:9px!important;
+}
+.inGameProfileShowcase .profileShowcaseCopy span,
+.inGameProfileShowcase .profileVisualAchievement>span:last-child{
+  font-size:7px!important;
+}
+.inGameProfileShowcase .profileAchievementIcon{
+  width:24px;
+  height:24px;
+  font-size:11px!important;
+}
+
+/* Settings additions */
+.profilePerformanceSettings{
+  display:grid;
+  gap:8px;
+  padding:10px;
+  border:3px solid #101820;
+  background:#c7d0da;
+}
+.profileSettingsHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding-bottom:7px;
+  border-bottom:3px solid #101820;
+}
+.profileSettingsHeader small,
+.profileSettingsHeader b{
+  display:block;
+}
+.profileSettingsHeader small{
+  color:#526170;
+  font-size:8px;
+  font-weight:1000;
+  letter-spacing:.13em;
+}
+.profileSettingsHeader b{
+  margin-top:2px;
+  color:#101820;
+  font-size:13px;
+}
+.profileSettingsHeader>span{
+  padding:5px 7px;
+  border:2px solid #101820;
+  background:#eef3f7;
+  color:#315fc9;
+  font-size:8px;
+  font-weight:1000;
+}
+.profileSettingsToggle,
+.profileSettingsSelect{
+  display:grid;
+  gap:9px;
+  align-items:start;
+  padding:8px;
+  border:3px solid #101820;
+  background:#eef3f7;
+}
+.profileSettingsToggle{
+  grid-template-columns:auto minmax(0,1fr);
+  cursor:pointer;
+}
+.profileSettingsToggle input{
+  width:19px;
+  height:19px;
+  margin:1px 0 0;
+  accent-color:#315fc9;
+}
+.profileSettingsToggle span,
+.profileSettingsSelect>span{
+  display:grid;
+  gap:2px;
+}
+.profileSettingsToggle b,
+.profileSettingsSelect b{
+  color:#101820;
+  font-size:10px;
+}
+.profileSettingsToggle small,
+.profileSettingsSelect small{
+  color:#526170;
+  font-size:9px;
+  line-height:1.35;
+}
+.profileSettingsSelect{
+  grid-template-columns:minmax(0,1fr) 150px;
+  align-items:center;
+}
+.profileSettingsSelect select{
+  margin:0!important;
+  height:38px!important;
+  padding:6px 9px!important;
+}
+
+/* Performance Mode also removes purely decorative CSS gameplay effects. */
+body.fragmentPerformanceMode #brDropFlash{
+  animation:none!important;
+}
+body.fragmentPerformanceMode #hud .panel:before,
+body.fragmentPerformanceMode .areaWorldLabel:before{
+  display:none!important;
+}
+
+/* In-game HUD size. Medium has no changes. */
+body[data-game-ui-size="small"] #topLeft{
+  transform:scale(.82)!important;
+  transform-origin:top left!important;
+}
+body[data-game-ui-size="small"] #topRight{
+  transform:scale(.82)!important;
+  transform-origin:top right!important;
+}
+body[data-game-ui-size="small"] #bottomLeft,
+body[data-game-ui-size="small"] #chatPanel{
+  transform:scale(.82)!important;
+  transform-origin:bottom left!important;
+}
+body[data-game-ui-size="small"] #bottomRight,
+body[data-game-ui-size="small"] #systemsPanel{
+  transform:scale(.82)!important;
+  transform-origin:bottom right!important;
+}
+body[data-game-ui-size="small"] #bottomCenter{
+  transform:translateX(-50%) scale(.82)!important;
+  transform-origin:bottom center!important;
+}
+body[data-game-ui-size="small"] #partyInGameHud{
+  transform:scale(.82)!important;
+  transform-origin:top left!important;
+}
+body[data-game-ui-size="small"] #partyPingBar{
+  transform:translateX(-50%) scale(.82)!important;
+  transform-origin:bottom center!important;
+}
+body[data-game-ui-size="small"] #pendingUpgradeTab{
+  transform:scale(.82)!important;
+  transform-origin:center!important;
+}
+
+body[data-game-ui-size="big"] #topLeft{
+  transform:scale(1.16)!important;
+  transform-origin:top left!important;
+}
+body[data-game-ui-size="big"] #topRight{
+  transform:scale(1.16)!important;
+  transform-origin:top right!important;
+}
+body[data-game-ui-size="big"] #bottomLeft,
+body[data-game-ui-size="big"] #chatPanel{
+  transform:scale(1.16)!important;
+  transform-origin:bottom left!important;
+}
+body[data-game-ui-size="big"] #bottomRight,
+body[data-game-ui-size="big"] #systemsPanel{
+  transform:scale(1.16)!important;
+  transform-origin:bottom right!important;
+}
+body[data-game-ui-size="big"] #bottomCenter{
+  transform:translateX(-50%) scale(1.16)!important;
+  transform-origin:bottom center!important;
+}
+body[data-game-ui-size="big"] #partyInGameHud{
+  transform:scale(1.16)!important;
+  transform-origin:top left!important;
+}
+body[data-game-ui-size="big"] #partyPingBar{
+  transform:translateX(-50%) scale(1.16)!important;
+  transform-origin:bottom center!important;
+}
+body[data-game-ui-size="big"] #pendingUpgradeTab{
+  transform:scale(1.16)!important;
+  transform-origin:center!important;
+}
+
+@media(max-width:720px){
+  .profileVisualCosmetic,
+  .profileVisualAchievement{
+    min-height:120px!important;
+  }
+  .profileSettingsSelect{
+    grid-template-columns:1fr;
+  }
+  .profileSettingsSelect select{
+    width:100%;
+  }
+  body[data-game-ui-size="big"] #topLeft,
+  body[data-game-ui-size="big"] #bottomLeft,
+  body[data-game-ui-size="big"] #chatPanel,
+  body[data-game-ui-size="big"] #partyInGameHud{
+    transform:scale(1.06)!important;
+  }
+  body[data-game-ui-size="big"] #bottomCenter{
+    transform:translateX(-50%) scale(1.06)!important;
+  }
 }
 </style>
 
