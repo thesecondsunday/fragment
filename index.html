@@ -4017,7 +4017,7 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
     <div id="brSpawnTop">
       <div>
         <h2>SELECT ENTRY SECTOR</h2>
-        <p>Choose a valid land sector. The opening phase is slower, giving every core time to establish a build.</p>
+        <p>Choose a valid land sector.</p>
       </div>
       <div id="brSpawnTimerBox">
         <div id="brSpawnTimerLabel">DROP IN</div>
@@ -4025,7 +4025,6 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
       </div>
     </div>
     <canvas id="brSpawnMap" width="720" height="480"></canvas>
-    <div id="brSpawnHint">BATTLE ROYALE · FULL ROSTER · 30-SECOND DEPLOYMENT · SLOWER VOID COLLAPSES</div>
   </div>
 </div>
 
@@ -4356,7 +4355,7 @@ if(brSpawnCanvas){
     const x=clamp((sx-ox)/scale-HALF_W, -HALF_W+160, HALF_W-160);
     const y=clamp((sy-oy)/scale-HALF_H, -HALF_H+160, HALF_H-160);
     br.selected={x,y}; drawBRSpawnMap(); tone(680,0.04,'triangle',0.03);
-    notify('Drop point locked', 'Match starts when the 20s timer ends.');
+    notify('Entry sector locked', 'Deployment begins when the 30-second timer ends.');
   });
 }
 
@@ -21544,165 +21543,176 @@ if(v1MenuLogo){
   // -------------------------------------------------------------------------
   // Slower, cleaner Battle Royale.
   // -------------------------------------------------------------------------
-  beginBRSpawnSelect=function(){
-    if(gameMode!=='br'||br.dropped||br.spawnPhase)return;
-    br.spawnPhase=true;
-    br.timer=30;
-    br.selected=null;
-    state.paused=true;
-    ui.brSpawn.classList.remove('hidden');
-    ui.brSpawnTimer.textContent='30';
-    drawBRSpawnMap();
-    clearInterval(beginBRSpawnSelect._timer);
-    beginBRSpawnSelect._timer=setInterval(()=>{
-      br.timer=Math.max(0,br.timer-.25);
-      ui.brSpawnTimer.textContent=Math.ceil(br.timer);
-      drawBRSpawnMap();
-      if(br.timer<=0)finalizeBRSpawn(!!br.selected);
-    },250);
-  };
 
-  const releaseBaseFinalizeBRSpawn=finalizeBRSpawn;
-  finalizeBRSpawn=function(chosen=true){
-    const result=releaseBaseFinalizeBRSpawn.apply(this,arguments);
-    if(gameMode==='br'){
-      br.combatStartedAt=performance.now();
-      br.stormAppear=120;
-      br.nextShrink=150;
-      br.damageTick=.8;
-    }
-    return result;
-  };
+  /*
+   * Stable Battle Royale deployment renderer.
+   *
+   * The previous version called drawMapBase(), which generated the entire
+   * high-resolution gameplay terrain synchronously before the timer interval
+   * was created. On some browsers that work could throw or stall, leaving the
+   * canvas dark and the countdown permanently at 30.
+   *
+   * This renderer draws a lightweight deployment map directly and the timer
+   * is started before the first draw.
+   */
+  function releaseDrawBRSpawnMapStable(){
+    if(!brctx||!brSpawnCanvas||!player)return;
 
-  activateBRStorm=function(){
-    if(br.stormActive)return;
-    br.stormActive=true;
-    br.nextShrink=150;
-    br.warned=false;
-    br.stormPulse=2.4;
-    notify('VOID PERIMETER ACTIVE','First collapse in 2:30.');
-    addChat('SERVER','VOID PERIMETER ACTIVE. First collapse in 2:30.');
-    ring(br.centerX,br.centerY,'#b582ff',420);
-    tone(120,.16,'sawtooth',.045);
-    setTimeout(()=>tone(240,.14,'triangle',.035),140);
-  };
+    const cw=brSpawnCanvas.width;
+    const ch=brSpawnCanvas.height;
+    const scale=Math.min(cw/WORLD_W,ch/WORLD_H);
+    const mapW=WORLD_W*scale;
+    const mapH=WORLD_H*scale;
+    const ox=(cw-mapW)/2;
+    const oy=(ch-mapH)/2;
+    const mapX=x=>ox+(x+HALF_W)*scale;
+    const mapY=y=>oy+(y+HALF_H)*scale;
 
-  warnBRStormShrink=function(){
-    if(br.warned)return;
-    br.warned=true;
-    notify('PERIMETER WARNING','Safe zone contracts in 25 seconds.');
-    addChat('SERVER','PERIMETER WARNING: safe zone contracts in 25 seconds.');
-    tone(155,.16,'sawtooth',.045);
-    setTimeout(()=>tone(98,.18,'sawtooth',.035),170);
-  };
-
-  beginBRStormShrink=function(){
-    if(!br.stormActive)return;
-    br.phase++;
-    const oldX=br.centerX,oldY=br.centerY,oldR=br.radius;
-    const newR=Math.max(650,br.radius*(br.phase<3?.82:.76));
-    const angle=br.phase*2.399963229728653;
-    const shift=Math.min(390,Math.max(90,(oldR-newR)*.46));
-    const target={
-      x:clamp(oldX+Math.cos(angle)*shift,-HALF_W+newR,HALF_W-newR),
-      y:clamp(oldY+Math.sin(angle)*shift*.72,-HALF_H+newR,HALF_H-newR)
-    };
-    const safe=typeof nearestIslandPoint==='function'
-      ?nearestIslandPoint(target.x,target.y,Math.min(220,Math.max(50,newR*.07)))
-      :target;
-    br.centerX=clamp(safe.x,-HALF_W+newR,HALF_W-newR);
-    br.centerY=clamp(safe.y,-HALF_H+newR,HALF_H-newR);
-    br.radius=newR;
-    br.nextShrink=150;
-    br.warned=false;
-    br.stormPulse=2.2;
-    ring(oldX,oldY,'#b582ff',oldR*.1);
-    ring(br.centerX,br.centerY,'#ffcf58',Math.min(380,br.radius*.28));
-    notify('PERIMETER CONTRACTED','Next collapse in 2:30.');
-    addChat('SERVER','PERIMETER CONTRACTED. Next collapse in 2:30.');
-    camera.shake=Math.max(camera.shake,.18);
-    tone(80,.18,'sawtooth',.045);
-    setTimeout(()=>tone(190,.14,'triangle',.03),130);
-  };
-
-  updateBR=function(dt){
-    if(gameMode!=='br'||!br.active||br.spawnPhase||br.victory)return;
-    const sec=dt/1000;
-    br.stormPulse=Math.max(0,(br.stormPulse||0)-sec);
-    if(!br.stormActive){
-      br.stormAppear=Math.max(0,(br.stormAppear||0)-sec);
-      if(br.stormAppear<=0)activateBRStorm();
-      checkBRWin();
-      return;
-    }
-    br.nextShrink=Math.max(0,br.nextShrink-sec);
-    if(br.nextShrink<=25&&br.radius>680)warnBRStormShrink();
-    if(br.nextShrink<=0&&br.radius>680)beginBRStormShrink();
-    br.damageTick-=sec;
-    if(br.damageTick<=0){
-      br.damageTick=.8;
-      const damage=5+br.phase*1.6;
-      for(const entity of [player,...bots]){
-        if(!entity||entity.dead)continue;
-        if(Math.hypot(entity.x-br.centerX,entity.y-br.centerY)>br.radius){
-          hitEntity(entity,damage,null);
-          if(!entity.dead)floatText(entity.x,entity.y-34,'VOID','#b582ff');
-        }
-      }
-    }
-    checkBRWin();
-  };
-
-  drawBRStorm=function(camX,camY,viewW,viewH){
-    if(gameMode!=='br'||!br.active||br.spawnPhase||!br.stormActive)return;
-    const x=br.centerX-camX,y=br.centerY-camY;
-    const warning=br.nextShrink<=25&&br.radius>680;
-    const pulse=(br.stormPulse||0)>0?1+Math.sin(performance.now()/90)*.045:1;
-    ctx.save();
-    ctx.fillStyle='rgba(44,28,72,.22)';
-    ctx.beginPath();
-    ctx.rect(0,0,viewW,viewH);
-    ctx.arc(x,y,br.radius*pulse,0,Math.PI*2,true);
-    ctx.fill('evenodd');
-    ctx.strokeStyle=warning?'#ffcf58':'#b582ff';
-    ctx.lineWidth=warning?8:6;
-    ctx.setLineDash(warning?[14,9]:[26,14]);
-    ctx.beginPath();
-    ctx.arc(x,y,br.radius*pulse,0,Math.PI*2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle=warning?'#ffcf58':'#eef3f7';
-    ctx.font=warning?'1000 20px Arial':'900 17px Arial';
-    ctx.textAlign='center';
-    if(warning)ctx.fillText('PERIMETER CONTRACTS IN '+Math.ceil(br.nextShrink)+'s',x,y-br.radius-18);
-    else if((br.stormPulse||0)>0)ctx.fillText('SAFE PERIMETER UPDATED',x,y-br.radius-18);
-    ctx.restore();
-  };
-
-  drawBRSpawnMap=function(){
-    if(!brctx||!player)return;
-    const g=drawMapBase(brctx,brSpawnCanvas);
-
-    // Blocky sector grid above the existing map art.
     brctx.save();
-    brctx.strokeStyle='rgba(238,243,247,.34)';
+    brctx.setTransform(1,0,0,1,0,0);
+    brctx.clearRect(0,0,cw,ch);
+
+    // Ocean and deployment grid.
+    brctx.fillStyle='#101820';
+    brctx.fillRect(0,0,cw,ch);
+    brctx.fillStyle='#182733';
+    brctx.fillRect(ox,oy,mapW,mapH);
+
+    brctx.strokeStyle='rgba(127,151,168,.28)';
     brctx.lineWidth=1;
-    const columns=8,rows=6;
-    for(let column=1;column<columns;column++){
-      const x=g.ox+g.mapW*column/columns;
-      brctx.beginPath();brctx.moveTo(x,g.oy);brctx.lineTo(x,g.oy+g.mapH);brctx.stroke();
+    const columns=8;
+    const rows=6;
+    for(let column=0;column<=columns;column++){
+      const x=ox+mapW*column/columns;
+      brctx.beginPath();
+      brctx.moveTo(x,oy);
+      brctx.lineTo(x,oy+mapH);
+      brctx.stroke();
     }
-    for(let row=1;row<rows;row++){
-      const y=g.oy+g.mapH*row/rows;
-      brctx.beginPath();brctx.moveTo(g.ox,y);brctx.lineTo(g.ox+g.mapW,y);brctx.stroke();
+    for(let row=0;row<=rows;row++){
+      const y=oy+mapH*row/rows;
+      brctx.beginPath();
+      brctx.moveTo(ox,y);
+      brctx.lineTo(ox+mapW,y);
+      brctx.stroke();
     }
+
+    // Build the actual island coastline without generating the expensive
+    // gameplay terrain texture.
+    let outline=[];
+    try{
+      outline=typeof islandOutlinePoints==='function'
+        ?islandOutlinePoints()
+        :[];
+    }catch(_error){
+      outline=[];
+    }
+
+    brctx.save();
+    brctx.beginPath();
+    if(outline.length>=3){
+      outline.forEach((point,index)=>{
+        const x=mapX(point.x);
+        const y=mapY(point.y);
+        if(index===0)brctx.moveTo(x,y);
+        else brctx.lineTo(x,y);
+      });
+      brctx.closePath();
+    }else{
+      brctx.ellipse(
+        ox+mapW/2,
+        oy+mapH/2,
+        mapW*.40,
+        mapH*.39,
+        0,0,Math.PI*2
+      );
+    }
+    brctx.clip();
+
+    // Base land.
+    brctx.fillStyle='#52636a';
+    brctx.fillRect(ox,oy,mapW,mapH);
+
+    // Fast biome fields, clipped to the coastline.
+    for(const biome of biomes){
+      const cx=mapX(Number.isFinite(biome.cx)?biome.cx:(biome.x+biome.w/2));
+      const cy=mapY(Number.isFinite(biome.cy)?biome.cy:(biome.y+biome.h/2));
+      const rx=Math.max(48,(Number.isFinite(biome.sx)?biome.sx:biome.w*.58)*scale);
+      const ry=Math.max(38,(Number.isFinite(biome.sy)?biome.sy:biome.h*.58)*scale);
+      const gradient=brctx.createRadialGradient(cx,cy,0,cx,cy,Math.max(rx,ry));
+      gradient.addColorStop(0,biome.detail||biome.color||'#647681');
+      gradient.addColorStop(.62,biome.color||'#52636a');
+      gradient.addColorStop(1,'rgba(82,99,106,0)');
+      brctx.fillStyle=gradient;
+      brctx.beginPath();
+      brctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);
+      brctx.fill();
+    }
+
+    // Restrained internal sector lines.
+    brctx.strokeStyle='rgba(238,243,247,.22)';
+    brctx.lineWidth=2;
+    brctx.setLineDash([11,8]);
+    for(const route of (typeof ISLAND_ROUTES!=='undefined'?ISLAND_ROUTES:[])){
+      if(!Array.isArray(route.points)||route.points.length<2)continue;
+      brctx.beginPath();
+      route.points.forEach((point,index)=>{
+        const x=mapX(point[0]);
+        const y=mapY(point[1]);
+        if(index===0)brctx.moveTo(x,y);
+        else brctx.lineTo(x,y);
+      });
+      brctx.stroke();
+    }
+    brctx.setLineDash([]);
     brctx.restore();
 
-    drawIslandMapLabels(brctx,g,false);
+    // Coastline.
+    brctx.beginPath();
+    if(outline.length>=3){
+      outline.forEach((point,index)=>{
+        const x=mapX(point.x);
+        const y=mapY(point.y);
+        if(index===0)brctx.moveTo(x,y);
+        else brctx.lineTo(x,y);
+      });
+      brctx.closePath();
+    }else{
+      brctx.ellipse(
+        ox+mapW/2,
+        oy+mapH/2,
+        mapW*.40,
+        mapH*.39,
+        0,0,Math.PI*2
+      );
+    }
+    brctx.strokeStyle='#eef3f7';
+    brctx.lineWidth=4;
+    brctx.stroke();
+    brctx.strokeStyle='#101820';
+    brctx.lineWidth=2;
+    brctx.stroke();
 
+    // Biome labels.
+    brctx.textAlign='center';
+    brctx.textBaseline='middle';
+    for(const biome of biomes){
+      const labelX=mapX(Number.isFinite(biome.labelX)?biome.labelX:(biome.cx||0));
+      const labelY=mapY(Number.isFinite(biome.labelY)?biome.labelY:(biome.cy||0));
+      const label=String(biome.name||'SECTOR').toUpperCase();
+      brctx.font='1000 10px Arial';
+      brctx.lineWidth=4;
+      brctx.strokeStyle='rgba(16,24,32,.88)';
+      brctx.fillStyle='#eef3f7';
+      brctx.strokeText(label,labelX,labelY);
+      brctx.fillText(label,labelX,labelY);
+    }
+
+    // Enemy deployment pips.
     for(const bot of bots){
-      if(bot.dead)continue;
-      const px=g.mapX(bot.x),py=g.mapY(bot.y);
+      if(!bot||bot.dead)continue;
+      const px=mapX(bot.x);
+      const py=mapY(bot.y);
       brctx.fillStyle='#ff5d67';
       brctx.fillRect(px-2,py-2,4,4);
       brctx.strokeStyle='#101820';
@@ -21710,47 +21720,57 @@ if(v1MenuLogo){
       brctx.strokeRect(px-2.5,py-2.5,5,5);
     }
 
-    brctx.save();
+    // Canvas header.
     brctx.fillStyle='#101820';
-    brctx.fillRect(g.ox,g.oy,g.mapW,40);
+    brctx.fillRect(ox,oy,mapW,40);
     brctx.fillStyle='#eef3f7';
     brctx.font='1000 17px Arial';
     brctx.textAlign='left';
-    brctx.fillText('ENTRY SECTOR CONTROL',g.ox+14,g.oy+25);
+    brctx.textBaseline='alphabetic';
+    brctx.fillText('ENTRY SECTOR CONTROL',ox+14,oy+25);
+
     brctx.fillStyle='#ffcf58';
-    brctx.fillRect(g.ox+g.mapW-120,g.oy+7,105,25);
+    brctx.fillRect(ox+mapW-120,oy+7,105,25);
     brctx.strokeStyle='#eef3f7';
     brctx.lineWidth=2;
-    brctx.strokeRect(g.ox+g.mapW-120,g.oy+7,105,25);
+    brctx.strokeRect(ox+mapW-120,oy+7,105,25);
     brctx.fillStyle='#101820';
     brctx.font='1000 13px Arial';
     brctx.textAlign='center';
-    brctx.fillText('T-'+Math.ceil(br.timer||30)+'s',g.ox+g.mapW-67.5,g.oy+24);
-    brctx.restore();
+    brctx.fillText('T-'+Math.ceil(Number(br.timer)||30)+'s',ox+mapW-67.5,oy+24);
 
     if(br.selected){
-      const safe=nearestIslandPoint(br.selected.x,br.selected.y,180);
+      const safe=typeof nearestIslandPoint==='function'
+        ?nearestIslandPoint(br.selected.x,br.selected.y,180)
+        :br.selected;
       br.selected=safe;
-      const sx=g.mapX(safe.x),sy=g.mapY(safe.y);
+      const sx=mapX(safe.x);
+      const sy=mapY(safe.y);
       const pulse=1+Math.sin(performance.now()/150)*.08;
-      brctx.save();
+
       brctx.strokeStyle='#101820';
       brctx.lineWidth=5;
-      brctx.beginPath();brctx.arc(sx,sy,22*pulse,0,Math.PI*2);brctx.stroke();
+      brctx.beginPath();
+      brctx.arc(sx,sy,22*pulse,0,Math.PI*2);
+      brctx.stroke();
+
       brctx.fillStyle='#ffcf58';
       brctx.fillRect(sx-8*pulse,sy-8*pulse,16*pulse,16*pulse);
       brctx.strokeStyle='#eef3f7';
       brctx.lineWidth=2;
       brctx.strokeRect(sx-8*pulse,sy-8*pulse,16*pulse,16*pulse);
+
       brctx.fillStyle='#101820';
       brctx.fillRect(sx+17,sy-25,118,23);
       brctx.fillStyle='#eef3f7';
       brctx.font='1000 11px Arial';
       brctx.textAlign='left';
       brctx.fillText('SECTOR LOCKED',sx+24,sy-10);
-      brctx.restore();
     }else{
-      const width=276,height=31,x=g.cw/2-width/2,y=g.ch-45;
+      const width=276;
+      const height=31;
+      const x=cw/2-width/2;
+      const y=ch-45;
       brctx.fillStyle='#eef3f7';
       brctx.fillRect(x,y,width,height);
       brctx.strokeStyle='#101820';
@@ -21759,12 +21779,57 @@ if(v1MenuLogo){
       brctx.fillStyle='#101820';
       brctx.font='1000 12px Arial';
       brctx.textAlign='center';
-      brctx.fillText('CLICK A VALID LAND SECTOR',g.cw/2,y+20);
+      brctx.fillText('CLICK A VALID LAND SECTOR',cw/2,y+20);
     }
 
     brctx.strokeStyle='#101820';
     brctx.lineWidth=4;
-    brctx.strokeRect(g.ox+2,g.oy+2,g.mapW-4,g.mapH-4);
+    brctx.strokeRect(ox+2,oy+2,mapW-4,mapH-4);
+    brctx.restore();
+  }
+
+  drawBRSpawnMap=function(){
+    try{
+      releaseDrawBRSpawnMapStable();
+    }catch(error){
+      console.error('[Fragment.io] Battle Royale deployment map draw failed:',error);
+      // Never allow a cosmetic map error to stop the countdown.
+      if(brctx&&brSpawnCanvas){
+        brctx.setTransform(1,0,0,1,0,0);
+        brctx.fillStyle='#101820';
+        brctx.fillRect(0,0,brSpawnCanvas.width,brSpawnCanvas.height);
+        brctx.fillStyle='#eef3f7';
+        brctx.font='1000 18px Arial';
+        brctx.textAlign='center';
+        brctx.fillText('ENTRY MAP REINITIALIZING',brSpawnCanvas.width/2,brSpawnCanvas.height/2);
+      }
+    }
+  };
+
+  beginBRSpawnSelect=function(){
+    if(gameMode!=='br'||br.dropped||br.spawnPhase)return;
+
+    br.spawnPhase=true;
+    br.timer=30;
+    br.selected=null;
+    state.paused=true;
+    ui.brSpawn.classList.remove('hidden');
+    ui.brSpawnTimer.textContent='30';
+
+    // Start the countdown before attempting any rendering.
+    clearInterval(beginBRSpawnSelect._timer);
+    beginBRSpawnSelect._timer=setInterval(()=>{
+      if(!br.spawnPhase){
+        clearInterval(beginBRSpawnSelect._timer);
+        return;
+      }
+      br.timer=Math.max(0,Number(br.timer||0)-.25);
+      ui.brSpawnTimer.textContent=String(Math.ceil(br.timer));
+      drawBRSpawnMap();
+      if(br.timer<=0)finalizeBRSpawn(!!br.selected);
+    },250);
+
+    requestAnimationFrame(drawBRSpawnMap);
   };
 
   // -------------------------------------------------------------------------
@@ -25985,3 +26050,13 @@ body:not(.verifiedDeveloperAccount) #debugGui{
 
 </body>
 </html>
+
+<style id="fragment-v1-battle-royale-spawn-fix-style">
+#brSpawnHint{display:none!important}
+#brSpawnMap{
+  min-height:0!important;
+}
+#brSpawnCard{
+  padding-bottom:10px!important;
+}
+</style>
