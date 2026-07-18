@@ -4454,32 +4454,6 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
 }
 
 /* Strong performance mode removes costly decorative canvas-adjacent effects. */
-body.fragmentPerformanceModeStrong #gameCanvas{
-  image-rendering:auto;
-}
-body.fragmentPerformanceModeStrong .abilityReadyFlash,
-body.fragmentPerformanceModeStrong .screenPulse,
-body.fragmentPerformanceModeStrong .hudShake,
-body.fragmentPerformanceModeStrong .damageVignette,
-body.fragmentPerformanceModeStrong .dashStreak,
-body.fragmentPerformanceModeStrong .worldModeFx{
-  animation:none!important;
-  filter:none!important;
-  box-shadow:none!important;
-}
-body.fragmentPerformanceModeStrong #hud,
-body.fragmentPerformanceModeStrong #gameCanvas,
-body.fragmentPerformanceModeStrong #miniMap{
-  filter:none!important;
-  text-shadow:none!important;
-}
-body.fragmentPerformanceModeStrong .slot,
-body.fragmentPerformanceModeStrong .hudPanel,
-body.fragmentPerformanceModeStrong .serverLb,
-body.fragmentPerformanceModeStrong #chatPanel{
-  box-shadow:none!important;
-}
-
 @media(max-width:900px){
   #featuredAchievementEditor{
     grid-template-columns:repeat(2,minmax(0,1fr))!important;
@@ -4545,25 +4519,19 @@ body.fragmentPerformanceModeStrong #chatPanel{
 }
 
 /* Strong low-spec mode also disables CSS animation work surrounding gameplay. */
-body.fragmentPerformanceModeStrong #hud *,
-body.fragmentPerformanceModeStrong #partyPingBar *,
-body.fragmentPerformanceModeStrong #quickPingWheel *{
-  transition:none!important;
-}
-body.fragmentPerformanceModeStrong #gameCanvas{
-  filter:none!important;
-}
-body.fragmentPerformanceModeStrong .worldAnnouncement,
-body.fragmentPerformanceModeStrong .bossWarning,
-body.fragmentPerformanceModeStrong .damageFlash{
-  text-shadow:none!important;
-  box-shadow:none!important;
-}
-
 @media(max-width:760px){
   .developerRemnantForm{
     grid-template-columns:1fr;
   }
+}
+</style>
+
+
+<style id="fragment-v1-fragment-culling-cleanup-style">
+/* Performance Mode was removed. HUD size remains available. */
+.profilePerformanceSettings .profileSettingsHeader span{
+  background:#eef3f7!important;
+  color:#101820!important;
 }
 </style>
 
@@ -13406,6 +13374,11 @@ function updateProjectiles(dt){
       continue;
     }
     p.life -= dt/16.6; p.age += dt/16.6;
+    if(p.kind==='ricochet'){
+      p.ricochetHitCooldown=Math.max(0,(p.ricochetHitCooldown||0)-dt/16.6);
+      p.ricochetSurfaceCooldown=Math.max(0,(p.ricochetSurfaceCooldown||0)-dt/16.6);
+      if(!(p.ricochetVictims instanceof Set))p.ricochetVictims=new Set();
+    }
     maybeFragmentSplit(p,i);
 
     for(const f of flares){
@@ -13540,15 +13513,15 @@ function updateProjectiles(dt){
     }
     if(blocked || p.x < -HALF_W-40 || p.x > HALF_W+40 || p.y < -HALF_H-40 || p.y > HALF_H+40 || p.life <= 0){ if(p.kind==='fireball') detonateFireball(p); if(p.kind==='gravity' && p.createWell) spawnGravityWell(p.x,p.y,p.owner,{color:p.color,r:p.gravityRadius||120,life:p.wellLife||1.6,pull:p.gravityPower||10,dmg:p.wellDmg||4,collapse:p.collapse}); projectiles.splice(i,1); continue; }
 
-    if(p.kind==='ricochet' && p.bounces>0){
-      for(const f of fragments){ if(f.kind!=='xp') continue; const d=Math.hypot(f.x-p.x,f.y-p.y); if(d < f.r + p.size){ ricochetBounce(p,(p.x-f.x)/(d||1),(p.y-f.y)/(d||1),p.color); break; } }
-    }
-
     if(p.visualOnly) continue;
 
     const targets = allTargets(p.owner);
     for(const t of targets){
       if(t.dead) continue;
+      if(p.kind==='ricochet'&&(
+        (p.ricochetHitCooldown||0)>0
+        ||p.ricochetVictims?.has(t.id)
+      ))continue;
       const projectileHitSize = p.kind==='gravity' ? p.size*2.35 : p.kind==='blood' ? p.size*1.35 : p.size;
       if(Math.hypot(t.x-p.x, t.y-p.y) < t.r + projectileHitSize){
         if(t.bulletEater && t.bulletEater>0 && p.owner!==t){
@@ -13613,6 +13586,72 @@ function updateProjectiles(dt){
           ring(t.x,t.y,p.color,30);
           if(p.pierce>0){ p.pierce--; p.dmg*=0.72; p.x += p.vx*1.8; p.y += p.vy*1.8; break; }
           projectiles.splice(i,1);
+        }
+        else if(p.kind==='ricochet'){
+          hitEntity(t,p.dmg,p.owner);
+          ring(t.x,t.y,p.color,32);
+          p.ricochetVictims.add(t.id);
+
+          if(p.bounces<=0){
+            projectiles.splice(i,1);
+          }else{
+            p.bounces--;
+            p.ricochetCount=(p.ricochetCount||0)+1;
+            p.dmg*=1.12;
+            p.life+=22;
+            p.size=Math.min((p.size||6)+.5,10);
+
+            let candidates=allTargets(p.owner).filter(candidate=>
+              candidate
+              &&!candidate.dead
+              &&candidate!==t
+              &&!p.ricochetVictims.has(candidate.id)
+              &&Math.hypot(candidate.x-t.x,candidate.y-t.y)<=760
+            );
+
+            // After visiting the available nearby targets, allow a new circuit
+            // without immediately selecting the target that was just hit.
+            if(!candidates.length&&p.ricochetVictims.size>1){
+              p.ricochetVictims.clear();
+              p.ricochetVictims.add(t.id);
+              candidates=allTargets(p.owner).filter(candidate=>
+                candidate
+                &&!candidate.dead
+                &&candidate!==t
+                &&Math.hypot(candidate.x-t.x,candidate.y-t.y)<=760
+              );
+            }
+
+            candidates.sort((left,right)=>
+              Math.hypot(left.x-t.x,left.y-t.y)
+              -Math.hypot(right.x-t.x,right.y-t.y)
+            );
+            const next=candidates[0]||null;
+            const incoming=Math.atan2(p.vy,p.vx);
+            const angle=next
+              ?Math.atan2(next.y-t.y,next.x-t.x)
+              :incoming+Math.PI+rand(-.42,.42);
+            const speed=Math.min(18,(Math.hypot(p.vx,p.vy)||9.6)*1.10);
+            const separation=t.r+(p.size||6)+10;
+
+            p.x=t.x+Math.cos(angle)*separation;
+            p.y=t.y+Math.sin(angle)*separation;
+            p.vx=Math.cos(angle)*speed;
+            p.vy=Math.sin(angle)*speed;
+            p.ricochetHitCooldown=6;
+            p.ricochetSurfaceCooldown=3;
+            p.hitIds.clear();
+            p.hitIds.add(t.id+':o');
+
+            floatText(t.x,t.y-t.r-20,'RICOCHET '+p.ricochetCount,p.color);
+            for(let spark=0;spark<5;spark++){
+              particles.push({
+                x:t.x,y:t.y,
+                vx:rand(-1.7,1.7),vy:rand(-1.7,1.7),
+                dot:true,size:rand(2,4),color:p.color,life:15
+              });
+            }
+          }
         }
         else if(p.kind==='seed'){ hitEntity(t, p.dmg, p.owner); if(Math.random()<.75) spawnFragment('natural', t.x+rand(-18,18), t.y+rand(-18,18)); projectiles.splice(i,1); }
         else if(p.kind==='orbiter'){ hitEntity(t, p.dmg * (p.return ? p.returnDamageMul : 1), p.owner); p.hitTarget=t; p.orbitTime=25; p.return=true; break; }
@@ -21412,7 +21451,8 @@ if(v1MenuLogo){
   };
 
   /* Settings: performance mode and in-game UI size. */
-  let fragmentPerformanceMode=localStorage.getItem('fragmentio_performance_mode')==='1';
+  let fragmentPerformanceMode=false;
+  localStorage.removeItem('fragmentio_performance_mode');
   let fragmentGameUiSize=['small','medium','big'].includes(localStorage.getItem('fragmentio_game_ui_size'))
     ?localStorage.getItem('fragmentio_game_ui_size')
     :'medium';
@@ -21498,13 +21538,9 @@ if(v1MenuLogo){
     section.className='profilePerformanceSettings';
     section.innerHTML=`
       <div class="profileSettingsHeader">
-        <div><small>GAMEPLAY DISPLAY</small><b>Performance & HUD</b></div>
+        <div><small>GAMEPLAY DISPLAY</small><b>HUD</b></div>
         <span>LOCAL DEVICE</span>
       </div>
-      <label class="profileSettingsToggle">
-        <input id="fragmentPerformanceToggle" type="checkbox" ${fragmentPerformanceMode?'checked':''}/>
-        <span><b>Performance Mode</b><small>Removes decorative gameplay auras, trails, dash echoes, death bursts, excess particles, and camera shake. Gameplay telegraphs remain.</small></span>
-      </label>
       <label class="profileSettingsSelect">
         <span><b>UI Size</b><small>Changes the in-game HUD only. Medium is the original size.</small></span>
         <select id="fragmentGameUiSizeSelect">
@@ -21517,16 +21553,8 @@ if(v1MenuLogo){
 
     panel.appendChild(section);
 
-    const performanceToggle=$('fragmentPerformanceToggle');
     const uiSizeSelect=$('fragmentGameUiSizeSelect');
     if(uiSizeSelect)uiSizeSelect.value=fragmentGameUiSize;
-
-    performanceToggle?.addEventListener('change',()=>{
-      fragmentPerformanceMode=performanceToggle.checked;
-      localStorage.setItem('fragmentio_performance_mode',fragmentPerformanceMode?'1':'0');
-      applyFragmentPerformanceMode();
-      notify('Performance Mode',fragmentPerformanceMode?'Decorative gameplay details reduced.':'Full gameplay details restored.');
-    });
 
     uiSizeSelect?.addEventListener('change',()=>{
       fragmentGameUiSize=['small','medium','big'].includes(uiSizeSelect.value)?uiSizeSelect.value:'medium';
@@ -25479,6 +25507,423 @@ if(v1MenuLogo){
   /* ===== END PERFORMANCE / BR TIMER / FRIEND DEDUPE / DEV REMNANT PATCH ===== */
 
 
+
+
+
+  /* ===== FRAGMENT CULLING / RICOCHET / BOSS MATERIALIZATION FIX ===== */
+
+  // Performance Mode has been removed. Clear legacy state and classes from
+  // players who enabled it in an older build.
+  fragmentPerformanceMode=false;
+  localStorage.removeItem('fragmentio_performance_mode');
+  document.body.classList.remove('fragmentPerformanceMode','fragmentPerformanceModeStrong');
+
+  applyFragmentPerformanceMode=function(){
+    fragmentPerformanceMode=false;
+    document.body.classList.remove('fragmentPerformanceMode','fragmentPerformanceModeStrong');
+    PERF_LIMITS.particles=fragmentDefaultParticleLimit;
+    ctx.imageSmoothingEnabled=true;
+    mctx.imageSmoothingEnabled=true;
+  };
+  applyFragmentPerformanceMode();
+
+  const obsoletePerformanceToggle=$('fragmentPerformanceToggle');
+  obsoletePerformanceToggle?.closest('.profileSettingsToggle')?.remove();
+
+  // -------------------------------------------------------------------------
+  // Fragment render spatial index.
+  //
+  // Gameplay simulation, pickup checks, server interpolation, and fragment
+  // movement still process the complete array. Canvas/minimap drawing only
+  // receives fragments inside the current player camera.
+  // -------------------------------------------------------------------------
+  const fragmentRenderCellSize=420;
+  let fragmentRenderGrid=new Map();
+  let fragmentRenderGridBuiltAt=0;
+  let fragmentRenderGridArray=null;
+  let fragmentRenderGridLength=-1;
+  let fragmentRenderGridFirst=null;
+  let fragmentRenderGridLast=null;
+
+  function fragmentRenderCellKey(cellX,cellY){
+    return cellX+','+cellY;
+  }
+
+  function rebuildFragmentRenderGrid(force=false){
+    const now=performance.now();
+    const first=fragments[0]||null;
+    const last=fragments[fragments.length-1]||null;
+    const stale=force
+      ||fragmentRenderGridArray!==fragments
+      ||fragmentRenderGridLength!==fragments.length
+      ||fragmentRenderGridFirst!==first
+      ||fragmentRenderGridLast!==last
+      ||now-fragmentRenderGridBuiltAt>=180;
+    if(!stale)return;
+
+    const next=new Map();
+    for(const fragment of fragments){
+      if(!fragment||!Number.isFinite(fragment.x)||!Number.isFinite(fragment.y))continue;
+      const cellX=Math.floor(fragment.x/fragmentRenderCellSize);
+      const cellY=Math.floor(fragment.y/fragmentRenderCellSize);
+      const key=fragmentRenderCellKey(cellX,cellY);
+      const bucket=next.get(key);
+      if(bucket)bucket.push(fragment);
+      else next.set(key,[fragment]);
+    }
+
+    fragmentRenderGrid=next;
+    fragmentRenderGridArray=fragments;
+    fragmentRenderGridLength=fragments.length;
+    fragmentRenderGridFirst=first;
+    fragmentRenderGridLast=last;
+    fragmentRenderGridBuiltAt=now;
+  }
+
+  function fragmentRenderVisibleCache(cameraRect=getCamera()){
+    rebuildFragmentRenderGrid();
+    const margin=70;
+    const minX=Math.floor((cameraRect.x-margin)/fragmentRenderCellSize);
+    const maxX=Math.floor((cameraRect.x+cameraRect.w+margin)/fragmentRenderCellSize);
+    const minY=Math.floor((cameraRect.y-margin)/fragmentRenderCellSize);
+    const maxY=Math.floor((cameraRect.y+cameraRect.h+margin)/fragmentRenderCellSize);
+    const visible=[];
+
+    for(let cellY=minY;cellY<=maxY;cellY++){
+      for(let cellX=minX;cellX<=maxX;cellX++){
+        const bucket=fragmentRenderGrid.get(fragmentRenderCellKey(cellX,cellY));
+        if(!bucket)continue;
+        for(const fragment of bucket){
+          const radius=Math.max(5,Number(fragment.r)||12)+margin;
+          if(
+            fragment.x+radius>=cameraRect.x
+            &&fragment.x-radius<=cameraRect.x+cameraRect.w
+            &&fragment.y+radius>=cameraRect.y
+            &&fragment.y-radius<=cameraRect.y+cameraRect.h
+          ){
+            visible.push(fragment);
+          }
+        }
+      }
+    }
+    return visible;
+  }
+
+  // Minimap and full-map rendering no longer scan or draw the complete fragment
+  // population. Player, teammate, enemy, boss, and clone markers remain global.
+  const fragmentCullBaseDrawMiniMap=drawMiniMap;
+  drawMiniMap=function(){
+    if(!player)return fragmentCullBaseDrawMiniMap.apply(this,arguments);
+    const complete=fragments;
+    fragments=fragmentRenderVisibleCache(getCamera());
+    try{
+      return fragmentCullBaseDrawMiniMap.apply(this,arguments);
+    }finally{
+      fragments=complete;
+    }
+  };
+
+  const fragmentCullBaseDrawBigMap=drawBigMap;
+  drawBigMap=function(){
+    if(!player)return fragmentCullBaseDrawBigMap.apply(this,arguments);
+    const complete=fragments;
+    fragments=fragmentRenderVisibleCache(getCamera());
+    try{
+      return fragmentCullBaseDrawBigMap.apply(this,arguments);
+    }finally{
+      fragments=complete;
+    }
+  };
+
+  // Final normal-quality renderer. It preserves all visual systems, but the
+  // fragment draw loop queries only nearby spatial buckets instead of scanning
+  // every fragment on every animation frame.
+  draw=function(){
+    if(player&&state.screen==='play'){
+      const cam=getCamera();
+      const zoom=cam.zoom||cameraZoom||1;
+      const entityMargin=150;
+
+      ctx.save();
+      ctx.setTransform(zoom,0,0,zoom,0,0);
+
+      drawBackground(cam.x,cam.y,cam.w,cam.h);
+      drawMapSystems(cam.x,cam.y,cam.w,cam.h);
+
+      for(const fragment of fragmentRenderVisibleCache(cam)){
+        drawFragment(fragment,cam.x,cam.y);
+      }
+
+      drawFlaresAndStrikes(cam.x,cam.y);
+      drawAbilityObjects(cam.x,cam.y);
+      drawProjectiles(cam.x,cam.y);
+
+      for(const clone of player.clones||[]){
+        if(rc2EntityVisible(clone,cam,entityMargin))drawEntity(clone,cam.x,cam.y);
+      }
+      for(const remote of remotePlayers){
+        if(!remote||remote.dead)continue;
+        for(const clone of remote.remoteClones||[]){
+          if(rc2EntityVisible(clone,cam,entityMargin))drawEntity(clone,cam.x,cam.y);
+        }
+        if(rc2EntityVisible(remote,cam,entityMargin))drawEntity(remote,cam.x,cam.y);
+      }
+      for(const bot of bots){
+        if(rc2EntityVisible(bot,cam,entityMargin))drawEntity(bot,cam.x,cam.y);
+      }
+      for(const boss of bosses){
+        if(rc2EntityVisible(boss,cam,220))drawEntity(boss,cam.x,cam.y);
+      }
+
+      drawEntity(player,cam.x,cam.y);
+      drawPartySpeechBubbles(cam.x,cam.y);
+      drawParticles(cam.x,cam.y);
+      ctx.restore();
+
+      drawWorldPostFX();
+      drawDuoArrow(cam);
+      drawMiniMap();
+
+      if(showMap){
+        const mapTick=Math.floor(performance.now()/250);
+        if(draw._mapTick!==mapTick){
+          draw._mapTick=mapTick;
+          drawBigMap();
+        }
+      }
+    }else{
+      const camX=player?player.x-W/2:-HALF_W;
+      const camY=player?player.y-H/2:-HALF_H;
+      drawBackground(camX,camY,W,H);
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // Ricochet Dart surface bounce repair.
+  // -------------------------------------------------------------------------
+  ricochetBounce=function(projectile,normalX,normalY,color=null){
+    if(!projectile||projectile.kind!=='ricochet'||projectile.bounces<=0)return false;
+    if((projectile.ricochetSurfaceCooldown||0)>0)return false;
+
+    let length=Math.hypot(normalX,normalY);
+    if(!Number.isFinite(length)||length<.001){
+      normalX=-projectile.vx;
+      normalY=-projectile.vy;
+      length=Math.hypot(normalX,normalY)||1;
+    }
+    normalX/=length;
+    normalY/=length;
+
+    // The normal must point against travel or the reflection can send the dart
+    // deeper into a wall and leave it bouncing forever in the same collider.
+    if(projectile.vx*normalX+projectile.vy*normalY>0){
+      normalX*=-1;
+      normalY*=-1;
+    }
+
+    const speed=Math.hypot(projectile.vx,projectile.vy)||9.6;
+    const dot=projectile.vx*normalX+projectile.vy*normalY;
+    let reflectedX=projectile.vx-2*dot*normalX;
+    let reflectedY=projectile.vy-2*dot*normalY;
+    let angle=Math.atan2(reflectedY,reflectedX);
+
+    const candidates=allTargets(projectile.owner).filter(target=>
+      target
+      &&!target.dead
+      &&!projectile.ricochetVictims?.has(target.id)
+      &&Math.hypot(target.x-projectile.x,target.y-projectile.y)<=680
+    );
+    candidates.sort((left,right)=>
+      Math.hypot(left.x-projectile.x,left.y-projectile.y)
+      -Math.hypot(right.x-projectile.x,right.y-projectile.y)
+    );
+    const target=candidates[0]||null;
+    if(target){
+      const targetAngle=Math.atan2(target.y-projectile.y,target.x-projectile.x);
+      let difference=((targetAngle-angle+Math.PI*3)%(Math.PI*2))-Math.PI;
+      angle+=clamp(difference,-.78,.78);
+    }
+
+    const nextSpeed=Math.min(18,speed*1.09);
+    projectile.vx=Math.cos(angle)*nextSpeed;
+    projectile.vy=Math.sin(angle)*nextSpeed;
+    projectile.x+=normalX*((projectile.size||6)+12);
+    projectile.y+=normalY*((projectile.size||6)+12);
+    projectile.x=clamp(projectile.x,-HALF_W+3,HALF_W-3);
+    projectile.y=clamp(projectile.y,-HALF_H+3,HALF_H-3);
+    projectile.bounces--;
+    projectile.ricochetCount=(projectile.ricochetCount||0)+1;
+    projectile.dmg*=1.14;
+    projectile.life+=18;
+    projectile.size=Math.min((projectile.size||6)+.45,10);
+    projectile.ricochetSurfaceCooldown=5;
+    projectile.ricochetHitCooldown=2;
+
+    ring(projectile.x,projectile.y,color||projectile.color,30);
+    floatText(
+      projectile.x,
+      projectile.y-20,
+      'RICOCHET '+projectile.ricochetCount,
+      projectile.color
+    );
+    return true;
+  };
+
+  // -------------------------------------------------------------------------
+  // Boss materialization hard timeout.
+  // -------------------------------------------------------------------------
+  function bossMaterializationDeadline(boss){
+    if(!boss)return 0;
+    if(!Number.isFinite(boss.materializationDeadline)){
+      const seconds=clamp(Number(boss.spawnAnim)||2.4,.15,4.2);
+      boss.materializationDeadline=performance.now()+seconds*1000+450;
+    }
+    return boss.materializationDeadline;
+  }
+
+  function finishBossMaterialization(boss){
+    if(!boss)return;
+    boss.spawnAnim=0;
+    boss.bossGrace=Math.max(0,Number(boss.bossGrace)||0);
+    boss.networkSpawnUntil=0;
+    boss.materializationDeadline=0;
+    const arena=bossArenaFor(boss);
+    if(arena){
+      arena.spawn=0;
+      arena.materializationDeadline=0;
+      if(arena.attackName==='Materializing')arena.attackName='';
+    }
+  }
+
+  const materializeBaseSpawnUniqueBoss=spawnUniqueBoss;
+  spawnUniqueBoss=function(){
+    const boss=materializeBaseSpawnUniqueBoss.apply(this,arguments);
+    if(boss){
+      const duration=clamp(Number(boss.spawnAnim)||2.4,.15,4.2);
+      boss.materializationDeadline=performance.now()+duration*1000+450;
+      const arena=bossArenaFor(boss);
+      if(arena)arena.materializationDeadline=boss.materializationDeadline;
+    }
+    return boss;
+  };
+
+  const materializeBaseUpdateBosses=updateBosses;
+  updateBosses=function(dt){
+    const now=performance.now();
+    for(const boss of bosses){
+      if(!boss||boss.dead)continue;
+      if((boss.spawnAnim||0)>0&&now>=bossMaterializationDeadline(boss)){
+        finishBossMaterialization(boss);
+      }
+    }
+    const result=materializeBaseUpdateBosses.apply(this,arguments);
+    for(const boss of bosses){
+      if(!boss||boss.dead)continue;
+      if((boss.spawnAnim||0)<=0){
+        const arena=bossArenaFor(boss);
+        if(arena)arena.spawn=0;
+      }
+    }
+    return result;
+  };
+
+  const materializeBaseUpdateMapSystems=updateMapSystems;
+  updateMapSystems=function(dt){
+    const result=materializeBaseUpdateMapSystems.apply(this,arguments);
+    const now=performance.now();
+    for(const arena of bossArenas){
+      if(!arena?.boss||arena.boss.dead)continue;
+      const deadline=arena.materializationDeadline
+        ||arena.boss.materializationDeadline
+        ||bossMaterializationDeadline(arena.boss);
+      if(now>=deadline||((arena.boss.spawnAnim||0)<=0&&(arena.spawn||0)>0)){
+        arena.spawn=0;
+        arena.boss.spawnAnim=0;
+        if(arena.attackName==='Materializing')arena.attackName='';
+      }
+    }
+    return result;
+  };
+
+  const materializeBaseDrawMapSystems=drawMapSystems;
+  drawMapSystems=function(camX,camY,viewW,viewH){
+    const now=performance.now();
+    for(const arena of bossArenas){
+      if(!arena?.boss||arena.boss.dead)continue;
+      const deadline=arena.materializationDeadline||arena.boss.materializationDeadline;
+      if(deadline&&now>=deadline){
+        arena.spawn=0;
+        arena.boss.spawnAnim=0;
+      }
+    }
+    return materializeBaseDrawMapSystems.apply(this,arguments);
+  };
+
+  const materializeBaseAddBossEffect=v1AddBossEffect;
+  v1AddBossEffect=function(effect){
+    if(effect?.action==='materialize'||effect?.label==='BOSS MATERIALIZING'){
+      const life=clamp(Number(effect.life)||2.5,.1,4.5);
+      effect.materializationExpiresAt=performance.now()+life*1000+250;
+    }
+    return materializeBaseAddBossEffect(effect);
+  };
+
+  const materializeBaseUpdateNetworkEffects=v1UpdateNetworkEffects;
+  v1UpdateNetworkEffects=function(dt){
+    const result=materializeBaseUpdateNetworkEffects(Math.min(Number(dt)||0,100));
+    const now=performance.now();
+    for(let index=v1NetworkBossEffects.length-1;index>=0;index--){
+      const effect=v1NetworkBossEffects[index];
+      if(
+        (effect?.action==='materialize'||effect?.label==='BOSS MATERIALIZING')
+        &&effect.materializationExpiresAt
+        &&now>=effect.materializationExpiresAt
+      ){
+        v1NetworkBossEffects.splice(index,1);
+      }
+    }
+    return result;
+  };
+
+  const materializeBaseNetApplyBossSnapshots=netApplyBossSnapshots;
+  netApplyBossSnapshots=function(list,partial=false){
+    const result=materializeBaseNetApplyBossSnapshots.apply(this,arguments);
+    const now=performance.now();
+
+    for(const snapshot of Array.isArray(list)?list:[]){
+      const boss=multiplayer.bossById.get(snapshot.id);
+      if(!boss)continue;
+      const remaining=clamp(Number(snapshot.spawnRemaining)||0,0,4.5);
+
+      if(remaining>0){
+        if(!Number.isFinite(boss.materializationDeadline)){
+          boss.materializationDeadline=now+remaining*1000+500;
+        }
+        boss.networkSpawnUntil=Math.min(
+          Number(boss.networkSpawnUntil)||boss.materializationDeadline,
+          boss.materializationDeadline
+        );
+        boss.spawnAnim=Math.max(
+          0,
+          Math.min(remaining,(boss.materializationDeadline-now)/1000)
+        );
+      }else{
+        finishBossMaterialization(boss);
+      }
+
+      if(
+        Number.isFinite(boss.materializationDeadline)
+        &&now>=boss.materializationDeadline
+      ){
+        finishBossMaterialization(boss);
+      }
+    }
+    return result;
+  };
+
+  /* ===== END FRAGMENT CULLING / RICOCHET / BOSS MATERIALIZATION FIX ===== */
+
+
 })();
 </script>
 
@@ -28366,14 +28811,6 @@ body .matchPlayerCard> b[data-title-rarity]{
 }
 
 /* Performance Mode also removes purely decorative CSS gameplay effects. */
-body.fragmentPerformanceMode #brDropFlash{
-  animation:none!important;
-}
-body.fragmentPerformanceMode #hud .panel:before,
-body.fragmentPerformanceMode .areaWorldLabel:before{
-  display:none!important;
-}
-
 /* In-game HUD size. Medium has no changes. */
 body[data-game-ui-size="small"] #topLeft{
   transform:scale(.82)!important;
