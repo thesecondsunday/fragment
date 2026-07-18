@@ -3964,6 +3964,428 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
 }
 </style>
 
+
+<style id="fragment-v1-beta-release-candidate-style">
+/* Limited banner preview beside text */
+.menuModal[data-modal="gacha"] .bannerItem[data-preview-installed="1"]{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) 174px!important;
+  align-items:stretch!important;
+  gap:10px!important;
+  padding:9px!important;
+}
+.limitedFeaturedCopy{
+  min-width:0;
+  display:grid;
+  align-content:center;
+  padding:8px 10px;
+  border:3px solid #101820;
+  background:#eef3f7;
+}
+.limitedFeaturedCopy b{
+  color:#101820!important;
+  font-size:19px!important;
+  line-height:1.05!important;
+}
+.limitedFeaturedCopy span{
+  margin-top:5px!important;
+  color:#526170!important;
+  font-size:9px!important;
+  font-weight:1000!important;
+}
+.limitedFeaturedPreview{
+  display:grid;
+  gap:4px;
+  padding:5px;
+  border:3px solid #101820;
+  background:#202b34;
+}
+.limitedFeaturedPreview canvas{
+  display:block;
+  width:100%;
+  height:82px;
+  border:0;
+  background:#c7d0da;
+}
+.limitedFeaturedPreview span{
+  display:block;
+  color:#eef3f7!important;
+  font-size:7px!important;
+  font-weight:1000!important;
+  text-align:center;
+  letter-spacing:.09em!important;
+}
+
+/* Chat controls */
+.chatControlHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px;
+  margin-bottom:5px;
+}
+.chatControlHeader h3{
+  margin:0!important;
+}
+#chatBlockedPlayersBtn{
+  min-height:24px;
+  padding:2px 5px;
+  border:2px solid #101820;
+  background:#eef3f7;
+  color:#101820;
+  font-size:7px;
+  font-weight:1000;
+}
+.chatBlockedDrawer{
+  display:grid;
+  gap:4px;
+  max-height:108px;
+  overflow:auto;
+  margin-bottom:5px;
+  padding:5px;
+  border:2px solid #101820;
+  background:#c7d0da;
+}
+.chatBlockedDrawer.hidden{
+  display:none!important;
+}
+.chatBlockedRow{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:4px;
+  padding:4px;
+  border:2px solid #101820;
+  background:#eef3f7;
+}
+.chatBlockedRow span{
+  overflow:hidden;
+  color:#101820;
+  font-size:8px;
+  font-weight:1000;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.chatBlockedRow button{
+  min-height:23px;
+  padding:2px 4px;
+  border:2px solid #101820;
+  background:#8b2638;
+  color:#fff;
+  font-size:7px;
+  font-weight:1000;
+}
+.chatBlockedEmpty{
+  padding:5px;
+  color:#526170;
+  font-size:8px;
+  font-weight:900;
+  text-align:center;
+}
+#chatMessages .chatMsg{
+  position:relative;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:start;
+  gap:4px;
+  padding:3px 2px;
+}
+.chatMessageCopy{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+.chatMessageControls{
+  display:flex;
+  gap:2px;
+  opacity:0;
+  transition:opacity .12s ease;
+}
+.chatMsg:hover .chatMessageControls,
+.chatMsg:focus-within .chatMessageControls{
+  opacity:1;
+}
+.chatMessageControls button{
+  min-height:20px;
+  padding:1px 3px;
+  border:2px solid #101820;
+  background:#eef3f7;
+  color:#101820;
+  font-size:6px;
+  font-weight:1000;
+}
+.chatMessageControls button[data-chat-block]{
+  background:#8b2638;
+  color:#fff;
+}
+
+/* In-game profile friend action */
+.inGameProfileFriendAction{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  align-items:center;
+  gap:9px;
+  margin-bottom:9px;
+  padding:9px;
+  border:3px solid var(--pf-border,#101820);
+  background:var(--pf-panel,#eef3f7);
+}
+.inGameProfileFriendAction.hidden{
+  display:none!important;
+}
+.inGameProfileFriendAction button{
+  min-height:38px;
+  padding:6px 10px;
+  border:3px solid var(--pf-border,#101820);
+  background:#315fc9;
+  color:#fff;
+  font-size:9px;
+  font-weight:1000;
+}
+.inGameProfileFriendAction button:disabled{
+  background:#aeb8c2;
+  color:#344452;
+  opacity:1;
+}
+.inGameProfileFriendAction span{
+  color:var(--pf-muted,#526170)!important;
+  font-size:9px!important;
+  font-weight:900!important;
+  line-height:1.35!important;
+}
+
+/* Correct BR map retains fixed world aspect */
+#brSpawnMap{
+  image-rendering:auto!important;
+}
+
+/* Battle Royale victory sequence */
+#brVictory{
+  isolation:isolate;
+  overflow:hidden!important;
+  background:#101820!important;
+}
+.brVictoryBackdrop{
+  position:absolute;
+  inset:0;
+  z-index:0;
+  overflow:hidden;
+  background-color:#1d252d;
+  background-image:
+    linear-gradient(#2d3944 2px,transparent 2px),
+    linear-gradient(90deg,#2d3944 2px,transparent 2px);
+  background-size:64px 64px;
+}
+.brVictoryBackdrop i{
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:170vmax;
+  height:26px;
+  border:4px solid #101820;
+  background:#ffcf58;
+  transform-origin:center;
+  opacity:.12;
+}
+.brVictoryBackdrop i:nth-child(1){transform:translate(-50%,-50%) rotate(0deg)}
+.brVictoryBackdrop i:nth-child(2){transform:translate(-50%,-50%) rotate(30deg)}
+.brVictoryBackdrop i:nth-child(3){transform:translate(-50%,-50%) rotate(60deg)}
+.brVictoryBackdrop i:nth-child(4){transform:translate(-50%,-50%) rotate(90deg)}
+.brVictoryBackdrop i:nth-child(5){transform:translate(-50%,-50%) rotate(120deg)}
+.brVictoryBackdrop i:nth-child(6){transform:translate(-50%,-50%) rotate(150deg)}
+#brVictoryCard{
+  position:relative!important;
+  z-index:3!important;
+  width:min(760px,94vw)!important;
+  padding:20px!important;
+  border:6px solid #101820!important;
+  background:#c7d0da!important;
+  color:#101820!important;
+  box-shadow:12px 12px 0 rgba(0,0,0,.34)!important;
+}
+.brVictoryEmblem{
+  display:grid;
+  place-items:center;
+  gap:7px;
+  margin:-82px auto 14px;
+}
+.brVictoryCore{
+  width:122px;
+  height:122px;
+  display:grid;
+  place-items:center;
+  border:7px solid #101820;
+  background:#ffcf58;
+  clip-path:polygon(50% 0,62% 28%,88% 12%,76% 38%,100% 50%,76% 62%,88% 88%,62% 72%,50% 100%,38% 72%,12% 88%,24% 62%,0 50%,24% 38%,12% 12%,38% 28%);
+}
+.brVictoryCore span{
+  display:grid;
+  place-items:center;
+  width:57px;
+  height:57px;
+  border:5px solid #101820;
+  background:#eef3f7;
+  color:#8b2638;
+  font-size:36px;
+  font-weight:1000;
+}
+.brVictoryEmblem>b{
+  padding:5px 10px;
+  border:3px solid #101820;
+  background:#8b2638;
+  color:#fff!important;
+  font-size:10px;
+  letter-spacing:.13em;
+}
+#brVictoryCard h2{
+  margin:0!important;
+  padding:10px!important;
+  border:4px solid #101820!important;
+  background:#eef3f7!important;
+  color:#101820!important;
+  font-size:clamp(34px,6vw,57px)!important;
+  line-height:.92!important;
+  text-shadow:none!important;
+  animation:none!important;
+}
+#brVictoryText{
+  margin:9px 0!important;
+  padding:10px!important;
+  border:3px solid #101820!important;
+  background:#eef3f7!important;
+  color:#344452!important;
+  font-size:12px!important;
+  font-weight:900!important;
+}
+.brVictoryStats{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:7px;
+}
+.brVictoryStats div{
+  padding:8px;
+  border:3px solid #101820;
+  background:#eef3f7;
+}
+.brVictoryStats span,
+.brVictoryStats b{
+  display:block;
+}
+.brVictoryStats span{
+  color:#526170;
+  font-size:7px;
+  font-weight:1000;
+  letter-spacing:.08em;
+}
+.brVictoryStats b{
+  margin-top:4px;
+  color:#101820;
+  font-size:20px;
+}
+.brVictoryPrompt{
+  margin-top:8px;
+  padding:7px;
+  border:3px solid #101820;
+  background:#ffcf58;
+  color:#101820;
+  font-size:9px;
+  font-weight:1000;
+  letter-spacing:.12em;
+}
+.brVictoryButtons button{
+  min-height:42px;
+  border:3px solid #101820!important;
+  background:#eef3f7!important;
+  color:#101820!important;
+  font-weight:1000!important;
+}
+.brVictoryButtons button:first-child{
+  background:#315fc9!important;
+  color:#fff!important;
+}
+.brVictoryShard{
+  --x:50%;
+  --delay:0s;
+  --drift:0px;
+  --spin:360deg;
+  position:absolute;
+  z-index:2;
+  left:var(--x);
+  top:-40px;
+  width:12px;
+  height:24px;
+  border:3px solid #101820;
+  background:#ffcf58;
+  pointer-events:none;
+  opacity:0;
+}
+.brVictorySequence .brVictoryBackdrop{
+  animation:brBackdropReveal .8s steps(5,end) both;
+}
+.brVictorySequence #brVictoryCard{
+  animation:brVictoryCardDrop .72s cubic-bezier(.16,1.18,.26,1) .18s both;
+}
+.brVictorySequence .brVictoryCore{
+  animation:brVictoryCoreAssemble .9s cubic-bezier(.16,1.2,.28,1) .42s both;
+}
+.brVictorySequence #brVictoryCard h2{
+  animation:brVictoryTitleReveal .48s steps(5,end) .82s both!important;
+}
+.brVictorySequence .brVictoryStats{
+  animation:brVictoryStatsReveal .48s ease 1.05s both;
+}
+.brVictorySequence .brVictoryShard{
+  animation:brVictoryShardFall 2.8s linear var(--delay) both;
+}
+@keyframes brBackdropReveal{
+  from{opacity:0}
+  to{opacity:1}
+}
+@keyframes brVictoryCardDrop{
+  from{opacity:0;transform:translateY(-70px) scale(.88)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+@keyframes brVictoryCoreAssemble{
+  0%{opacity:0;transform:rotate(-90deg) scale(.2)}
+  65%{opacity:1;transform:rotate(12deg) scale(1.12)}
+  100%{opacity:1;transform:rotate(0) scale(1)}
+}
+@keyframes brVictoryTitleReveal{
+  0%{opacity:0;clip-path:inset(0 100% 0 0)}
+  100%{opacity:1;clip-path:inset(0 0 0 0)}
+}
+@keyframes brVictoryStatsReveal{
+  from{opacity:0;transform:translateY(18px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes brVictoryShardFall{
+  0%{opacity:0;transform:translate(0,-30px) rotate(0)}
+  12%{opacity:1}
+  100%{opacity:0;transform:translate(var(--drift),110vh) rotate(var(--spin))}
+}
+
+@media(max-width:700px){
+  .menuModal[data-modal="gacha"] .bannerItem[data-preview-installed="1"]{
+    grid-template-columns:1fr!important;
+  }
+  .limitedFeaturedPreview canvas{
+    height:110px;
+  }
+  .inGameProfileFriendAction{
+    grid-template-columns:1fr;
+  }
+  .brVictoryStats{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .brVictoryEmblem{
+    margin:-58px auto 10px;
+  }
+  .brVictoryCore{
+    width:92px;
+    height:92px;
+  }
+}
+</style>
+
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -22763,6 +23185,970 @@ if(v1MenuLogo){
   };
 
   /* ===== END SOCIAL / BATTLE ROYALE / PROFILE / RELEASE OVERHAUL ===== */
+
+
+
+
+
+  /* ===== V1.0 BETA RELEASE-CANDIDATE PATCH ===== */
+
+  // -------------------------------------------------------------------------
+  // Better profanity normalization for local/offline chat display.
+  // Server-side filtering remains authoritative for online chat.
+  // -------------------------------------------------------------------------
+  const rcChatTerms=[
+    'fuck','shit','bitch','asshole','cunt','nigger','nigga','faggot',
+    'retard','kys','killyourself','whore','slut'
+  ];
+  const rcLeetMap={
+    '0':'o','1':'i','2':'z','3':'e','4':'a','5':'s','6':'g','7':'t','8':'b','9':'g',
+    '@':'a','$':'s','!':'i','|':'i','+':'t'
+  };
+  const rcHomoglyphMap={
+    'а':'a','е':'e','о':'o','р':'p','с':'c','х':'x','у':'y','і':'i','ј':'j',
+    'ɑ':'a','ο':'o','ρ':'p','ϲ':'c','χ':'x','υ':'y'
+  };
+  function rcNormalizeChat(value){
+    return String(value||'')
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g,'')
+      .toLowerCase()
+      .split('')
+      .map(character=>rcLeetMap[character]||rcHomoglyphMap[character]||character)
+      .join('')
+      .replace(/(.)\1{2,}/g,'$1')
+      .replace(/[^a-z0-9]+/g,'');
+  }
+  function rcChatTermMatch(normalized){
+    if(!normalized)return false;
+    return rcChatTerms.some(term=>{
+      if(normalized===term)return true;
+      if(term==='kys')return normalized==='kys';
+      if(term==='killyourself')return normalized.includes(term);
+      return normalized===term+'s'
+        ||normalized===term+'es'
+        ||normalized===term+'ing'
+        ||normalized===term+'ed'
+        ||normalized===term+'er';
+    });
+  }
+  filterChat=function(message){
+    const clean=String(message||'')
+      .replace(/[<>\u0000-\u001f\u007f]/g,'')
+      .replace(/\s+/g,' ')
+      .trim()
+      .slice(0,120);
+    if(!clean)return'';
+
+    let censored=false;
+    const filtered=clean.split(/(\s+)/).map(part=>{
+      if(/^\s+$/.test(part))return part;
+      if(rcChatTermMatch(rcNormalizeChat(part))){
+        censored=true;
+        return'•••';
+      }
+      return part;
+    }).join('');
+
+    const compact=rcNormalizeChat(clean);
+    if(!censored&&rcChatTerms.some(term=>term.length>=3&&compact.includes(term))){
+      return'[message filtered]';
+    }
+    return filtered.slice(0,120);
+  };
+
+  // -------------------------------------------------------------------------
+  // Player message blocking and one-message hiding.
+  // -------------------------------------------------------------------------
+  let rcChatMessageCounter=0;
+  let rcBlockedPlayers=new Map();
+
+  function rcBlockedStorageKey(){
+    try{return currentAccountStorageKey('blocked_players_v1');}
+    catch(_error){return'fragmentio_blocked_players_v1';}
+  }
+  function rcLoadBlockedPlayers(){
+    try{
+      const raw=JSON.parse(localStorage.getItem(rcBlockedStorageKey())||'[]');
+      rcBlockedPlayers=new Map(
+        (Array.isArray(raw)?raw:[])
+          .filter(entry=>entry&&entry.userId)
+          .map(entry=>[String(entry.userId),String(entry.name||'Blocked player').slice(0,32)])
+      );
+    }catch(_error){
+      rcBlockedPlayers=new Map();
+    }
+    rcRenderBlockedDrawer();
+    renderChat();
+  }
+  function rcSaveBlockedPlayers(){
+    try{
+      localStorage.setItem(
+        rcBlockedStorageKey(),
+        JSON.stringify([...rcBlockedPlayers].map(([userId,name])=>({userId,name})))
+      );
+    }catch(_error){}
+  }
+  function rcIsBlocked(userId){
+    return !!userId&&rcBlockedPlayers.has(String(userId));
+  }
+  function rcInstallChatControls(){
+    const panel=$('chatPanel');
+    if(!panel||panel.dataset.messageControlsInstalled)return;
+    panel.dataset.messageControlsInstalled='1';
+
+    const heading=panel.querySelector('h3');
+    const header=document.createElement('div');
+    header.className='chatControlHeader';
+    if(heading){
+      heading.parentNode.insertBefore(header,heading);
+      header.appendChild(heading);
+    }
+    const button=document.createElement('button');
+    button.id='chatBlockedPlayersBtn';
+    button.type='button';
+    button.textContent='BLOCKED 0';
+    button.title='View blocked players';
+    header.appendChild(button);
+
+    const drawer=document.createElement('div');
+    drawer.id='chatBlockedDrawer';
+    drawer.className='chatBlockedDrawer hidden';
+    panel.insertBefore(drawer,ui.chatMessages);
+
+    button.addEventListener('click',()=>{
+      drawer.classList.toggle('hidden');
+      rcRenderBlockedDrawer();
+    });
+
+    drawer.addEventListener('click',event=>{
+      const unblock=event.target.closest('[data-chat-unblock]');
+      if(!unblock)return;
+      rcBlockedPlayers.delete(String(unblock.dataset.chatUnblock||''));
+      rcSaveBlockedPlayers();
+      rcRenderBlockedDrawer();
+      renderChat();
+      notify('Player unblocked','Their new messages will be visible.');
+    });
+
+    ui.chatMessages?.addEventListener('click',event=>{
+      const hide=event.target.closest('[data-chat-hide]');
+      if(hide){
+        const messageId=String(hide.dataset.chatHide||'');
+        chatMessages=chatMessages.filter(message=>String(message.messageId||'')!==messageId);
+        renderChat();
+        return;
+      }
+      const block=event.target.closest('[data-chat-block]');
+      if(block){
+        const userId=String(block.dataset.chatBlock||'');
+        const name=String(block.dataset.chatName||'Player').slice(0,32);
+        if(!userId||userId===cloudUser?.id)return;
+        rcBlockedPlayers.set(userId,name);
+        rcSaveBlockedPlayers();
+        chatMessages=chatMessages.filter(message=>String(message.userId||'')!==userId);
+        rcRenderBlockedDrawer();
+        renderChat();
+        notify('Player blocked',`${name}'s chat messages are now hidden.`);
+      }
+    });
+  }
+  function rcRenderBlockedDrawer(){
+    const drawer=$('chatBlockedDrawer');
+    const button=$('chatBlockedPlayersBtn');
+    if(button)button.textContent='BLOCKED '+rcBlockedPlayers.size;
+    if(!drawer)return;
+    drawer.innerHTML=rcBlockedPlayers.size
+      ?[...rcBlockedPlayers].map(([userId,name])=>`
+        <div class="chatBlockedRow">
+          <span>${escapeHtml(name)}</span>
+          <button type="button" data-chat-unblock="${escapeHtml(userId)}">UNBLOCK</button>
+        </div>`).join('')
+      :'<div class="chatBlockedEmpty">No blocked players.</div>';
+  }
+
+  addChat=function(name,msg,accountRole='player',userId=''){
+    if(gameMode==='bossrush'&&String(name).toUpperCase()==='SERVER')return;
+    userId=String(userId||'');
+    if(rcIsBlocked(userId))return;
+    chatMessages.push({
+      messageId:'CHAT-'+(++rcChatMessageCounter)+'-'+Date.now().toString(36),
+      name:filterChat(name),
+      msg:filterChat(msg),
+      accountRole:accountRole==='developer'?'developer':'player',
+      userId
+    });
+    chatMessages=chatMessages.slice(-60);
+    renderChat();
+  };
+  renderChat=function(){
+    if(!ui?.chatMessages)return;
+    rcInstallChatControls();
+    const box=ui.chatMessages;
+    const distanceFromBottom=box.scrollHeight-box.scrollTop-box.clientHeight;
+    const shouldFollow=distanceFromBottom<28;
+    const visible=chatMessages.filter(message=>!rcIsBlocked(message.userId));
+    box.innerHTML=visible.map(message=>{
+      if(!message.messageId)message.messageId='CHAT-'+(++rcChatMessageCounter)+'-'+Date.now().toString(36);
+      const canManage=!!message.userId
+        &&message.userId!==cloudUser?.id
+        &&String(message.name||'').toUpperCase()!=='SERVER';
+      return`<div class="chatMsg ${message.accountRole==='developer'?'developerChatMessage':''}" data-chat-message-id="${escapeHtml(message.messageId)}">
+        <div class="chatMessageCopy"><b>${escapeHtml(message.name)}${message.accountRole==='developer'?' '+verifiedDeveloperBadgeHtml():''}:</b> ${escapeHtml(message.msg)}</div>
+        ${canManage?`<div class="chatMessageControls">
+          <button type="button" data-chat-hide="${escapeHtml(message.messageId)}" title="Hide this message">HIDE</button>
+          <button type="button" data-chat-block="${escapeHtml(message.userId)}" data-chat-name="${escapeHtml(message.name)}" title="Block this player's messages">BLOCK</button>
+        </div>`:''}
+      </div>`;
+    }).join('');
+    if(shouldFollow)box.scrollTop=box.scrollHeight;
+    rcRenderBlockedDrawer();
+  };
+
+  // Stronger local guard. The server independently applies a stricter guard.
+  const rcLocalChatGuard={short:[],long:[],history:[],cooldownUntil:0,strikes:0};
+  ui.chatInput?.addEventListener('keydown',event=>{
+    if(event.key!=='Enter')return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    const raw=String(ui.chatInput.value||'').replace(/\s+/g,' ').trim().slice(0,120);
+    if(!raw)return;
+
+    const now=performance.now();
+    rcLocalChatGuard.short=rcLocalChatGuard.short.filter(at=>now-at<10000);
+    rcLocalChatGuard.long=rcLocalChatGuard.long.filter(at=>now-at<30000);
+    rcLocalChatGuard.history=rcLocalChatGuard.history.filter(entry=>now-entry.at<30000);
+    const fingerprint=rcNormalizeChat(raw);
+
+    if(now<rcLocalChatGuard.cooldownUntil){
+      notify('Chat cooldown','Slow down before sending another message.');
+      return;
+    }
+    if(rcLocalChatGuard.history.some(entry=>entry.fingerprint===fingerprint&&now-entry.at<12000)){
+      notify('Duplicate blocked','That message is too similar to one you just sent.');
+      return;
+    }
+    if(rcLocalChatGuard.short.length>=4||rcLocalChatGuard.long.length>=8){
+      rcLocalChatGuard.strikes++;
+      const duration=[12,35,90][Math.min(2,rcLocalChatGuard.strikes-1)];
+      rcLocalChatGuard.cooldownUntil=now+duration*1000;
+      rcLocalChatGuard.short=[];
+      rcLocalChatGuard.long=[];
+      notify('Chat spam blocked',`Chat is paused for ${duration} seconds.`);
+      return;
+    }
+
+    rcLocalChatGuard.short.push(now);
+    rcLocalChatGuard.long.push(now);
+    rcLocalChatGuard.history.push({fingerprint,at:now});
+    rcLocalChatGuard.cooldownUntil=now+1800;
+
+    if(multiplayer.connected)netSendChat(raw);
+    else addChat(player?.name||'Player',raw,'player',cloudUser?.id||'local');
+    ui.chatInput.value='';
+  },{capture:true});
+
+  rcInstallChatControls();
+  rcLoadBlockedPlayers();
+
+  // -------------------------------------------------------------------------
+  // Team-only Quick Pings with client and server anti-spam.
+  // -------------------------------------------------------------------------
+  const rcQuickPingGuard={times:[],cooldownUntil:0,lastKind:'',lastKindAt:0,strikes:0};
+  sendPartyPing=function(kind){
+    const definition=PARTY_PING_TYPES[kind];
+    if(!definition||!player)return;
+
+    const now=performance.now();
+    rcQuickPingGuard.times=rcQuickPingGuard.times.filter(at=>now-at<15000);
+    if(now<rcQuickPingGuard.cooldownUntil){
+      notify('Quick Ping cooldown','Wait before sending another ping.');
+      return;
+    }
+    if(kind===rcQuickPingGuard.lastKind&&now-rcQuickPingGuard.lastKindAt<6000){
+      notify('Repeated ping blocked','Choose another ping or wait a moment.');
+      return;
+    }
+    if(rcQuickPingGuard.times.length>=4){
+      rcQuickPingGuard.strikes++;
+      const duration=[15,45,120][Math.min(2,rcQuickPingGuard.strikes-1)];
+      rcQuickPingGuard.cooldownUntil=now+duration*1000;
+      rcQuickPingGuard.times=[];
+      notify('Quick Ping muted',`Too many pings. Wait ${duration} seconds.`);
+      return;
+    }
+
+    rcQuickPingGuard.times.push(now);
+    rcQuickPingGuard.cooldownUntil=now+3000;
+    rcQuickPingGuard.lastKind=kind;
+    rcQuickPingGuard.lastKindAt=now;
+
+    const point=screenToWorld(mouse.x,mouse.y);
+    if(multiplayer.connected&&socialState.authenticated){
+      netSend({type:'party_ping',kind,x:point.x,y:point.y});
+    }else{
+      receivePartyPing({
+        kind,
+        x:point.x,
+        y:point.y,
+        sourceName:player.name,
+        userId:cloudUser?.id||'local'
+      });
+    }
+    $('partyPingBar')?.classList.add('hidden');
+  };
+
+  receivePartyPing=function(message){
+    const definition=PARTY_PING_TYPES[message.kind];
+    if(!definition)return;
+    partyWorldPings.push({
+      kind:message.kind,
+      x:Number(message.x)||0,
+      y:Number(message.y)||0,
+      sourceName:String(message.sourceName||'Teammate'),
+      life:8,
+      color:definition.color,
+      label:definition.label
+    });
+    partyWorldPings=partyWorldPings.slice(-12);
+    showPartySpeechBubble(message.userId,message.sourceName,definition.label);
+    addChat('TEAM',`${message.sourceName||'Teammate'}: ${definition.label}`);
+    tone(520,0.07,'square',0.025);
+  };
+
+  // -------------------------------------------------------------------------
+  // Limited-banner previews beside the featured cosmetic names.
+  // -------------------------------------------------------------------------
+  function rcInstallLimitedBannerPreview(panelSelector,canvasId){
+    const item=document.querySelector(`${panelSelector} .bannerItem`);
+    if(!item||item.dataset.previewInstalled)return;
+    item.dataset.previewInstalled='1';
+    const copy=document.createElement('div');
+    copy.className='limitedFeaturedCopy';
+    while(item.firstChild)copy.appendChild(item.firstChild);
+    const preview=document.createElement('div');
+    preview.className='limitedFeaturedPreview';
+    preview.innerHTML=`<canvas id="${canvasId}" width="168" height="104" aria-label="Featured cosmetic preview"></canvas><span>FEATURED PREVIEW</span>`;
+    item.appendChild(copy);
+    item.appendChild(preview);
+  }
+  function rcDrawLimitedBannerPreviews(){
+    const special=currentLimitedCosmetic();
+    const hat=currentLimitedHatCosmetic();
+    const specialCanvas=$('limitedSpecialPreviewCanvas');
+    const hatCanvas=$('limitedHatPreviewCanvas');
+    if(specialCanvas&&special)drawProfileShowcasePreview(specialCanvas,special);
+    if(hatCanvas&&hat)drawProfileShowcasePreview(hatCanvas,hat);
+  }
+  rcInstallLimitedBannerPreview('[data-gacha-panel="limitedSpecial"]','limitedSpecialPreviewCanvas');
+  rcInstallLimitedBannerPreview('[data-gacha-panel="limitedHat"]','limitedHatPreviewCanvas');
+
+  const rcBaseRenderGachaMenu=renderGachaMenu;
+  renderGachaMenu=function(){
+    const result=rcBaseRenderGachaMenu.apply(this,arguments);
+    rcInstallLimitedBannerPreview('[data-gacha-panel="limitedSpecial"]','limitedSpecialPreviewCanvas');
+    rcInstallLimitedBannerPreview('[data-gacha-panel="limitedHat"]','limitedHatPreviewCanvas');
+    rcDrawLimitedBannerPreviews();
+    return result;
+  };
+  setInterval(()=>{
+    const modal=document.querySelector('[data-modal="gacha"].show');
+    if(modal)rcDrawLimitedBannerPreviews();
+  },140);
+
+  // -------------------------------------------------------------------------
+  // Redesigned Nanako2 Ribbon.
+  // -------------------------------------------------------------------------
+  const rcBaseDrawHatShape=drawHatShape;
+  drawHatShape=function(context,x,y,hat){
+    if(hat!=='nanako2_ribbon')return rcBaseDrawHatShape.apply(this,arguments);
+
+    context.save();
+    context.translate(x,y);
+    context.lineJoin='round';
+    context.lineCap='round';
+    context.lineWidth=3;
+    context.strokeStyle='#101820';
+
+    // Long remembrance tails.
+    context.fillStyle='#607fd8';
+    context.beginPath();
+    context.moveTo(-7,-54);
+    context.bezierCurveTo(-18,-38,-25,-20,-20,-2);
+    context.lineTo(-4,-20);
+    context.lineTo(1,-53);
+    context.closePath();
+    context.fill();
+    context.stroke();
+
+    context.fillStyle='#f3d7ff';
+    context.beginPath();
+    context.moveTo(7,-54);
+    context.bezierCurveTo(20,-40,30,-23,25,-4);
+    context.lineTo(6,-21);
+    context.lineTo(-1,-53);
+    context.closePath();
+    context.fill();
+    context.stroke();
+
+    // Layered ribbon loops.
+    context.fillStyle='#7fa0ff';
+    context.beginPath();
+    context.moveTo(-4,-58);
+    context.bezierCurveTo(-20,-82,-48,-84,-45,-55);
+    context.bezierCurveTo(-42,-37,-18,-41,-3,-53);
+    context.closePath();
+    context.fill();
+    context.stroke();
+
+    context.fillStyle='#f6d7ff';
+    context.beginPath();
+    context.moveTo(4,-58);
+    context.bezierCurveTo(20,-82,48,-84,45,-55);
+    context.bezierCurveTo(42,-37,18,-41,3,-53);
+    context.closePath();
+    context.fill();
+    context.stroke();
+
+    // Inner memory folds.
+    context.strokeStyle='#eef3f7';
+    context.lineWidth=3;
+    context.beginPath();
+    context.moveTo(-8,-58);
+    context.bezierCurveTo(-23,-68,-33,-65,-37,-54);
+    context.stroke();
+    context.beginPath();
+    context.moveTo(8,-58);
+    context.bezierCurveTo(23,-68,33,-65,37,-54);
+    context.stroke();
+
+    // Central save-memory clasp.
+    context.fillStyle='#eef3f7';
+    context.strokeStyle='#101820';
+    context.lineWidth=3;
+    context.beginPath();
+    context.roundRect?.(-13,-69,26,23,5);
+    if(!context.roundRect)context.rect(-13,-69,26,23);
+    context.fill();
+    context.stroke();
+
+    context.fillStyle='#7fa0ff';
+    context.fillRect(-8,-65,16,7);
+    context.fillStyle='#101820';
+    context.font='1000 8px Arial';
+    context.textAlign='center';
+    context.textBaseline='middle';
+    context.fillText('N2',0,-53);
+
+    context.restore();
+  };
+
+  // -------------------------------------------------------------------------
+  // Correct Battle Royale island renderer based on the exact gameplay field.
+  // It rasterizes the same isInsideIsland/field function instead of creating
+  // a radial outline, so bays and asymmetric coastlines remain visible.
+  // -------------------------------------------------------------------------
+  let rcBattleRoyaleIslandRaster=null;
+  function rcHexRgb(hex){
+    let value=String(hex||'#52636a').replace('#','');
+    if(value.length===3)value=value.split('').map(character=>character+character).join('');
+    const number=parseInt(value.slice(0,6),16);
+    return Number.isFinite(number)
+      ?[(number>>16)&255,(number>>8)&255,number&255]
+      :[82,99,106];
+  }
+  function rcBuildBattleRoyaleIslandRaster(){
+    if(rcBattleRoyaleIslandRaster)return rcBattleRoyaleIslandRaster;
+    const width=360;
+    const height=Math.round(width*WORLD_H/WORLD_W);
+    const raster=document.createElement('canvas');
+    raster.width=width;
+    raster.height=height;
+    const rasterContext=raster.getContext('2d');
+    const image=rasterContext.createImageData(width,height);
+    const mask=new Uint8Array(width*height);
+    const field=window.fragmentIsland?.field;
+    const biomeAt=window.fragmentIsland?.getBiomeAt||getBiomeAt;
+
+    for(let py=0;py<height;py++){
+      const worldY=py/(height-1)*WORLD_H-HALF_H;
+      for(let px=0;px<width;px++){
+        const worldX=px/(width-1)*WORLD_W-HALF_W;
+        const index=py*width+px;
+        const strength=typeof field==='function'?field(worldX,worldY):1;
+        if(!(strength>0))continue;
+        mask[index]=1;
+        const biome=biomeAt(worldX,worldY);
+        const base=rcHexRgb(biome?.color||'#52636a');
+        const detail=rcHexRgb(biome?.detail||biome?.color||'#657681');
+        const mix=clamp(.24+strength*.18,0,.58);
+        const pixel=index*4;
+        image.data[pixel]=Math.round(base[0]*(1-mix)+detail[0]*mix);
+        image.data[pixel+1]=Math.round(base[1]*(1-mix)+detail[1]*mix);
+        image.data[pixel+2]=Math.round(base[2]*(1-mix)+detail[2]*mix);
+        image.data[pixel+3]=255;
+      }
+    }
+
+    // Two-tone coastline derived directly from the land mask.
+    for(let py=1;py<height-1;py++){
+      for(let px=1;px<width-1;px++){
+        const index=py*width+px;
+        if(!mask[index])continue;
+        const edge=!mask[index-1]||!mask[index+1]||!mask[index-width]||!mask[index+width];
+        if(!edge)continue;
+        const pixel=index*4;
+        image.data[pixel]=238;
+        image.data[pixel+1]=243;
+        image.data[pixel+2]=247;
+        image.data[pixel+3]=255;
+      }
+    }
+
+    rasterContext.putImageData(image,0,0);
+    rcBattleRoyaleIslandRaster=raster;
+    return raster;
+  }
+
+  drawBRSpawnMap=function(){
+    if(!brctx||!brSpawnCanvas||!player)return;
+
+    const cw=brSpawnCanvas.width;
+    const ch=brSpawnCanvas.height;
+    const scale=Math.min(cw/WORLD_W,ch/WORLD_H);
+    const mapW=WORLD_W*scale;
+    const mapH=WORLD_H*scale;
+    const ox=(cw-mapW)/2;
+    const oy=(ch-mapH)/2;
+    const mapX=x=>ox+(x+HALF_W)*scale;
+    const mapY=y=>oy+(y+HALF_H)*scale;
+
+    brctx.save();
+    brctx.setTransform(1,0,0,1,0,0);
+    brctx.clearRect(0,0,cw,ch);
+    brctx.fillStyle='#101820';
+    brctx.fillRect(0,0,cw,ch);
+    brctx.fillStyle='#182733';
+    brctx.fillRect(ox,oy,mapW,mapH);
+
+    // Sector grid stays behind the exact island.
+    brctx.strokeStyle='rgba(127,151,168,.28)';
+    brctx.lineWidth=1;
+    for(let column=0;column<=8;column++){
+      const x=ox+mapW*column/8;
+      brctx.beginPath();
+      brctx.moveTo(x,oy);
+      brctx.lineTo(x,oy+mapH);
+      brctx.stroke();
+    }
+    for(let row=0;row<=6;row++){
+      const y=oy+mapH*row/6;
+      brctx.beginPath();
+      brctx.moveTo(ox,y);
+      brctx.lineTo(ox+mapW,y);
+      brctx.stroke();
+    }
+
+    brctx.imageSmoothingEnabled=true;
+    brctx.drawImage(rcBuildBattleRoyaleIslandRaster(),ox,oy,mapW,mapH);
+
+    // Labels use the same biome locations as the actual gameplay map.
+    brctx.textAlign='center';
+    brctx.textBaseline='middle';
+    for(const biome of biomes){
+      const x=mapX(Number.isFinite(biome.labelX)?biome.labelX:(biome.cx||0));
+      const y=mapY(Number.isFinite(biome.labelY)?biome.labelY:(biome.cy||0));
+      brctx.font='1000 10px Arial';
+      brctx.lineWidth=4;
+      brctx.strokeStyle='rgba(16,24,32,.9)';
+      brctx.fillStyle='#eef3f7';
+      brctx.strokeText(String(biome.name||'SECTOR').toUpperCase(),x,y);
+      brctx.fillText(String(biome.name||'SECTOR').toUpperCase(),x,y);
+    }
+
+    for(const bot of bots){
+      if(!bot||bot.dead)continue;
+      const px=mapX(bot.x),py=mapY(bot.y);
+      brctx.fillStyle='#ff5d67';
+      brctx.fillRect(px-2,py-2,4,4);
+      brctx.strokeStyle='#101820';
+      brctx.lineWidth=1;
+      brctx.strokeRect(px-2.5,py-2.5,5,5);
+    }
+
+    // Hard-edged map header.
+    brctx.fillStyle='#101820';
+    brctx.fillRect(ox,oy,mapW,40);
+    brctx.fillStyle='#eef3f7';
+    brctx.font='1000 17px Arial';
+    brctx.textAlign='left';
+    brctx.textBaseline='alphabetic';
+    brctx.fillText('ENTRY SECTOR CONTROL',ox+14,oy+25);
+
+    brctx.fillStyle='#ffcf58';
+    brctx.fillRect(ox+mapW-120,oy+7,105,25);
+    brctx.strokeStyle='#eef3f7';
+    brctx.lineWidth=2;
+    brctx.strokeRect(ox+mapW-120,oy+7,105,25);
+    brctx.fillStyle='#101820';
+    brctx.font='1000 13px Arial';
+    brctx.textAlign='center';
+    brctx.fillText('T-'+Math.ceil(Number(br.timer)||30)+'s',ox+mapW-67.5,oy+24);
+
+    if(br.selected){
+      const safe=window.fragmentIsland?.nearestIslandPoint
+        ?window.fragmentIsland.nearestIslandPoint(br.selected.x,br.selected.y,180)
+        :br.selected;
+      br.selected=safe;
+      const sx=mapX(safe.x),sy=mapY(safe.y);
+      const pulse=1+Math.sin(performance.now()/150)*.08;
+      brctx.strokeStyle='#101820';
+      brctx.lineWidth=5;
+      brctx.beginPath();
+      brctx.arc(sx,sy,22*pulse,0,Math.PI*2);
+      brctx.stroke();
+      brctx.fillStyle='#ffcf58';
+      brctx.fillRect(sx-8*pulse,sy-8*pulse,16*pulse,16*pulse);
+      brctx.strokeStyle='#eef3f7';
+      brctx.lineWidth=2;
+      brctx.strokeRect(sx-8*pulse,sy-8*pulse,16*pulse,16*pulse);
+      brctx.fillStyle='#101820';
+      brctx.fillRect(sx+17,sy-25,118,23);
+      brctx.fillStyle='#eef3f7';
+      brctx.font='1000 11px Arial';
+      brctx.textAlign='left';
+      brctx.fillText('SECTOR LOCKED',sx+24,sy-10);
+    }else{
+      const width=276,height=31;
+      const x=cw/2-width/2,y=ch-45;
+      brctx.fillStyle='#eef3f7';
+      brctx.fillRect(x,y,width,height);
+      brctx.strokeStyle='#101820';
+      brctx.lineWidth=3;
+      brctx.strokeRect(x,y,width,height);
+      brctx.fillStyle='#101820';
+      brctx.font='1000 12px Arial';
+      brctx.textAlign='center';
+      brctx.fillText('CLICK A VALID LAND SECTOR',cw/2,y+20);
+    }
+
+    brctx.strokeStyle='#101820';
+    brctx.lineWidth=4;
+    brctx.strokeRect(ox+2,oy+2,mapW-4,mapH-4);
+    brctx.restore();
+  };
+
+  // -------------------------------------------------------------------------
+  // Battle Royale victory sequence.
+  // -------------------------------------------------------------------------
+  function rcInstallBattleRoyaleVictory(){
+    const overlay=ui.brVictory;
+    const card=$('brVictoryCard');
+    if(!overlay||!card||card.dataset.releaseVictoryInstalled)return;
+    card.dataset.releaseVictoryInstalled='1';
+
+    const backdrop=document.createElement('div');
+    backdrop.className='brVictoryBackdrop';
+    backdrop.innerHTML='<i></i><i></i><i></i><i></i><i></i><i></i>';
+    overlay.prepend(backdrop);
+
+    const title=card.querySelector('h2');
+    const emblem=document.createElement('div');
+    emblem.className='brVictoryEmblem';
+    emblem.innerHTML='<div class="brVictoryCore"><span>1</span></div><b>ARENA CLEARED</b>';
+    card.insertBefore(emblem,title);
+
+    const stats=document.createElement('div');
+    stats.id='brVictoryStats';
+    stats.className='brVictoryStats';
+    stats.innerHTML=`
+      <div><span>PLACEMENT</span><b>#1</b></div>
+      <div><span>SCORE</span><b id="brVictoryScore">0</b></div>
+      <div><span>VOID COLLAPSES</span><b id="brVictoryCollapses">0</b></div>
+      <div><span>SURVIVAL</span><b id="brVictorySurvival">0:00</b></div>`;
+    ui.brVictoryText?.insertAdjacentElement('afterend',stats);
+
+    const prompt=document.createElement('div');
+    prompt.className='brVictoryPrompt';
+    prompt.textContent='THE LAST CORE REMAINS';
+    stats.insertAdjacentElement('afterend',prompt);
+  }
+  rcInstallBattleRoyaleVictory();
+
+  const rcBaseShowBRVictory=showBRVictory;
+  showBRVictory=function(){
+    const alreadyWon=!!br.victory;
+    const result=rcBaseShowBRVictory.apply(this,arguments);
+    if(alreadyWon)return result;
+
+    rcInstallBattleRoyaleVictory();
+    const overlay=ui.brVictory;
+    overlay.classList.remove('brVictorySequence');
+    void overlay.offsetWidth;
+    overlay.classList.add('brVictorySequence');
+
+    const elapsed=br.combatStartedAt
+      ?Math.max(0,(performance.now()-br.combatStartedAt)/1000)
+      :0;
+    const minutes=Math.floor(elapsed/60);
+    const seconds=Math.floor(elapsed%60);
+
+    $('brVictoryScore').textContent=Math.floor(player?.score||0).toLocaleString();
+    $('brVictoryCollapses').textContent=String(br.phase||0);
+    $('brVictorySurvival').textContent=`${minutes}:${String(seconds).padStart(2,'0')}`;
+    ui.brVictoryText.innerHTML=`<b>${escapeHtml(player?.name||'Player')}</b> outlasted the full roster and became Fragment.io's final active core.`;
+
+    overlay.querySelectorAll('.brVictoryShard').forEach(element=>element.remove());
+    for(let index=0;index<34;index++){
+      const shard=document.createElement('i');
+      shard.className='brVictoryShard';
+      shard.style.setProperty('--x',`${Math.round(Math.random()*100)}%`);
+      shard.style.setProperty('--delay',`${(Math.random()*.7).toFixed(2)}s`);
+      shard.style.setProperty('--drift',`${Math.round(-120+Math.random()*240)}px`);
+      shard.style.setProperty('--spin',`${Math.round(180+Math.random()*720)}deg`);
+      overlay.appendChild(shard);
+    }
+
+    if(typeof audioDuck==='function')audioDuck(.12,1.7);
+    [261.63,392,523.25,783.99,1046.5].forEach((frequency,index)=>{
+      setTimeout(()=>tone(frequency,.24,index<2?'triangle':'sine',.035),index*115);
+    });
+    return result;
+  };
+
+  // -------------------------------------------------------------------------
+  // Background-tab recovery: discard stale visual packets and request one
+  // authoritative snapshot when the page becomes visible again.
+  // -------------------------------------------------------------------------
+  let rcPageHidden=document.hidden;
+  const rcTransientNetworkTypes=new Set([
+    'projectile','bot_projectile','boss_projectile','ability_event','bot_action'
+  ]);
+  function rcClearStaleTransientEffects(){
+    projectiles.length=0;
+    particles.length=0;
+    flares.length=0;
+    strikes.length=0;
+    lasers.length=0;
+    if(Array.isArray(v1NetworkAbilityEffects))v1NetworkAbilityEffects.length=0;
+    if(Array.isArray(v1NetworkBossEffects))v1NetworkBossEffects.length=0;
+  }
+  document.addEventListener('visibilitychange',()=>{
+    rcPageHidden=document.hidden;
+    if(rcPageHidden){
+      keys['w']=keys['a']=keys['s']=keys['d']=false;
+      mouse.down=false;
+      return;
+    }
+
+    prev=performance.now();
+    rcClearStaleTransientEffects();
+    if(multiplayer.connected&&socialState.authenticated&&state.screen==='play'){
+      netSend({type:'state_resync'});
+    }
+    requestAnimationFrame(()=>{
+      try{draw();}catch(_error){}
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Stable Developer badge and role resolution before opening in-game profile.
+  // -------------------------------------------------------------------------
+  const rcRoleWaiters=new Map();
+  function rcResolveRoleWaiters(userId,role){
+    const waiters=rcRoleWaiters.get(String(userId||''));
+    if(!waiters)return;
+    rcRoleWaiters.delete(String(userId||''));
+    for(const resolve of waiters)resolve(role);
+  }
+  function rcAwaitPublicRole(userId){
+    userId=String(userId||'');
+    if(!userId)return Promise.resolve('player');
+    if(userId===cloudUser?.id)return Promise.resolve(verifiedAccountRole);
+    if(verifiedAccountRoles.has(userId))return Promise.resolve(roleForUser(userId));
+    if(!socialState.authenticated)return Promise.resolve('player');
+
+    return new Promise(resolve=>{
+      const list=rcRoleWaiters.get(userId)||[];
+      list.push(resolve);
+      rcRoleWaiters.set(userId,list);
+      if(list.length===1)netSend({type:'public_role_request',userId});
+      setTimeout(()=>{
+        const remaining=rcRoleWaiters.get(userId);
+        if(!remaining)return;
+        rcRoleWaiters.delete(userId);
+        for(const finish of remaining)finish(roleForUser(userId));
+      },1200);
+    });
+  }
+
+  decorateVerifiedProfileBadge=function(root,userId){
+    if(!root)return;
+    root.querySelectorAll('.verifiedDeveloperProfileBadge').forEach(element=>element.remove());
+    const heading=root.querySelector('#profileName,#inGameProfileName,.profileIdentity h3,.inGameProfileIdentity h2');
+    if(!heading)return;
+
+    const developer=roleForUser(userId)==='developer';
+    let badge=heading.querySelector('.verifiedDeveloperNameBadge');
+    if(!developer){
+      badge?.remove();
+      heading.classList.remove('developerNameHeading');
+      return;
+    }
+
+    heading.classList.add('developerNameHeading');
+    if(!badge){
+      badge=document.createElement('span');
+      badge.className='verifiedDeveloperNameBadge';
+      badge.textContent='DEVELOPER';
+      heading.appendChild(badge);
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // Friend-request action inside leaderboard/death-recap in-game profiles.
+  // -------------------------------------------------------------------------
+  let rcViewedInGameProfile=null;
+  function rcInstallInGameFriendAction(){
+    const scroll=$('inGameProfileOverlay')?.querySelector('.inGameProfileScroll');
+    if(!scroll||$('inGameProfileFriendAction'))return;
+    const bar=document.createElement('div');
+    bar.id='inGameProfileFriendAction';
+    bar.className='inGameProfileFriendAction';
+    bar.innerHTML='<button id="inGameProfileFriendRequestBtn" type="button">SEND FRIEND REQUEST</button><span id="inGameProfileFriendHint">Connect through one accepted request.</span>';
+    scroll.prepend(bar);
+
+    $('inGameProfileFriendRequestBtn').addEventListener('click',async()=>{
+      const target=rcViewedInGameProfile?.profile;
+      if(!target?.id||target.id===cloudUser?.id)return;
+      const button=$('inGameProfileFriendRequestBtn');
+      button.disabled=true;
+      button.textContent='SENDING…';
+      try{
+        await ensureSocialConnection();
+        netSend({type:'friend_request_send_user',targetUserId:target.id});
+        button.textContent='REQUEST SENT';
+        $('inGameProfileFriendHint').textContent='Waiting for the player to accept.';
+        notify('Friend request sent',`Request sent to ${target.username||'player'}.`);
+      }catch(error){
+        button.disabled=false;
+        button.textContent='SEND FRIEND REQUEST';
+        notify('Could not send request',error.message||'Try again.');
+      }
+    });
+  }
+  function rcUpdateInGameFriendAction(){
+    rcInstallInGameFriendAction();
+    const bar=$('inGameProfileFriendAction');
+    const button=$('inGameProfileFriendRequestBtn');
+    const hint=$('inGameProfileFriendHint');
+    const target=rcViewedInGameProfile?.profile;
+    if(!bar||!button||!target)return;
+
+    if(target.id===cloudUser?.id){
+      bar.classList.add('hidden');
+      return;
+    }
+    bar.classList.remove('hidden');
+
+    const isFriend=[...cloudFriendProfiles.values()].some(profile=>profile?.id===target.id);
+    const outgoing=(friendRequestState.outgoing||[]).some(request=>request.userId===target.id);
+    const incoming=(friendRequestState.incoming||[]).some(request=>request.userId===target.id);
+
+    if(isFriend){
+      button.disabled=true;
+      button.textContent='ALREADY FRIENDS';
+      hint.textContent='This player is already in your friends list.';
+    }else if(outgoing){
+      button.disabled=true;
+      button.textContent='REQUEST SENT';
+      hint.textContent='Waiting for the player to accept.';
+    }else if(incoming){
+      button.disabled=true;
+      button.textContent='REQUEST RECEIVED';
+      hint.textContent='Accept their request from Friends & Party.';
+    }else{
+      button.disabled=false;
+      button.textContent='SEND FRIEND REQUEST';
+      hint.textContent='Connect through one accepted request.';
+    }
+  }
+
+  const rcBaseRenderInGameProfileFinal=renderInGameProfile;
+  renderInGameProfile=function(data){
+    rcViewedInGameProfile=data||null;
+    const result=rcBaseRenderInGameProfileFinal.apply(this,arguments);
+    decorateVerifiedProfileBadge($('inGameProfileOverlay'),data?.profile?.id);
+    rcUpdateInGameFriendAction();
+    return result;
+  };
+
+  openInGamePlayerProfile=async function(userId){
+    if(!userId||!cloudUser)return;
+    try{
+      const [data]=await Promise.all([
+        userId===cloudUser.id
+          ?Promise.resolve({profile:cloudProfile,progress:accountProgress})
+          :fetchPlayerProfile(userId),
+        rcAwaitPublicRole(userId)
+      ]);
+      if(!data)throw new Error('Profile not found.');
+      renderInGameProfile(data);
+    }catch(error){
+      notify('Profile unavailable',normalizeCloudError(error));
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // Final network wrapper: hidden-tab packet suppression, enriched chat,
+  // stable role promises, and profile action refreshes.
+  // -------------------------------------------------------------------------
+  const rcBaseHandleNetworkFinal=handleFragmentNetworkMessage;
+  handleFragmentNetworkMessage=function(message){
+    if(rcPageHidden&&rcTransientNetworkTypes.has(message?.type))return;
+
+    if(message?.type==='public_account_role'){
+      rememberVerifiedRole(message.userId,message.accountRole);
+      rcResolveRoleWaiters(message.userId,roleForUser(message.userId));
+      if(rcViewedInGameProfile?.profile?.id===message.userId){
+        decorateVerifiedProfileBadge($('inGameProfileOverlay'),message.userId);
+      }
+    }
+
+    if(message?.type==='chat'){
+      if(rcIsBlocked(message.userId))return;
+      addChat(message.name||'Player',message.msg||'',message.accountRole,message.userId);
+      return;
+    }
+
+    if(message?.type==='resync_complete'){
+      prev=performance.now();
+      return;
+    }
+
+    const result=rcBaseHandleNetworkFinal.apply(this,arguments);
+
+    if(message?.type==='auth_ok'){
+      rcLoadBlockedPlayers();
+    }
+    if([
+      'friend_request_state',
+      'friend_request_sent',
+      'friend_request_accepted',
+      'friendship_removed',
+      'social_refresh'
+    ].includes(message?.type)){
+      setTimeout(rcUpdateInGameFriendAction,0);
+    }
+    return result;
+  };
+
+  renderGachaMenu();
+  rcInstallInGameFriendAction();
+  rcUpdateInGameFriendAction();
+
+  /* ===== END V1.0 BETA RELEASE-CANDIDATE PATCH ===== */
 
 
 })();

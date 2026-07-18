@@ -3508,3 +3508,267 @@ updateServerBots=function(room,dt){
 
 console.log('[Fragment.io] Friend requests, full bot rosters, squad completion, and slower Battle Royale enabled.');
 
+
+
+// -----------------------------------------------------------------------------
+// Fragment.io v1.0 beta release-candidate hardening
+// - stronger chat moderation and spam protection
+// - team-only quick pings with server-side anti-spam
+// - profile friend-request endpoint
+// - foreground resynchronization after background-tab throttling
+// -----------------------------------------------------------------------------
+const V11_CHAT_TERMS=Object.freeze([
+  'fuck','shit','bitch','asshole','cunt','nigger','nigga','faggot',
+  'retard','kys','killyourself','whore','slut'
+]);
+const V11_LEET_MAP=Object.freeze({
+  '0':'o','1':'i','2':'z','3':'e','4':'a','5':'s','6':'g','7':'t','8':'b','9':'g',
+  '@':'a','$':'s','!':'i','|':'i','+':'t'
+});
+const V11_HOMOGLYPH_MAP=Object.freeze({
+  'а':'a','е':'e','о':'o','р':'p','с':'c','х':'x','у':'y','і':'i','ј':'j',
+  'ɑ':'a','е':'e','ο':'o','ρ':'p','ϲ':'c','χ':'x','υ':'y'
+});
+function v11ChatNormalize(value){
+  return String(value||'')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .split('')
+    .map(character=>V11_LEET_MAP[character]||V11_HOMOGLYPH_MAP[character]||character)
+    .join('')
+    .replace(/(.)\1{2,}/g,'$1')
+    .replace(/[^a-z0-9]+/g,'');
+}
+function v11ChatTermMatch(normalized){
+  if(!normalized)return false;
+  return V11_CHAT_TERMS.some(term=>{
+    if(normalized===term)return true;
+    if(term==='kys')return normalized==='kys';
+    if(term==='killyourself')return normalized.includes(term);
+    return normalized===term+'s'
+      ||normalized===term+'es'
+      ||normalized===term+'ing'
+      ||normalized===term+'ed'
+      ||normalized===term+'er';
+  });
+}
+function v11ModerateChatText(input){
+  const clean=String(input||'')
+    .replace(/[<>\u0000-\u001f\u007f]/g,'')
+    .replace(/\s+/g,' ')
+    .trim()
+    .slice(0,120);
+  if(!clean)return'';
+
+  let censored=false;
+  const parts=clean.split(/(\s+)/).map(part=>{
+    if(/^\s+$/.test(part))return part;
+    const normalized=v11ChatNormalize(part);
+    if(v11ChatTermMatch(normalized)){
+      censored=true;
+      return'•••';
+    }
+    return part;
+  });
+
+  const compact=v11ChatNormalize(clean);
+  if(!censored&&V11_CHAT_TERMS.some(term=>term.length>=3&&compact.includes(term))){
+    return'[message filtered]';
+  }
+  return parts.join('').slice(0,120);
+}
+function v11ChatLooksLikeSpam(body){
+  const clean=String(body||'').trim();
+  if(/(.)\1{10,}/i.test(clean))return true;
+  const words=clean.toLowerCase().split(/\s+/).filter(Boolean);
+  if(words.length>=5&&new Set(words).size<=2)return true;
+  if((clean.match(/[!?]/g)||[]).length>14)return true;
+  return false;
+}
+function v11ChatReject(client,message){
+  send(client,{type:'chat',name:'SERVER',msg:message});
+}
+function v11HandleChat(client,msg){
+  if(!client.room)return;
+  const room=rooms.get(client.room);
+  if(!room)return;
+
+  const now=Date.now();
+  const raw=String(msg.msg||'').replace(/[<>\u0000-\u001f\u007f]/g,'').replace(/\s+/g,' ').trim().slice(0,120);
+  if(!raw)return;
+
+  if(now<(client.moderationMutedUntil||0)){
+    const seconds=Math.max(1,Math.ceil((client.moderationMutedUntil-now)/1000));
+    v11ChatReject(client,`You are muted for another ${seconds}s.`);
+    return;
+  }
+  if(now<(client.chatMutedUntil||0)){
+    const seconds=Math.max(1,Math.ceil((client.chatMutedUntil-now)/1000));
+    v11ChatReject(client,`Chat cooldown: wait ${seconds}s.`);
+    return;
+  }
+
+  const wait=1800-(now-(client.lastChatAt||0));
+  if(wait>0){
+    v11ChatReject(client,`Chat cooldown: wait ${(wait/1000).toFixed(1)}s.`);
+    return;
+  }
+
+  const fingerprint=v11ChatNormalize(raw);
+  client.v11ChatHistory=(client.v11ChatHistory||[]).filter(entry=>now-entry.at<30000);
+  client.v11ChatShort=(client.v11ChatShort||[]).filter(at=>now-at<10000);
+  client.v11ChatLong=(client.v11ChatLong||[]).filter(at=>now-at<30000);
+
+  const duplicate=client.v11ChatHistory.some(entry=>entry.fingerprint===fingerprint&&now-entry.at<12000);
+  if(duplicate){
+    v11ChatReject(client,'Duplicate or near-duplicate message blocked.');
+    return;
+  }
+  if(v11ChatLooksLikeSpam(raw)){
+    client.v11ChatSpamStrikes=(client.v11ChatSpamStrikes||0)+1;
+    const duration=[12,35,120][Math.min(2,client.v11ChatSpamStrikes-1)];
+    client.chatMutedUntil=now+duration*1000;
+    v11ChatReject(client,`Chat spam detected. Muted for ${duration} seconds.`);
+    return;
+  }
+  if(client.v11ChatShort.length>=4||client.v11ChatLong.length>=8){
+    client.v11ChatSpamStrikes=(client.v11ChatSpamStrikes||0)+1;
+    const duration=[15,60,300][Math.min(2,client.v11ChatSpamStrikes-1)];
+    client.chatMutedUntil=now+duration*1000;
+    client.v11ChatShort=[];
+    client.v11ChatLong=[];
+    v11ChatReject(client,`Chat spam detected. Muted for ${duration} seconds.`);
+    return;
+  }
+
+  const body=v11ModerateChatText(raw);
+  if(!body)return;
+
+  client.lastChatAt=now;
+  client.lastChatBody=fingerprint;
+  client.v11ChatShort.push(now);
+  client.v11ChatLong.push(now);
+  client.v11ChatHistory.push({fingerprint,at:now});
+  client.v11ChatHistory=client.v11ChatHistory.slice(-12);
+
+  broadcast(room.code,{
+    type:'chat',
+    name:client.name,
+    msg:body,
+    accountRole:publicAccountRole(client.accountRole),
+    userId:client.userId||''
+  });
+}
+function v11QuickPingRecipient(sender,recipient,party){
+  if(!sender||!recipient||sender.room!==recipient.room||!recipient.inMatch)return false;
+  if(sender===recipient)return true;
+  if(sameCombatTeam(sender.serverTeam,recipient.serverTeam))return true;
+  return !!(party&&sender.userId&&recipient.userId&&party.members.has(sender.userId)&&party.members.has(recipient.userId));
+}
+function v11HandleQuickPing(client,msg){
+  if(!client.authenticated||!client.room||!client.inMatch)return;
+  const room=rooms.get(client.room);
+  if(!room)return;
+
+  const now=Date.now();
+  if(now<(client.v11PingMutedUntil||0)){
+    const seconds=Math.max(1,Math.ceil((client.v11PingMutedUntil-now)/1000));
+    send(client,{type:'social_notice',message:`Quick Ping muted for another ${seconds}s.`});
+    return;
+  }
+
+  const kind=safeToken(msg.kind,24);
+  if(!['enemy','fragment','boss','retreat','group','solarbum'].includes(kind))return;
+
+  const cooldown=3000-(now-(client.lastPartyPingAt||0));
+  if(cooldown>0){
+    send(client,{type:'social_notice',message:`Quick Ping cooldown: wait ${(cooldown/1000).toFixed(1)}s.`});
+    return;
+  }
+
+  client.v11PingTimes=(client.v11PingTimes||[]).filter(at=>now-at<15000);
+  const repeated=kind===(client.v11LastPingKind||'')&&now-(client.v11LastPingKindAt||0)<6000;
+  if(repeated){
+    send(client,{type:'social_notice',message:'Repeated Quick Ping blocked.'});
+    return;
+  }
+  if(client.v11PingTimes.length>=4){
+    client.v11PingSpamStrikes=(client.v11PingSpamStrikes||0)+1;
+    const duration=[15,45,120][Math.min(2,client.v11PingSpamStrikes-1)];
+    client.v11PingMutedUntil=now+duration*1000;
+    client.v11PingTimes=[];
+    send(client,{type:'social_notice',message:`Quick Ping spam detected. Muted for ${duration} seconds.`});
+    return;
+  }
+
+  client.lastPartyPingAt=now;
+  client.v11LastPingKind=kind;
+  client.v11LastPingKindAt=now;
+  client.v11PingTimes.push(now);
+
+  const payload={
+    type:'party_ping',
+    kind,
+    x:finiteNumber(msg.x,client.snapshot?.x||0,-HALF_W,HALF_W),
+    y:finiteNumber(msg.y,client.snapshot?.y||0,-HALF_H,HALF_H),
+    sourceName:client.name,
+    userId:client.userId,
+    sourceClientId:client.id
+  };
+  const party=partyForClient(client);
+  for(const recipient of room.clients){
+    if(v11QuickPingRecipient(client,recipient,party))send(recipient,payload);
+  }
+}
+async function v11SendFriendRequestByUserId(client,msg){
+  if(!client.authenticated||!client.userId)throw new Error('Login before sending friend requests.');
+  const targetUserId=cleanUserId(msg.targetUserId);
+  if(!targetUserId||targetUserId===client.userId)throw new Error('Invalid player.');
+  const rows=await supabaseAdminRequest(
+    '/rest/v1/profiles?id=eq.'+encodeURIComponent(targetUserId)
+    +'&select=id,username,friend_code&limit=1',
+    {method:'GET'}
+  );
+  const target=Array.isArray(rows)?rows[0]:null;
+  if(!target?.friend_code)throw new Error('That account is not available for friend requests.');
+  return sendFriendRequestByCode(client,{friendCode:target.friend_code});
+}
+function v11SendStateResync(client){
+  if(!client.room)return;
+  const room=rooms.get(client.room);
+  if(!room)return;
+  const peers=peersFor(client);
+  send(client,{type:'peers',peers,immediate:true});
+  send(client,{type:'bots_state',mode:room.mode,bots:room.bots.map(botSnapshot),immediate:true});
+  sendSharedState(client,room,true);
+  send(client,{type:'resync_complete',serverNow:Date.now(),mode:room.mode});
+}
+
+const v11BaseHandleMessage=handleMessage;
+handleMessage=function(client,msg){
+  if(!msg||typeof msg!=='object')return v11BaseHandleMessage(client,msg);
+
+  if(msg.type==='chat'){
+    v11HandleChat(client,msg);
+    return;
+  }
+  if(msg.type==='party_ping'){
+    v11HandleQuickPing(client,msg);
+    return;
+  }
+  if(msg.type==='friend_request_send_user'){
+    v11SendFriendRequestByUserId(client,msg)
+      .catch(error=>send(client,{type:'social_error',message:error.message||'Could not send friend request.'}));
+    return;
+  }
+  if(msg.type==='state_resync'){
+    v11SendStateResync(client);
+    return;
+  }
+
+  return v11BaseHandleMessage(client,msg);
+};
+
+console.log('[Fragment.io] Beta release-candidate chat, ping, friend, and resync hardening enabled.');
+
