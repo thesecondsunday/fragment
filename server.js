@@ -4233,9 +4233,9 @@ updateSharedBosses=function(room,dt){
 
 function v16AutomaticPath(archetype){return['machine','minigunner','bullet_storm'].includes(String(archetype||''));}
 function v16ServerHeatSettings(archetype){
-  if(archetype==='bullet_storm')return{gain:8.0,overheat:1.8,cool:25};
-  if(archetype==='minigunner')return{gain:10.5,overheat:1.55,cool:27};
-  return{gain:13.0,overheat:1.35,cool:30};
+  if(archetype==='bullet_storm')return{gain:9.0,overheat:1.70,cool:25};
+  if(archetype==='minigunner')return{gain:12.0,overheat:1.45,cool:27};
+  return{gain:15.0,overheat:1.20,cool:30};
 }
 
 const v16BasePerformServerBotClassAttack=performServerBotClassAttack;
@@ -4330,4 +4330,4 @@ developerPanelData=async function(){
   return data;
 };
 
-console.log('[Fragment.io] Boss aggro, weapon heat, and live page presence enabled.');
+console.log('[Fragment.io] Boss aggro + weapon heat + all page sessions enabled (named build).');

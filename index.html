@@ -21790,7 +21790,7 @@ if(v1MenuLogo){
             </div>
 
             <div class="developerPanelSummary">
-              <div><span>ONLINE</span><b id="developerOnlineCount">0</b></div>
+              <div><span>PLAYERS ON PAGE</span><b id="developerOnlineCount">0</b></div>
               <div><span>OPEN REPORTS</span><b id="developerOpenReportCount">0</b></div>
               <div><span>ACTIVE SANCTIONS</span><b id="developerSanctionCount">0</b></div>
               <div><span>LAST SYNC</span><b id="developerSyncTime">—</b></div>
@@ -30364,10 +30364,10 @@ Regards,
   'use strict';
   const automaticPath=archetype=>['machine','minigunner','bullet_storm'].includes(String(archetype||''));
   const heatSettings=archetype=>archetype==='bullet_storm'
-    ?{gain:1.6,overheat:1.75,cool:24}
+    ?{gain:2.15,overheat:1.70,cool:24}
     :archetype==='minigunner'
-      ?{gain:2.2,overheat:1.55,cool:27}
-      :{gain:2.9,overheat:1.35,cool:30};
+      ?{gain:2.85,overheat:1.45,cool:27}
+      :{gain:3.75,overheat:1.20,cool:30};
 
   const baseFirePrimary=firePrimary;
   firePrimary=function(ent){
@@ -30380,8 +30380,17 @@ Regards,
       return;
     }
     const before=ent?.shotCounter||0;
+    const beforeCooldown=Number(ent?.primaryCooldown)||0;
+    const beforeProjectiles=projectiles.length;
+    const beforeLasers=lasers.length;
     const result=baseFirePrimary.apply(this,arguments);
-    if(ent&&automaticPath(ent.archetype)&&(ent.shotCounter||0)!==before){
+    const fired=!!ent&&(
+      (ent.shotCounter||0)!==before
+      ||projectiles.length>beforeProjectiles
+      ||lasers.length>beforeLasers
+      ||(Number(ent.primaryCooldown)||0)>beforeCooldown+.01
+    );
+    if(ent&&automaticPath(ent.archetype)&&fired){
       const settings=heatSettings(ent.archetype);
       ent.machineHeat=clamp((ent.machineHeat||0)+settings.gain,0,100);
       ent.machineHeatDelay=.28;
@@ -30432,6 +30441,34 @@ Regards,
   resetEntityCombatForDebug=function(ent){
     const result=baseResetEntityCombatForDebug.apply(this,arguments);
     if(ent){ent.machineHeat=0;ent.machineOverheat=0;ent.machineHeatDelay=0;ent.machineOverheatMax=0;}
+    return result;
+  };
+
+  const machineHeatHud=document.createElement('div');
+  machineHeatHud.id='machineHeatHud';
+  machineHeatHud.innerHTML='<div><b>WEAPON HEAT</b><span id="machineHeatHudValue">0%</span></div><i><b id="machineHeatHudFill"></b></i><small id="machineHeatHudStatus">BURST FIRE TO STAY COOL</small>';
+  document.body.appendChild(machineHeatHud);
+
+  function updateMachineHeatHud(){
+    const actor=typeof controlledEntity==='function'?controlledEntity():player;
+    const visible=!!actor&&state.screen==='play'&&automaticPath(actor.archetype);
+    machineHeatHud.classList.toggle('visible',visible);
+    if(!visible)return;
+    const heat=clamp(Number(actor.machineHeat)||0,0,100);
+    const overheated=(Number(actor.machineOverheat)||0)>0;
+    const value=$('machineHeatHudValue');
+    const fill=$('machineHeatHudFill');
+    const status=$('machineHeatHudStatus');
+    if(value)value.textContent=overheated?'OVERHEATED':Math.round(heat)+'%';
+    if(fill)fill.style.width=heat+'%';
+    machineHeatHud.classList.toggle('overheated',overheated);
+    if(status)status.textContent=overheated?'BARREL COOLING — FIRING LOCKED':heat>=75?'RELEASE FIRE SOON':heat>=40?'HEAT BUILDING':'BURST FIRE TO STAY COOL';
+  }
+
+  const baseUpdateHudForMachineHeat=updateHud;
+  updateHud=function(){
+    const result=baseUpdateHudForMachineHeat.apply(this,arguments);
+    updateMachineHeatHud();
     return result;
   };
 
@@ -30573,16 +30610,30 @@ Regards,
   style.textContent=`
     .developerGuestBadge{display:inline-block;margin-left:5px;padding:2px 6px;border:2px solid #101820;background:#ffcf58;color:#101820;font-size:9px;font-weight:1000;vertical-align:middle}
     .developerPlayerRow.guest{background:#fff8d9}
+    #machineHeatHud{display:none;position:fixed;left:50%;bottom:92px;transform:translateX(-50%);z-index:1550;width:min(330px,72vw);border:4px solid #101820;background:#eef3f7;color:#101820;padding:8px 10px;box-shadow:4px 4px 0 rgba(0,0,0,.22);pointer-events:none}
+    #machineHeatHud.visible{display:block}
+    #machineHeatHud>div{display:flex;justify-content:space-between;gap:12px;font-size:11px;font-weight:1000}
+    #machineHeatHud>i{display:block;height:14px;margin-top:6px;border:3px solid #101820;background:#fff;overflow:hidden}
+    #machineHeatHud>i>b{display:block;height:100%;width:0;background:#ff9c54;transition:width .08s linear}
+    #machineHeatHud>small{display:block;margin-top:5px;font-size:9px;font-weight:1000;text-align:center}
+    #machineHeatHud.overheated{background:#ffcf58}
+    #machineHeatHud.overheated>i>b{background:#d84a4a}
   `;
   document.head.appendChild(style);
 
   // Connect menu visitors too, not only people who press matchmaking. This is
   // what lets the Developer panel report how many pages are genuinely open.
-  window.addEventListener('load',()=>setTimeout(()=>{
-    if(!multiplayer.connected&&!multiplayer.connecting)ensureSocialConnection().catch(()=>{});
-  },1200),{once:true});
+  function ensureLivePagePresence(){
+    if(!multiplayer.connected&&!multiplayer.connecting){
+      Promise.resolve(ensureSocialConnection()).catch(()=>{});
+    }
+  }
+  setTimeout(ensureLivePagePresence,300);
+  window.addEventListener('load',()=>setTimeout(ensureLivePagePresence,300),{once:true});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)ensureLivePagePresence();});
+  setInterval(ensureLivePagePresence,10000);
 
-  console.log('[Fragment.io] Boss aggro, weapon heat, and live page presence client patch enabled.');
+  console.log('[Fragment.io] Boss aggro + VISIBLE weapon heat HUD + live page presence enabled (named build).');
 })();
 </script>
 
