@@ -7010,16 +7010,16 @@ function handleFragmentNetworkMessage(msg){
   else if(msg.type==='world_event')netApplyWorldEvent(msg);
   else if(msg.type==='terrain_event')netApplyTerrainEvent(msg);
   else if(msg.type==='hotzone_event')netApplyHotZoneEvent(msg);
-  else if(msg.type==='death_event')netApplyDeathEvent(msg);
+  else if(msg.type==='death_event'){netApplyDeathEvent(msg);if(msg.killer?.clientId===multiplayer.clientId)recordDawnDefeat('opponent','player:'+String(msg.clientId||msg.name||performance.now()));}
   else if(msg.type==='bosses_state')netApplyBossSnapshots(msg.bosses);
   else if(msg.type==='boss_projectile')netSpawnBossProjectile(msg);
   else if(msg.type==='boss_hit')netApplyBossHit(msg);
-  else if(msg.type==='boss_award'){netApplyBossAward(msg);recordPersistentEvent('boss_kill',{name:msg.bossName});}
+  else if(msg.type==='boss_award'){netApplyBossAward(msg);recordPersistentEvent('boss_kill',{name:msg.bossName});recordDawnDefeat('boss',msg.bossId||msg.bossName);}
   else if(msg.type==='boss_event')netApplyBossEvent(msg);
   else if(msg.type==='bot_projectile')netSpawnBotProjectile(msg);
   else if(msg.type==='bot_action')netReplayBotAction(msg);
   else if(msg.type==='bot_hit')netApplyBotHit(msg);
-  else if(msg.type==='bot_award'){netApplyBotAward(msg);recordPersistentEvent('elimination',{bot:true});}
+  else if(msg.type==='bot_award'){netApplyBotAward(msg);recordPersistentEvent('elimination',{bot:true});recordDawnDefeat('opponent','bot:'+String(msg.botId||msg.botName||performance.now()));}
   else if(msg.type==='bot_killed')addChat('SERVER',(msg.killerName||'Player')+' eliminated '+(msg.botName||'a bot')+'.');
   else if(msg.type==='chat')addChat(msg.name||'Friend',msg.msg||'');
 }
@@ -8364,6 +8364,7 @@ const gachaCatalog = [
   {id:'profilebanner_memorypalace', name:'Memory Palace Banner', type:'profilebanner', value:'memorypalace', rarity:'mythic'},
   {id:'profilebackground_floor7', name:'Floor 7 Office Background', type:'profilebackground', value:'floor7', rarity:'mythic'},
   {id:'profilebackground_remembrance', name:'Remembrance Chamber Background', type:'profilebackground', value:'remembrance', rarity:'mythic'},
+  {id:'title_bearer_of_dawn', name:'Bearer of Dawn', type:'title', value:'Bearer of Dawn', rarity:'mythic', achievementOnly:true},
 ];
 const limitedCosmetics = [
   {id:'limited_blueflame_trail', name:'Blueflame Trail', type:'trail', value:'blueflame', rarity:'mythic', limited:true, banner:'special'},
@@ -10081,43 +10082,85 @@ function selfburnAscension(ent){
   setTimeout(()=>tone(420,0.16,'triangle',0.04),180);
 }
 
+const DAWN_ACHIEVEMENT_ID = 'light_up_the_dawn';
+const DAWN_TITLE_ID = 'title_bearer_of_dawn';
+let dawnTrial = null;
+
+function grantBearerOfDawnTitle(){
+  if(!cloudUser || ownedCosmetics.includes(DAWN_TITLE_ID)) return false;
+  ownedCosmetics.push(DAWN_TITLE_ID);
+  ownedCosmetics = [...new Set(ownedCosmetics)];
+  renderOwnedCosmeticOptions();
+  queueCloudSave();
+  notify('TITLE UNLOCKED', 'Bearer of Dawn');
+  return true;
+}
+function dawnTrialActive(){
+  if(!dawnTrial) return false;
+  if(performance.now() > dawnTrial.expires){ dawnTrial=null; return false; }
+  return true;
+}
+function beginDawnTrial(charge){
+  if(!cloudUser || !accountProgress || ['tutorial','test'].includes(gameMode)) return;
+  dawnTrial={expires:performance.now()+5000,opponents:new Set(),charge:Number(charge)||0};
+  notify('LIGHT UP THE DAWN', 'Defeat a boss or 3 opponents within 5 seconds.');
+}
+function recordDawnDefeat(kind, uniqueId){
+  if(!dawnTrialActive()) return;
+  if(kind==='boss'){
+    dawnTrial=null;
+    unlockAchievement(DAWN_ACHIEVEMENT_ID);
+    return;
+  }
+  dawnTrial.opponents.add(String(uniqueId||('opponent_'+performance.now())));
+  if(dawnTrial.opponents.size>=3){
+    dawnTrial=null;
+    unlockAchievement(DAWN_ACHIEVEMENT_ID);
+  }
+}
+function selfburnChargeAvailableFromHp(ent){
+  const maxHp=Math.max(1,Number(ent?.maxHp)||1);
+  if(maxHp<=1) return 0;
+  const availableHp=Math.max(0,(Number(ent?.hp)||0)-1);
+  return 4.2*clamp(availableHp/(maxHp-1),0,1);
+}
+
 function chargeSelfburn(ent, dt){
   if(ent.primaryCooldown>0) return;
   ent.selfburnHolding = true;
   ent.firingSelfburn = true;
   ent.selfburnFlash = 0.18;
 
-  const currentCharge = ent.selfburnCharge || 0;
-  const chargeCap = maxSelfburnCharge(ent);
-  const accel = 1 + Math.pow(currentCharge/4.2, 1.45)*1.35;
-  const chargeGain = (dt/900)*accel;
+  const currentCharge=clamp(Number(ent.selfburnCharge)||0,0,4.2);
+  const chargeCap=maxSelfburnCharge(ent);
+  const accel=1+Math.pow(currentCharge/4.2,1.45)*1.35;
+  const desiredGain=(dt/900)*accel;
+  const availableGain=Math.max(0,chargeCap-currentCharge);
+  const actualGain=Math.min(desiredGain,availableGain);
 
-  // Selfburn sacrifices current HP only. The charge ceiling never shrinks with HP.
-  // Once 1 HP is reached, charging pauses instead of granting free matter charge.
-  const desiredDrain = (0.22 + currentCharge*0.05) * (dt/16.6);
-  const availableHp = Math.max(0, ent.hp - 1);
-  const actualDrain = Math.min(desiredDrain, availableHp);
-  const drainScale = desiredDrain > 0 ? actualDrain / desiredDrain : 1;
+  // Charge is paid for directly with HP: consuming all HP down to 1 produces
+  // exactly the amount shown by the cap. Full HP -> 100%; half HP -> about 50%.
+  const maxHp=Math.max(1,Number(ent.maxHp)||1);
+  const hpPerCharge=maxHp>1?(maxHp-1)/4.2:Infinity;
+  const actualDrain=Number.isFinite(hpPerCharge)?actualGain*hpPerCharge:0;
+  ent.selfburnCharge=clamp(currentCharge+actualGain,0,chargeCap);
+  if(actualDrain>0) ent.hp=Math.max(1,ent.hp-actualDrain);
 
-  ent.selfburnCharge = clamp(currentCharge + chargeGain*drainScale, 0, chargeCap);
-  if(actualDrain > 0) ent.hp = Math.max(1, ent.hp - actualDrain);
-
-  const hitHpLimit = availableHp <= 0.001 && ent.selfburnCharge < chargeCap-.025;
-  if(hitHpLimit && ent.human && Math.random()<0.035){
-    floatText(ent.x, ent.y-ent.r-42, 'HP LIMIT', '#ff8379');
+  if(ent.hp<=1.001 && ent.selfburnCharge<4.19 && ent.human && Math.random()<0.035){
+    floatText(ent.x,ent.y-ent.r-42,'HP LIMIT','#ff8379');
   }
 
-  ent.selfburnHoldSound = (ent.selfburnHoldSound||0) - dt;
+  ent.selfburnHoldSound=(ent.selfburnHoldSound||0)-dt;
   if(ent.selfburnHoldSound<=0 && ent.human){
-    tone(120 + ent.selfburnCharge*40, 0.03, 'sawtooth', 0.012 + ent.selfburnCharge*0.0025);
-    ent.selfburnHoldSound = Math.max(34, 120 - ent.selfburnCharge*18);
+    tone(120+ent.selfburnCharge*40,0.03,'sawtooth',0.012+ent.selfburnCharge*0.0025);
+    ent.selfburnHoldSound=Math.max(34,120-ent.selfburnCharge*18);
   }
   if(Math.random()<0.22){
     particles.push({
-      x:ent.x + Math.cos(ent.angle)*(ent.r+12+ent.selfburnCharge*8) + rand(-6,6),
-      y:ent.y + Math.sin(ent.angle)*(ent.r+12+ent.selfburnCharge*8) + rand(-6,6),
-      vx:rand(-1.2,1.2), vy:rand(-1.2,1.2), dot:true, size:rand(3,6),
-      color: ent.selfburnCharge>3.9 ? '#ffffff' : ent.selfburnCharge>2.6 ? '#ff2d24' : '#7a1414', life: rand(12,22)
+      x:ent.x+Math.cos(ent.angle)*(ent.r+12+ent.selfburnCharge*8)+rand(-6,6),
+      y:ent.y+Math.sin(ent.angle)*(ent.r+12+ent.selfburnCharge*8)+rand(-6,6),
+      vx:rand(-1.2,1.2),vy:rand(-1.2,1.2),dot:true,size:rand(3,6),
+      color:ent.selfburnCharge>3.9?'#ffffff':ent.selfburnCharge>2.6?'#ff2d24':'#7a1414',life:rand(12,22)
     });
   }
 }
@@ -10125,7 +10168,7 @@ function releaseSelfburnOrb(ent){
   if((ent.selfburnCharge||0)<=0.08){ ent.selfburnCharge=0; ent.selfburnHolding=false; return; }
   const c = ent.selfburnCharge||0;
   const chargeCap = maxSelfburnCharge(ent);
-  const fullCharge = c >= 4.05 && chargeCap >= 4.05;
+  const fullCharge = c >= 4.19 && chargeCap >= 4.19;
   const chargePower = Math.pow(c, 1.85);
   const speed = 5.2 + c*0.95 + Math.pow(c,2)*0.34;
   const size = 11 + c*4.8 + (fullCharge ? 7 : 0);
@@ -10147,6 +10190,7 @@ function releaseSelfburnOrb(ent){
     setTimeout(()=>tone(fullCharge ? 360 : 220 + c*14, fullCharge ? 0.09 : 0.06, 'sine', fullCharge ? 0.035 : 0.02), 100);
     if(fullCharge) setTimeout(()=>tone(720,0.08,'square',0.025),150);
   }
+  if(ent===player && ent.archetype==='selfburn' && !ent.dead && ent.hp<=1.01 && c>0.08) beginDawnTrial(c);
   ent.primaryCooldown = Math.max(8, 15 - c*1.8) * ent.reloadMul;
   ent.selfburnCharge = 0;
   ent.selfburnHolding = false;
@@ -10177,9 +10221,9 @@ function useSelfburnHeal(ent){
 }
 
 function maxSelfburnCharge(ent){
-  // The matter gauge has a stable maximum. Available current HP determines how
-  // much charge can actually be generated, not how large the gauge is.
-  return ent && ent.archetype==='selfburn' ? 4.2 : 4.2;
+  if(!ent || ent.archetype!=='selfburn') return 4.2;
+  const stored=clamp(Number(ent.selfburnCharge)||0,0,4.2);
+  return clamp(stored+selfburnChargeAvailableFromHp(ent),stored,4.2);
 }
 
 
@@ -10954,6 +10998,7 @@ function killEntity(target, killer){
     }
     const ownedBossKill = killer===player || killer?.cloneOwner===player || sameTeam(killer,player);
     if(ownedBossKill){
+      recordDawnDefeat('boss',target.netBossId||target.id||target.name);
       const rushFinal = target.bossKind==='seventh_administrator';
       const bossDrop = rushFinal ? 'fragment_storm' : ['judgement_laser','fragment_storm','reflect_shield','loot_radar'][irand(0,4)];
       spawnFragment('ability', target.x, target.y, bossDrop);
@@ -10969,6 +11014,7 @@ function killEntity(target, killer){
     const ownedKill = killer===player || killer?.cloneOwner===player;
     if(!playFinalEvoDeathEffect(target,killer)) burstAt(target.x,target.y,ownedKill?'#ffcf58':'#d84a4a',ownedKill?1.8:1.1);
     if(ownedKill){
+      recordDawnDefeat('opponent',target.netClientId||target.netBotId||target.id||target.name);
       player.score += 250; giveXP(player, 40); recordPersistentEvent('elimination',{bot:!target.networkRemote});
       camera.shake = Math.max(camera.shake,.38); camera.zoomKick = Math.max(camera.zoomKick,.045);
       notify('ELIMINATED ' + target.name.toUpperCase(), gameMode==='br' ? (bots.filter(b=>!b.dead).length-1)+' rivals remain' : '+250 score · fragments dropped');
@@ -14376,7 +14422,7 @@ function updateHud(){
     const chargePct = clamp(charge/4.2*100,0,100);
     if(ui.selfburnGaugeCap) ui.selfburnGaugeCap.style.width = capPct+'%';
     if(ui.selfburnGaugeFill) ui.selfburnGaugeFill.style.width = chargePct+'%';
-    if(ui.selfburnGaugeText) ui.selfburnGaugeText.textContent = Math.floor(charge/4.2*100)+'% / '+Math.floor(capPct)+'% cap';
+    if(ui.selfburnGaugeText) ui.selfburnGaugeText.textContent = Math.round(charge/4.2*100)+'% / '+Math.round(capPct)+'% cap';
   }
 const cloneMax=maxClonesFor(player); ui.cloneControls.style.display=(!selfburnOn && cloneMax)?'flex':'none'; const cloneCd=Math.ceil(player.cloneRespawnCd||0); ui.cloneStatus.textContent=`Clones: ${(player.clones||[]).filter(c=>!c.dead).length} / ${cloneMax}` + (cloneCd>0 ? ` · CD ${cloneCd}s` : ''); ui.cloneSpawnBtn.textContent=(player.cloneRespawnCd||0)>0 ? `${displayBind('cloneSpawn')} · Cooldown ${Math.ceil(player.cloneRespawnCd)}s` : `${displayBind('cloneSpawn')} · Spawn Clone`; ui.cloneControlBtn.textContent=displayBind('utility')+' · Control: '+(controlledEntity()===player?'True Form':controlledEntity().name.replace(player.name+' ',''));
   ui.slots.innerHTML='';
@@ -16417,6 +16463,7 @@ const ACHIEVEMENTS={
  mastery_kindler:{name:'Blue Territory',desc:'Reach Kindler-path Mastery 5.',points:50,xp:300},
  mastery_cloner:{name:'Full House',desc:'Reach Cloner-path Mastery 5.',points:50,xp:300},
  mastery_selfburn:{name:'Matter Over Body',desc:'Reach Selfburn Mastery 5.',points:75,xp:450},
+ light_up_the_dawn:{name:'Light Up the Dawn',desc:'Reach 1 HP as Selfburn, release a charged matter orb, then defeat a boss or eliminate 3 opponents within 5 seconds.',points:100,xp:900},
  mastery_10:{name:'Evolution Specialist',desc:'Reach Mastery 10 with any evolution path.',points:75,xp:500},
  fracture_1:{name:'Beyond the Core',desc:'Reach Fracture Rank I.',points:100,xp:0},
  fracture_7:{name:'Seventh Fracture',desc:'Reach Fracture Rank VII.',points:777,xp:0,secret:true},
@@ -16456,7 +16503,8 @@ function unlockAchievement(id){
   if(accountProgress.achievements[id])return false;
   const def=ACHIEVEMENTS[id];accountProgress.achievements[id]={earned_at:new Date().toISOString()};accountProgress.achievement_points+=def.points||0;
   if(def.xp)grantAccountXP(def.xp,'Achievement: '+def.name,true);
-  notify('ACHIEVEMENT UNLOCKED',def.name+' · +'+def.points+' AP');tone(660,.08,'triangle',.04);setTimeout(()=>tone(990,.12,'triangle',.035),80);queueCloudSave();renderProfileDock();return true;
+  if(id===DAWN_ACHIEVEMENT_ID)grantBearerOfDawnTitle();
+  notify('ACHIEVEMENT UNLOCKED',def.name+' · +'+def.points+' AP');tone(660,.08,'triangle',.04);setTimeout(()=>tone(990,.12,'triangle',.035),80);queueCloudSave();renderProfileDock();renderAchievementDock();renderAchievementsBrowser();return true;
 }
 function grantAccountXP(amount,reason='Resonance XP',silent=false){
   if(!cloudUser||!accountProgress)return;amount=Math.max(0,Math.floor(Number(amount)||0));if(!amount)return;
@@ -16488,7 +16536,9 @@ function grantEvolutionMastery(outcome,seconds,score,eliminations){
   if(root==='swordsman'&&entry.level>=5)unlockAchievement('mastery_swordsman');if(root==='kindler'&&entry.level>=5)unlockAchievement('mastery_kindler');if(root==='cloner'&&entry.level>=5)unlockAchievement('mastery_cloner');if(root==='selfburn'&&entry.level>=5)unlockAchievement('mastery_selfburn');if(entry.level>=10)unlockAchievement('mastery_10');
 }
 function checkPersistentAchievements(){
-  if(!accountProgress)return;const s=accountProgress.stats;
+  if(!accountProgress)return;
+  if(accountProgress.achievements?.[DAWN_ACHIEVEMENT_ID])grantBearerOfDawnTitle();
+  const s=accountProgress.stats;
   if(s.matches>=1)unlockAchievement('first_match');if(s.matches>=10)unlockAchievement('matches_10');if(s.matches>=50)unlockAchievement('matches_50');
   if(s.fragments>=1)unlockAchievement('first_fragment');if(s.fragments>=100)unlockAchievement('fragments_100');if(s.fragments>=1000)unlockAchievement('fragments_1000');
   if(s.eliminations>=1)unlockAchievement('first_elimination');if(s.eliminations>=25)unlockAchievement('eliminations_25');if(s.eliminations>=100)unlockAchievement('eliminations_100');if(s.bot_eliminations>=50)unlockAchievement('bot_hunter');
@@ -30334,138 +30384,3 @@ Regards,
 </style>
 
 
-<script id="fragment-light-up-the-dawn-patch">
-(() => {
-  'use strict';
-
-  const DAWN_ACHIEVEMENT_ID = 'light_up_the_dawn';
-  const DAWN_TITLE_ID = 'title_bearer_of_dawn';
-  const DAWN_TITLE = Object.freeze({
-    id: DAWN_TITLE_ID,
-    name: 'Bearer of Dawn',
-    type: 'title',
-    value: 'Bearer of Dawn',
-    rarity: 'mythic',
-    achievementOnly: true
-  });
-
-  ACHIEVEMENTS[DAWN_ACHIEVEMENT_ID] = {
-    name: 'Light Up the Dawn',
-    desc: 'While playing Selfburn, reach 1 HP and release a charged matter orb, then defeat a boss or eliminate 3 opponents within 5 seconds.',
-    points: 100,
-    xp: 900
-  };
-
-  // Achievement titles use the normal inventory/equip pipeline, while the
-  // achievementOnly flag keeps them out of every roll and Daily Market pool.
-  if(!gachaCatalog.some(item => item?.id === DAWN_TITLE_ID)) gachaCatalog.push(DAWN_TITLE);
-
-  function grantBearerOfDawn(){
-    if(ownedCosmetics.includes(DAWN_TITLE_ID)) return false;
-    ownedCosmetics.push(DAWN_TITLE_ID);
-    ownedCosmetics = [...new Set(ownedCosmetics)];
-    renderOwnedCosmeticOptions();
-    if(cloudUser) queueCloudSave();
-    else saveGacha();
-    notify('TITLE UNLOCKED', 'Bearer of Dawn');
-    return true;
-  }
-
-  const dawnBaseUnlockAchievement = unlockAchievement;
-  unlockAchievement = function(id){
-    const unlocked = dawnBaseUnlockAchievement.apply(this, arguments);
-    if(id === DAWN_ACHIEVEMENT_ID && (unlocked || accountProgress?.achievements?.[id])){
-      grantBearerOfDawn();
-    }
-    return unlocked;
-  };
-
-  let dawnTrial = null;
-
-  function dawnNow(){ return performance.now(); }
-  function dawnTrialActive(){
-    if(!dawnTrial) return false;
-    if(dawnNow() > dawnTrial.expires){
-      dawnTrial = null;
-      return false;
-    }
-    return true;
-  }
-  function beginDawnTrial(charge){
-    dawnTrial = {
-      expires: dawnNow() + 5000,
-      opponents: new Set(),
-      charge: Number(charge)||0
-    };
-    notify('LIGHT UP THE DAWN', 'Defeat a boss or 3 opponents within 5 seconds.');
-  }
-  function completeDawnTrial(){
-    if(!dawnTrialActive()) return false;
-    dawnTrial = null;
-    return unlockAchievement(DAWN_ACHIEVEMENT_ID);
-  }
-  function recordDawnDefeat(kind, uniqueId){
-    if(!dawnTrialActive()) return;
-    if(kind === 'boss'){
-      completeDawnTrial();
-      return;
-    }
-    dawnTrial.opponents.add(String(uniqueId || ('opponent_'+dawnNow())));
-    if(dawnTrial.opponents.size >= 3) completeDawnTrial();
-  }
-  function dawnKillBelongsToPlayer(killer){
-    return killer === player || killer?.cloneOwner === player || killer?.owner === player;
-  }
-
-  const dawnBaseReleaseSelfburnOrb = releaseSelfburnOrb;
-  releaseSelfburnOrb = function(ent){
-    const qualifyingRelease = ent === player
-      && ent?.archetype === 'selfburn'
-      && !ent.dead
-      && Number(ent.hp) <= 1.01
-      && Number(ent.selfburnCharge) > 0.08;
-    const releasedCharge = Number(ent?.selfburnCharge)||0;
-    const result = dawnBaseReleaseSelfburnOrb.apply(this, arguments);
-    if(qualifyingRelease) beginDawnTrial(releasedCharge);
-    return result;
-  };
-
-  const dawnBaseKillEntity = killEntity;
-  killEntity = function(target, killer){
-    const wasAlive = !!target && !target.dead;
-    const result = dawnBaseKillEntity.apply(this, arguments);
-    if(wasAlive && target?.dead && dawnTrialActive() && dawnKillBelongsToPlayer(killer)){
-      if(target.boss) recordDawnDefeat('boss', target.netBossId || target.id || target.name);
-      else if(target !== player && !sameTeam(player, target)){
-        recordDawnDefeat('opponent', target.netClientId || target.netBotId || target.id || target.name);
-      }
-    }
-    return result;
-  };
-
-  const dawnBaseHandleFragmentNetworkMessage = handleFragmentNetworkMessage;
-  handleFragmentNetworkMessage = function(message){
-    if(dawnTrialActive()){
-      if(message?.type === 'boss_award'){
-        recordDawnDefeat('boss', message.bossId || message.bossName);
-      }else if(message?.type === 'bot_award'){
-        recordDawnDefeat('opponent', 'bot:'+String(message.botId || message.botName || dawnNow()));
-      }else if(message?.type === 'death_event' && message.killer?.clientId === multiplayer.clientId){
-        recordDawnDefeat('opponent', 'player:'+String(message.clientId || message.name || dawnNow()));
-      }
-    }
-    return dawnBaseHandleFragmentNetworkMessage.apply(this, arguments);
-  };
-
-  // Reconcile accounts that already unlocked the achievement in a prior save.
-  const dawnRewardTimer = setInterval(() => {
-    if(accountProgress?.achievements?.[DAWN_ACHIEVEMENT_ID]){
-      grantBearerOfDawn();
-      clearInterval(dawnRewardTimer);
-    }
-  }, 1500);
-  setTimeout(() => clearInterval(dawnRewardTimer), 30000);
-
-  renderAchievementDock();
-})();
-</script>
