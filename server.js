@@ -26,6 +26,66 @@ const reconnectReservations = new Map();
 const pendingPartyInvites = new Map();
 const playerReports = [];
 
+// Persistent page-visit metric. One browser page load supplies one pageViewId;
+// WebSocket reconnects reuse it and therefore never inflate the total.
+const PAGE_CLICK_STATE_PATH = process.env.PAGE_CLICK_STATE_PATH || path.join(ROOT,'page_clicks.json');
+const PAGE_CLICK_RECENT_LIMIT = 10000;
+let pageClickState = {count:0,seen:[],excluded:[]};
+try{
+  const saved=JSON.parse(fs.readFileSync(PAGE_CLICK_STATE_PATH,'utf8'));
+  pageClickState={
+    count:Math.max(0,Math.floor(Number(saved?.count)||0)),
+    seen:Array.isArray(saved?.seen)?saved.seen.slice(-PAGE_CLICK_RECENT_LIMIT):[],
+    excluded:Array.isArray(saved?.excluded)?saved.excluded.slice(-PAGE_CLICK_RECENT_LIMIT):[]
+  };
+}catch(_error){}
+const pageClickSeen = new Set(pageClickState.seen);
+const pageClickExcluded = new Set(pageClickState.excluded);
+let pageClickSaveTimer=null;
+function cleanPageViewId(value){
+  const id=String(value||'').trim().replace(/[^a-zA-Z0-9_-]/g,'').slice(0,96);
+  return id.length>=12?id:'';
+}
+function trimPageClickSet(set){
+  while(set.size>PAGE_CLICK_RECENT_LIMIT){
+    const oldest=set.values().next().value;
+    set.delete(oldest);
+  }
+}
+function schedulePageClickSave(){
+  clearTimeout(pageClickSaveTimer);
+  pageClickSaveTimer=setTimeout(()=>{
+    pageClickState.seen=[...pageClickSeen];
+    pageClickState.excluded=[...pageClickExcluded];
+    const temp=PAGE_CLICK_STATE_PATH+'.tmp';
+    fs.writeFile(temp,JSON.stringify(pageClickState),error=>{
+      if(error){console.error('[Fragment.io] Could not save page clicks:',error.message||error);return;}
+      fs.rename(temp,PAGE_CLICK_STATE_PATH,error=>{
+        if(error)console.error('[Fragment.io] Could not finalize page clicks:',error.message||error);
+      });
+    });
+  },120);
+}
+function recordPageClickForClient(client,value){
+  const pageViewId=cleanPageViewId(value);
+  if(!pageViewId)return false;
+  client.pageViewId=pageViewId;
+  if(client.pageClickProcessedFor===pageViewId)return false;
+  client.pageClickProcessedFor=pageViewId;
+  if(pageClickSeen.has(pageViewId)||pageClickExcluded.has(pageViewId))return false;
+  if(isDeveloper(client)){
+    pageClickExcluded.add(pageViewId);
+    trimPageClickSet(pageClickExcluded);
+    schedulePageClickSave();
+    return false;
+  }
+  pageClickSeen.add(pageViewId);
+  trimPageClickSet(pageClickSeen);
+  pageClickState.count=Math.max(0,Math.floor(Number(pageClickState.count)||0))+1;
+  schedulePageClickSave();
+  return true;
+}
+
 const MODE_RULES = {
   normal:{capacity:15, partyMax:6, targetLow:8, targetMid:12, targetHigh:15, waitMs:8000, joinMid:true, spectate:true},
   duo:{capacity:12, partyMax:2, targetLow:8, targetMid:10, targetHigh:12, waitMs:9000, joinMid:true, spectate:true},
@@ -2095,6 +2155,7 @@ function authenticateGuestSocket(client,msg={}){
   client.isGuest=true;
   client.accountRole='player';
   client.name=safeName(msg.name||'Unnamed');
+  recordPageClickForClient(client,msg.pageViewId);
   client.profile={
     id:userId,
     username:client.name,
@@ -2122,7 +2183,7 @@ function authenticateGuestSocket(client,msg={}){
   }
   broadcastPresenceForUser(userId);
 }
-async function authenticateSocket(client, token){
+async function authenticateSocket(client, token, pageViewId=null){
   token=String(token||'').trim();
   if(!token) throw new Error('Missing account token.');
   const user=await supabaseRequest('/auth/v1/user',token,{method:'GET'});
@@ -2146,6 +2207,7 @@ async function authenticateSocket(client, token){
     client.progress=null;
     throw error;
   }
+  recordPageClickForClient(client,pageViewId);
   if(!userClients.has(user.id)) userClients.set(user.id,new Set());
   userClients.get(user.id).add(client);
   await refreshClientFriends(client);
@@ -2692,7 +2754,7 @@ function handleMessage(client, msg){
     return;
   }
   if(msg.type === 'authenticate'){
-    authenticateSocket(client,msg.accessToken).catch(error=>send(client,{type:'auth_error',message:error.message||'Authentication failed.'}));
+    authenticateSocket(client,msg.accessToken,msg.pageViewId).catch(error=>send(client,{type:'auth_error',message:error.message||'Authentication failed.'}));
     return;
   }
   if(msg.type === 'social_refresh'){
@@ -3124,6 +3186,7 @@ server.on('upgrade', (req, socket) => {
     chatTimes:[], chatMutedUntil:0, moderationMutedUntil:0, lastChatBody:'', lastChatAt:0,
     lastPartyPingAt:0, lastReportAt:0, lastAnnouncementAt:0, lastFriendRequestAt:0,
     developerDebugSession:null, developerDebugRootAdminUntil:0,
+    pageViewId:'', pageClickProcessedFor:'',
     lastDeathDropAt:0
   };
   clients.add(client);
@@ -4321,6 +4384,7 @@ const v16BaseDeveloperPanelData=developerPanelData;
 developerPanelData=async function(){
   const data=await v16BaseDeveloperPanelData();
   const live=[...clients].filter(client=>client.socket&&!client.socket.destroyed);
+  data.pageClicks=Math.max(0,Math.floor(Number(pageClickState.count)||0));
   data.onlineStats={
     pageConnections:live.length,
     guestConnections:live.filter(client=>client.isGuest||!client.authenticated).length,

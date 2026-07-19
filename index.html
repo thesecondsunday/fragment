@@ -443,7 +443,7 @@
   .menuKicker{width:max-content; font-size:11px; padding:7px 10px;}
   .menuActions{margin:0; gap:8px;}
   .pillInfo{padding:8px 10px; font-size:12px; border-radius:12px;}
-  .menuFeatureGrid{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:2px;}
+  .menuFeatureGrid{display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; margin-top:2px;}
   .menuFeature{
     min-height:0;
     padding:11px;
@@ -7023,6 +7023,12 @@ function handleFragmentNetworkMessage(msg){
   else if(msg.type==='bot_killed')addChat('SERVER',(msg.killerName||'Player')+' eliminated '+(msg.botName||'a bot')+'.');
   else if(msg.type==='chat')addChat(msg.name||'Friend',msg.msg||'');
 }
+const fragmentPageViewId=window.__fragmentPageViewId||(window.__fragmentPageViewId=(()=>{
+  const raw=(globalThis.crypto&&typeof globalThis.crypto.randomUUID==='function')
+    ?globalThis.crypto.randomUUID().replace(/-/g,'')
+    :(Date.now().toString(36)+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2));
+  return 'pv_'+raw;
+})());
 async function ensureSocialConnection(){
   const guest=isGuestAccount();
   if(!guest&&!fragmentSupabase)return false;
@@ -7039,6 +7045,7 @@ async function ensureSocialConnection(){
       netSend({
         type:'guest_authenticate',
         guestToken:fragmentGuestSessionToken(),
+        pageViewId:fragmentPageViewId,
         name:cleanName(ui.playerName?.value)||'Unnamed'
       });
       return;
@@ -7046,7 +7053,7 @@ async function ensureSocialConnection(){
     const {data}=await fragmentSupabase.auth.getSession();
     const token=data?.session?.access_token;
     if(!token){notify('Social offline','Login again to connect friends and matchmaking.');return;}
-    netSend({type:'authenticate',accessToken:token,name:cloudProfile?.username||ui.playerName?.value||'Unnamed'});
+    netSend({type:'authenticate',accessToken:token,pageViewId:fragmentPageViewId,name:cloudProfile?.username||ui.playerName?.value||'Unnamed'});
   };
   ws.onmessage=ev=>{let msg;try{msg=JSON.parse(ev.data);}catch(_e){return;}try{handleFragmentNetworkMessage(msg);}catch(err){console.error('[Fragment.io] network message failed',msg?.type,err);}};
   ws.onerror=()=>notify('Social server offline','Render may still be waking up. Try again in a moment.');
@@ -21720,6 +21727,7 @@ if(v1MenuLogo){
     actions:[],
     sanctions:[],
     announcements:[],
+    pageClicks:0,
     generatedAt:''
   };
 
@@ -21791,6 +21799,7 @@ if(v1MenuLogo){
 
             <div class="developerPanelSummary">
               <div><span>PLAYERS ON PAGE</span><b id="developerOnlineCount">0</b></div>
+              <div><span>PAGE CLICKS</span><b id="developerPageClickCount">0</b></div>
               <div><span>OPEN REPORTS</span><b id="developerOpenReportCount">0</b></div>
               <div><span>ACTIVE SANCTIONS</span><b id="developerSanctionCount">0</b></div>
               <div><span>LAST SYNC</span><b id="developerSyncTime">—</b></div>
@@ -21942,6 +21951,7 @@ if(v1MenuLogo){
   function renderDeveloperPanel(){
     const openReports=developerPanelState.reports.filter(report=>['open','reviewing'].includes(report.status)).length;
     if($('developerOnlineCount'))$('developerOnlineCount').textContent=developerPanelState.players.length;
+    if($('developerPageClickCount'))$('developerPageClickCount').textContent=Math.max(0,Math.floor(Number(developerPanelState.pageClicks)||0)).toLocaleString();
     if($('developerOpenReportCount'))$('developerOpenReportCount').textContent=openReports;
     if($('developerSanctionCount'))$('developerSanctionCount').textContent=developerPanelState.sanctions.length;
     if($('developerSyncTime'))$('developerSyncTime').textContent=developerPanelState.generatedAt?new Date(developerPanelState.generatedAt).toLocaleTimeString():'—';
@@ -22252,6 +22262,8 @@ if(v1MenuLogo){
         actions:Array.isArray(msg.actions)?msg.actions:[],
         sanctions:Array.isArray(msg.sanctions)?msg.sanctions:[],
         announcements:Array.isArray(msg.announcements)?msg.announcements:[],
+        pageClicks:Math.max(0,Math.floor(Number(msg.pageClicks)||0)),
+        onlineStats:msg.onlineStats||{},
         generatedAt:msg.generatedAt||new Date().toISOString()
       };
       renderDeveloperPanel();
@@ -30549,6 +30561,7 @@ Regards,
     const result=baseHandleFragmentNetworkMessage.apply(this,arguments);
     if(message?.type==='developer_panel_data'){
       developerPanelState.onlineStats=message.onlineStats||{pageConnections:(developerPanelState.players||[]).length};
+      developerPanelState.pageClicks=Math.max(0,Math.floor(Number(message.pageClicks)||0));
       renderDeveloperPanel();
     }
     return result;
@@ -30596,6 +30609,7 @@ Regards,
     const stats=developerPanelState.onlineStats||{};
     const count=Number.isFinite(Number(stats.pageConnections))?Number(stats.pageConnections):(developerPanelState.players||[]).length;
     if($('developerOnlineCount'))$('developerOnlineCount').textContent=count;
+    if($('developerPageClickCount'))$('developerPageClickCount').textContent=Math.max(0,Math.floor(Number(developerPanelState.pageClicks)||0)).toLocaleString();
     const label=$('developerOnlineCount')?.previousElementSibling;
     if(label)label.textContent='PLAYERS ON PAGE';
     const countNode=$('developerOnlineCount');
