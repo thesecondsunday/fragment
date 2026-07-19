@@ -8505,10 +8505,10 @@ function chooseGachaItem(key, rarity){
     if(pity.pity+1>=GACHA_HARD_PITY || pity.guaranteed || Math.random()<0.5){ pity.guaranteed=false; return currentLimitedHatCosmetic(); }
     pity.guaranteed=true;
   }
-  let pool=gachaCatalog.filter(c=>c.rarity===rarity);
-  if(key==='limitedSpecial' && rarity!=='mythic') pool=[...gachaCatalog.filter(c=>c.rarity===rarity && c.type==='aura'), ...pool];
-  if(key==='limitedHat' && rarity!=='mythic') pool=[...gachaCatalog.filter(c=>c.rarity===rarity && c.type==='hat'), ...pool];
-  if(!pool.length) pool=gachaCatalog;
+  let pool=gachaCatalog.filter(c=>!c.achievementOnly && c.rarity===rarity);
+  if(key==='limitedSpecial' && rarity!=='mythic') pool=[...gachaCatalog.filter(c=>!c.achievementOnly && c.rarity===rarity && c.type==='aura'), ...pool];
+  if(key==='limitedHat' && rarity!=='mythic') pool=[...gachaCatalog.filter(c=>!c.achievementOnly && c.rarity===rarity && c.type==='hat'), ...pool];
+  if(!pool.length) pool=gachaCatalog.filter(c=>!c.achievementOnly);
   return pool[irand(0,pool.length)];
 }
 function recordPityAfterPull(key, rarity){ const p=gachaPity[key] || (gachaPity[key]=defaultPity()[key]); p.pity++; p.epicPity++; if(['epic','legendary','mythic'].includes(rarity)) p.epicPity=0; if(rarity==='mythic'){ p.pity=0; p.epicPity=0; } }
@@ -10086,20 +10086,27 @@ function chargeSelfburn(ent, dt){
   ent.selfburnHolding = true;
   ent.firingSelfburn = true;
   ent.selfburnFlash = 0.18;
+
   const currentCharge = ent.selfburnCharge || 0;
   const chargeCap = maxSelfburnCharge(ent);
   const accel = 1 + Math.pow(currentCharge/4.2, 1.45)*1.35;
-  const nextCharge = clamp(currentCharge + (dt/900)*accel, 0, chargeCap);
-  const hitHpLimit = nextCharge >= chargeCap-.025;
-  ent.selfburnCharge = nextCharge;
-  if(hitHpLimit && chargeCap < 4.05 && ent.human && Math.random()<0.035){
+  const chargeGain = (dt/900)*accel;
+
+  // Selfburn sacrifices current HP only. The charge ceiling never shrinks with HP.
+  // Once 1 HP is reached, charging pauses instead of granting free matter charge.
+  const desiredDrain = (0.22 + currentCharge*0.05) * (dt/16.6);
+  const availableHp = Math.max(0, ent.hp - 1);
+  const actualDrain = Math.min(desiredDrain, availableHp);
+  const drainScale = desiredDrain > 0 ? actualDrain / desiredDrain : 1;
+
+  ent.selfburnCharge = clamp(currentCharge + chargeGain*drainScale, 0, chargeCap);
+  if(actualDrain > 0) ent.hp = Math.max(1, ent.hp - actualDrain);
+
+  const hitHpLimit = availableHp <= 0.001 && ent.selfburnCharge < chargeCap-.025;
+  if(hitHpLimit && ent.human && Math.random()<0.035){
     floatText(ent.x, ent.y-ent.r-42, 'HP LIMIT', '#ff8379');
   }
-  if(!hitHpLimit){
-    const drain = (0.22 + ent.selfburnCharge*0.05) * (dt/16.6);
-    ent.hp = Math.max(1, ent.hp - drain);
-    ent.selfburnCharge = Math.min(ent.selfburnCharge, maxSelfburnCharge(ent));
-  }
+
   ent.selfburnHoldSound = (ent.selfburnHoldSound||0) - dt;
   if(ent.selfburnHoldSound<=0 && ent.human){
     tone(120 + ent.selfburnCharge*40, 0.03, 'sawtooth', 0.012 + ent.selfburnCharge*0.0025);
@@ -10170,10 +10177,9 @@ function useSelfburnHeal(ent){
 }
 
 function maxSelfburnCharge(ent){
-  if(!ent || ent.archetype!=='selfburn') return 4.2;
-  const hpRatio = clamp((ent.hp-1) / Math.max(1, ent.maxHp-1), 0, 1);
-  // At 1 HP you can only make a tiny desperate shot; high HP unlocks the real maximum.
-  return clamp(0.55 + hpRatio*3.65, 0.55, 4.2);
+  // The matter gauge has a stable maximum. Available current HP determines how
+  // much charge can actually be generated, not how large the gauge is.
+  return ent && ent.archetype==='selfburn' ? 4.2 : 4.2;
 }
 
 
@@ -18596,7 +18602,7 @@ if(v1MenuLogo){
     return stats.daily_shop;
   }
   function marketPool(){
-    const all=allCosmetics().filter(item=>item&&!item.limited&&['trail','aura','hat','shape','title','profilebanner','profilebackground'].includes(item.type));
+    const all=allCosmetics().filter(item=>item&&!item.limited&&!item.achievementOnly&&['trail','aura','hat','shape','title','profilebanner','profilebackground'].includes(item.type));
     const unowned=all.filter(item=>!ownedCosmetics.includes(item.id));
     return unowned.length>=3?unowned:all;
   }
@@ -19305,7 +19311,7 @@ if(v1MenuLogo){
   };
 
   function creativeGenerateDailyOfferIds(day){
-    const pool=allCosmetics().filter(item=>item&&!item.limited&&['trail','aura','hat','shape','title','profilebanner','profilebackground'].includes(item.type));
+    const pool=allCosmetics().filter(item=>item&&!item.limited&&!item.achievementOnly&&['trail','aura','hat','shape','title','profilebanner','profilebackground'].includes(item.type));
     const seed=`${cloudUser?.id||'guest'}:${day}:fixed-market`;
     const buckets=[
       pool.filter(item=>['common','rare'].includes(item.rarity)),
@@ -30326,3 +30332,140 @@ Regards,
   font-size:9px!important;
 }
 </style>
+
+
+<script id="fragment-light-up-the-dawn-patch">
+(() => {
+  'use strict';
+
+  const DAWN_ACHIEVEMENT_ID = 'light_up_the_dawn';
+  const DAWN_TITLE_ID = 'title_bearer_of_dawn';
+  const DAWN_TITLE = Object.freeze({
+    id: DAWN_TITLE_ID,
+    name: 'Bearer of Dawn',
+    type: 'title',
+    value: 'Bearer of Dawn',
+    rarity: 'mythic',
+    achievementOnly: true
+  });
+
+  ACHIEVEMENTS[DAWN_ACHIEVEMENT_ID] = {
+    name: 'Light Up the Dawn',
+    desc: 'While playing Selfburn, reach 1 HP and release a charged matter orb, then defeat a boss or eliminate 3 opponents within 5 seconds.',
+    points: 100,
+    xp: 900
+  };
+
+  // Achievement titles use the normal inventory/equip pipeline, while the
+  // achievementOnly flag keeps them out of every roll and Daily Market pool.
+  if(!gachaCatalog.some(item => item?.id === DAWN_TITLE_ID)) gachaCatalog.push(DAWN_TITLE);
+
+  function grantBearerOfDawn(){
+    if(ownedCosmetics.includes(DAWN_TITLE_ID)) return false;
+    ownedCosmetics.push(DAWN_TITLE_ID);
+    ownedCosmetics = [...new Set(ownedCosmetics)];
+    renderOwnedCosmeticOptions();
+    if(cloudUser) queueCloudSave();
+    else saveGacha();
+    notify('TITLE UNLOCKED', 'Bearer of Dawn');
+    return true;
+  }
+
+  const dawnBaseUnlockAchievement = unlockAchievement;
+  unlockAchievement = function(id){
+    const unlocked = dawnBaseUnlockAchievement.apply(this, arguments);
+    if(id === DAWN_ACHIEVEMENT_ID && (unlocked || accountProgress?.achievements?.[id])){
+      grantBearerOfDawn();
+    }
+    return unlocked;
+  };
+
+  let dawnTrial = null;
+
+  function dawnNow(){ return performance.now(); }
+  function dawnTrialActive(){
+    if(!dawnTrial) return false;
+    if(dawnNow() > dawnTrial.expires){
+      dawnTrial = null;
+      return false;
+    }
+    return true;
+  }
+  function beginDawnTrial(charge){
+    dawnTrial = {
+      expires: dawnNow() + 5000,
+      opponents: new Set(),
+      charge: Number(charge)||0
+    };
+    notify('LIGHT UP THE DAWN', 'Defeat a boss or 3 opponents within 5 seconds.');
+  }
+  function completeDawnTrial(){
+    if(!dawnTrialActive()) return false;
+    dawnTrial = null;
+    return unlockAchievement(DAWN_ACHIEVEMENT_ID);
+  }
+  function recordDawnDefeat(kind, uniqueId){
+    if(!dawnTrialActive()) return;
+    if(kind === 'boss'){
+      completeDawnTrial();
+      return;
+    }
+    dawnTrial.opponents.add(String(uniqueId || ('opponent_'+dawnNow())));
+    if(dawnTrial.opponents.size >= 3) completeDawnTrial();
+  }
+  function dawnKillBelongsToPlayer(killer){
+    return killer === player || killer?.cloneOwner === player || killer?.owner === player;
+  }
+
+  const dawnBaseReleaseSelfburnOrb = releaseSelfburnOrb;
+  releaseSelfburnOrb = function(ent){
+    const qualifyingRelease = ent === player
+      && ent?.archetype === 'selfburn'
+      && !ent.dead
+      && Number(ent.hp) <= 1.01
+      && Number(ent.selfburnCharge) > 0.08;
+    const releasedCharge = Number(ent?.selfburnCharge)||0;
+    const result = dawnBaseReleaseSelfburnOrb.apply(this, arguments);
+    if(qualifyingRelease) beginDawnTrial(releasedCharge);
+    return result;
+  };
+
+  const dawnBaseKillEntity = killEntity;
+  killEntity = function(target, killer){
+    const wasAlive = !!target && !target.dead;
+    const result = dawnBaseKillEntity.apply(this, arguments);
+    if(wasAlive && target?.dead && dawnTrialActive() && dawnKillBelongsToPlayer(killer)){
+      if(target.boss) recordDawnDefeat('boss', target.netBossId || target.id || target.name);
+      else if(target !== player && !sameTeam(player, target)){
+        recordDawnDefeat('opponent', target.netClientId || target.netBotId || target.id || target.name);
+      }
+    }
+    return result;
+  };
+
+  const dawnBaseHandleFragmentNetworkMessage = handleFragmentNetworkMessage;
+  handleFragmentNetworkMessage = function(message){
+    if(dawnTrialActive()){
+      if(message?.type === 'boss_award'){
+        recordDawnDefeat('boss', message.bossId || message.bossName);
+      }else if(message?.type === 'bot_award'){
+        recordDawnDefeat('opponent', 'bot:'+String(message.botId || message.botName || dawnNow()));
+      }else if(message?.type === 'death_event' && message.killer?.clientId === multiplayer.clientId){
+        recordDawnDefeat('opponent', 'player:'+String(message.clientId || message.name || dawnNow()));
+      }
+    }
+    return dawnBaseHandleFragmentNetworkMessage.apply(this, arguments);
+  };
+
+  // Reconcile accounts that already unlocked the achievement in a prior save.
+  const dawnRewardTimer = setInterval(() => {
+    if(accountProgress?.achievements?.[DAWN_ACHIEVEMENT_ID]){
+      grantBearerOfDawn();
+      clearInterval(dawnRewardTimer);
+    }
+  }, 1500);
+  setTimeout(() => clearInterval(dawnRewardTimer), 30000);
+
+  renderAchievementDock();
+})();
+</script>
