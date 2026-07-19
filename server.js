@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 
+// FRAGMENT.IO GUEST MULTIPLAYER PATCH APPLIED
+
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -2061,7 +2063,7 @@ async function executeDeveloperDebugAction(client,msg){
 }
 
 async function refreshClientProfile(client){
-  if(!client?.authenticated || !client.accessToken || !client.userId) return;
+  if(!client?.authenticated || client.isGuest || !client.accessToken || !client.userId) return;
   const rows=await supabaseRequest('/rest/v1/profiles?id=eq.'+encodeURIComponent(client.userId)+'&select=id,username,friend_code,about_me,equipped_title,profile_banner,profile_icon,featured_cosmetics,featured_achievements,profile_settings',client.accessToken,{method:'GET'});
   if(Array.isArray(rows) && rows[0]){
     client.profile=rows[0];
@@ -2072,6 +2074,54 @@ async function refreshClientProfile(client){
     client.progress=Array.isArray(progressRows)?progressRows[0]||null:null;
   }catch(_error){ client.progress=null; }
 }
+function guestUserIdFromToken(value){
+  let token=String(value||'').trim().replace(/[^a-zA-Z0-9_-]/g,'').slice(0,96);
+  if(token.length<16)token=crypto.randomBytes(24).toString('hex');
+  const chars=crypto.createHash('sha256').update('fragment.io guest '+token).digest('hex').slice(0,32).split('');
+  chars[12]='4';
+  chars[16]=['8','9','a','b'][parseInt(chars[16],16)%4];
+  const raw=chars.join('');
+  return raw.slice(0,8)+'-'+raw.slice(8,12)+'-'+raw.slice(12,16)+'-'+raw.slice(16,20)+'-'+raw.slice(20,32);
+}
+function authenticateGuestSocket(client,msg={}){
+  if(client.authenticated&&client.userId){
+    send(client,{type:'auth_ok',userId:client.userId,clientId:client.id,name:client.name,accountRole:publicAccountRole(client.accountRole),guest:!!client.isGuest});
+    return;
+  }
+  const userId=guestUserIdFromToken(msg.guestToken);
+  client.accessToken='';
+  client.userId=userId;
+  client.authenticated=true;
+  client.isGuest=true;
+  client.accountRole='player';
+  client.name=safeName(msg.name||'Unnamed');
+  client.profile={
+    id:userId,
+    username:client.name,
+    friend_code:'',
+    profile_settings:{show_status:'everyone',allow_join:'everyone',allow_spectate:'everyone'}
+  };
+  client.progress={account_level:1,achievement_points:0,stats:{}};
+  client.friendIds=new Set();
+  if(!userClients.has(userId))userClients.set(userId,new Set());
+  userClients.get(userId).add(client);
+  for(const party of parties.values()){
+    if(party.members.has(userId)){client.partyId=party.id;break;}
+  }
+  send(client,{type:'auth_ok',userId,clientId:client.id,name:client.name,accountRole:'player',guest:true});
+  sendPartyStateForClient(client);
+  sendWatchedPresence(client);
+  const reservation=reconnectReservations.get(userId);
+  if(reservation&&reservation.expires>Date.now()){
+    const room=rooms.get(reservation.roomCode);
+    if(room){
+      reconnectReservations.delete(userId);
+      joinClientToRoom(client,room,{mode:room.mode,name:client.name});
+      send(client,{type:'reconnect_match',mode:room.mode,room:room.code});
+    }
+  }
+  broadcastPresenceForUser(userId);
+}
 async function authenticateSocket(client, token){
   token=String(token||'').trim();
   if(!token) throw new Error('Missing account token.');
@@ -2080,6 +2130,7 @@ async function authenticateSocket(client, token){
   client.accessToken=token;
   client.userId=user.id;
   client.authenticated=true;
+  client.isGuest=false;
   client.accountRole=await loadAccountRole(user.id);
   client.name=safeName(user.user_metadata?.username||client.name||'Player');
   client.profile={id:user.id,username:client.name,friend_code:'',profile_settings:{}};
@@ -2118,7 +2169,7 @@ async function authenticateSocket(client, token){
 }
 async function refreshClientFriends(client){
   client.friendIds=new Set();
-  if(!client.authenticated || !client.accessToken) return;
+  if(!client.authenticated || client.isGuest || !client.accessToken) return;
   const rows=await supabaseRequest('/rest/v1/friendships?user_id=eq.'+encodeURIComponent(client.userId)+'&select=friend_id',client.accessToken,{method:'GET'});
   for(const row of (Array.isArray(rows)?rows:[])) if(row.friend_id) client.friendIds.add(row.friend_id);
 }
@@ -2458,7 +2509,7 @@ async function friendRequestStateForUser(userId){
   };
 }
 async function sendFriendRequestState(client){
-  if(!client?.authenticated||!client.userId)return;
+  if(!client?.authenticated||client.isGuest||!client.userId)return;
   const state=await friendRequestStateForUser(client.userId);
   send(client,{type:'friend_request_state',...state});
 }
@@ -2636,6 +2687,10 @@ function handleMessage(client, msg){
   if(typeof msg !== 'object' || !msg) return;
   client.lastSeen=Date.now();
 
+  if(msg.type === 'guest_authenticate'){
+    try{authenticateGuestSocket(client,msg);}catch(error){send(client,{type:'auth_error',message:error.message||'Guest connection failed.'});}
+    return;
+  }
   if(msg.type === 'authenticate'){
     authenticateSocket(client,msg.accessToken).catch(error=>send(client,{type:'auth_error',message:error.message||'Authentication failed.'}));
     return;
@@ -2690,7 +2745,7 @@ function handleMessage(client, msg){
   if(msg.type === 'party_mode'){
     const p=partyForClient(client); if(p&&p.leaderId===client.userId&&!p.queued){p.mode=cleanMode(msg.mode);p.fillBots=msg.fillBots!==false;for(const uid of p.members)p.ready.set(uid,uid===p.leaderId);broadcastParty(p);} return;
   }
-  if(msg.type === 'queue_join'){ if(!client.authenticated)return send(client,{type:'queue_error',message:'Login before matchmaking.'}); queueEntry(client,msg.mode,msg.asParty!==false,msg.fillBots!==false); return; }
+  if(msg.type === 'queue_join'){ if(!client.authenticated)return send(client,{type:'queue_error',message:'Connect before matchmaking.'}); queueEntry(client,msg.mode,msg.asParty!==false,msg.fillBots!==false); return; }
   if(msg.type === 'queue_cancel'){ cancelClientQueue(client); return; }
   if(msg.type === 'spectate_friend'){ spectateFriend(client,msg.friendUserId); return; }
   if(msg.type === 'join_friend'){ joinFriend(client,msg.friendUserId); return; }
@@ -3064,7 +3119,7 @@ server.on('upgrade', (req, socket) => {
   const client = {
     id:id(), socket, room:null, name:'Player', snapshot:null, buffer:null,
     ready:false, inMatch:false, role:'social', serverTeam:'neutral', spawnProtectedUntil:0,
-    authenticated:false, accessToken:'', userId:null, accountRole:'player', profile:null, progress:null, friendIds:new Set(), partyId:null, queueId:null, matchTeam:null,
+    authenticated:false, isGuest:false, accessToken:'', userId:null, accountRole:'player', profile:null, progress:null, friendIds:new Set(), partyId:null, queueId:null, matchTeam:null,
     lastSeen:Date.now(), lastParseErrorAt:0,
     chatTimes:[], chatMutedUntil:0, moderationMutedUntil:0, lastChatBody:'', lastChatAt:0,
     lastPartyPingAt:0, lastReportAt:0, lastAnnouncementAt:0, lastFriendRequestAt:0,

@@ -4630,7 +4630,7 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
       <div class="modalCard compactWindow smallWindow">
         <div class="modalTop"><h2>Play</h2><button class="modalClose" type="button" data-close-modal>×</button></div>
         <div class="playIdentityGrid singleIdentity">
-          <div><label>Name</label><input id="playerName" value="Sinister" maxlength="16" /></div>
+          <div><label>Name</label><input id="playerName" value="Unnamed" maxlength="16" /></div>
           <select id="serverSel" class="hidden" aria-hidden="true"><option selected>Global Matchmaking</option></select>
         </div>
 
@@ -4768,7 +4768,7 @@ html:not([data-fragment-startup-complete]) #bootOverlay{
         <div class="modalTop"><h2>Account</h2><button class="modalClose" type="button" data-close-modal>×</button></div>
         <div class="accountStatusCard">
           <b id="accountStatusName">Playing as Guest</b>
-          <span id="accountStatusSub">Guest can deploy, but cosmetic pulls are locked because cosmetics need account saving.</span>
+          <span id="accountStatusSub">Guests can play online or offline and browse cosmetics. Purchases and rolls require an account.</span>
         </div>
         <div class="accountCodeBox" id="accountCodeBox">
           <label>Your Friend Code</label>
@@ -6941,10 +6941,10 @@ function netDisconnect(){
   multiplayer.fragById.clear();
   multiplayer.bossById.clear();
   multiplayer.terrainById.clear();
-  multiplayer.remoteById.clear(); remotePlayers=[]; socialState.authenticated=false; socialState.queue=null; socialState.party=null; socialState.presence.clear(); netStatus('OFFLINE'); renderSocial();
+  multiplayer.remoteById.clear(); remotePlayers=[]; socialState.authenticated=false; socialState.isGuest=false; socialState.selfUserId=''; socialState.queue=null; socialState.party=null; socialState.presence.clear(); netStatus('OFFLINE'); renderSocial();
 }
 function handleFragmentNetworkMessage(msg){
-  if(msg.type==='auth_ok'){socialState.authenticated=true;multiplayer.clientId=msg.clientId||multiplayer.clientId;netSend({type:'presence_request'});renderSocial();return;}
+  if(msg.type==='auth_ok'){socialState.authenticated=true;socialState.selfUserId=msg.userId||socialState.selfUserId||'';socialState.isGuest=!!msg.guest;multiplayer.clientId=msg.clientId||multiplayer.clientId;netSend({type:'presence_request'});renderSocial();return;}
   if(msg.type==='auth_error'){socialState.authenticated=false;notify('Social login failed',msg.message||'Could not authenticate the WebSocket.');return;}
   if(msg.type==='presence_state'){
     socialState.presence.clear();
@@ -7024,33 +7024,62 @@ function handleFragmentNetworkMessage(msg){
   else if(msg.type==='chat')addChat(msg.name||'Friend',msg.msg||'');
 }
 async function ensureSocialConnection(){
-  if(isGuestAccount()||!fragmentSupabase)return false;
-  if(multiplayer.connected&&socialState.authenticated)return true;
+  const guest=isGuestAccount();
+  if(!guest&&!fragmentSupabase)return false;
+  if(multiplayer.connected&&socialState.authenticated){
+    if(socialState.isGuest===guest)return true;
+    netDisconnect();
+  }
   if(multiplayer.connecting)return false;
   multiplayer.connecting=true;multiplayer.shouldReconnect=true;
   const ws=new WebSocket(netWsUrl());multiplayer.ws=ws;
   ws.onopen=async()=>{
     multiplayer.connecting=false;multiplayer.connected=true;
+    if(isGuestAccount()){
+      netSend({
+        type:'guest_authenticate',
+        guestToken:fragmentGuestSessionToken(),
+        name:cleanName(ui.playerName?.value)||'Unnamed'
+      });
+      return;
+    }
     const {data}=await fragmentSupabase.auth.getSession();
     const token=data?.session?.access_token;
     if(!token){notify('Social offline','Login again to connect friends and matchmaking.');return;}
-    netSend({type:'authenticate',accessToken:token,name:cloudProfile?.username||ui.playerName?.value||'Player'});
+    netSend({type:'authenticate',accessToken:token,name:cloudProfile?.username||ui.playerName?.value||'Unnamed'});
   };
   ws.onmessage=ev=>{let msg;try{msg=JSON.parse(ev.data);}catch(_e){return;}try{handleFragmentNetworkMessage(msg);}catch(err){console.error('[Fragment.io] network message failed',msg?.type,err);}};
   ws.onerror=()=>notify('Social server offline','Render may still be waking up. Try again in a moment.');
   ws.onclose=()=>{
-    const should=multiplayer.shouldReconnect&&!isGuestAccount();multiplayer.connected=false;multiplayer.connecting=false;multiplayer.ws=null;socialState.authenticated=false;
+    const should=multiplayer.shouldReconnect;
+    multiplayer.connected=false;multiplayer.connecting=false;multiplayer.ws=null;socialState.authenticated=false;
     if(should){clearTimeout(socialState.reconnectTimer);socialState.reconnectTimer=setTimeout(ensureSocialConnection,2500);}
   };
   return true;
 }
 function netConnectAndJoin(){return ensureSocialConnection();}
 window.fragmentSocialState=window.fragmentSocialState||{
-  authenticated:false,party:null,presence:new Map(),queue:null,pendingInvite:null,
+  authenticated:false,isGuest:false,selfUserId:'',party:null,presence:new Map(),queue:null,pendingInvite:null,
   spectating:false,pendingSpectator:false,spectateTargetUserId:null,spectateTargetClientId:null,spectateFocusClientId:null,
   pendingSpawn:null,currentProfileUserId:null,currentProfile:null,autoFill:true,reconnectTimer:null
 };
 const socialState=window.fragmentSocialState;
+function fragmentGuestSessionToken(){
+  const key='fragmentio_guest_session_token';
+  let token='';
+  try{token=sessionStorage.getItem(key)||'';}catch(_error){}
+  if(!/^[a-zA-Z0-9_-]{16,96}$/.test(token)){
+    const raw=(globalThis.crypto&&typeof globalThis.crypto.randomUUID==='function')
+      ?globalThis.crypto.randomUUID().replace(/-/g,'')
+      :Array.from({length:32},()=>Math.floor(Math.random()*16).toString(16)).join('');
+    token='g_'+raw;
+    try{sessionStorage.setItem(key,token);}catch(_error){}
+  }
+  return token;
+}
+function currentSocialUserId(){
+  return cloudUser?.id||socialState.selfUserId||'';
+}
 function loadSocial(){
   try{ friends = JSON.parse(localStorage.getItem('fragmentio_friends')||'[]'); }catch(e){ friends=[]; }
   friends = Array.isArray(friends) ? friends.slice(0,40) : [];
@@ -7091,8 +7120,8 @@ function renderPartyMatchDock(){
 
   if(!visible)return;
 
-  const me=members.find(member=>member.userId===cloudUser?.id);
-  const leader=party.leaderId===cloudUser?.id;
+  const me=members.find(member=>member.userId===currentSocialUserId());
+  const leader=party.leaderId===currentSocialUserId();
   const queued=!!party.queued;
   const mode=party.mode||'normal';
   const allOnline=members.every(member=>member.online);
@@ -7123,7 +7152,7 @@ function renderPartyMatchDock(){
   $('partyMatchReadyList').innerHTML=members.map(member=>`
     <div class="partyMatchReadyMember ${member.leader||member.ready?'ready':''} ${member.online?'online':'offline'}">
       <i></i>
-      <b>${member.leader?'★ ':''}${escapeHtml(member.name)}${member.userId===cloudUser?.id?' (YOU)':''}</b>
+      <b>${member.leader?'★ ':''}${escapeHtml(member.name)}${member.userId===currentSocialUserId()?' (YOU)':''}</b>
       <span>${member.leader?'LEADER · READY':member.ready?'READY':'NOT READY'}</span>
     </div>
   `).join('');
@@ -7165,18 +7194,18 @@ function renderPartyMatchDock(){
 function renderSocial(){
   if(!ui.friendList || !ui.partyList) return;
   const party=socialState.party;
-  const members=party?.members?.length?party.members:[{userId:cloudUser?.id||'self',name:cloudProfile?.username||ui.playerName?.value||'You',online:true,ready:false,leader:true,status:'online'}];
-  partyMembers=members.filter(m=>m.userId!==cloudUser?.id).map(m=>m.name);
+  const members=party?.members?.length?party.members:[{userId:currentSocialUserId()||'self',name:cloudProfile?.username||ui.playerName?.value||'You',online:true,ready:false,leader:true,status:'online'}];
+  partyMembers=members.filter(m=>m.userId!==currentSocialUserId()).map(m=>m.name);
   const size=members.length;
   if(ui.partyCount) ui.partyCount.textContent=size+' / 6';
   const partyTitle=$('partyStateTitle'),leaderHint=$('partyLeaderHint'),readyBtn=$('partyReadyBtn'),leaveBtn=$('leavePartyBtn');
   if(partyTitle) partyTitle.textContent='YOUR PARTY · '+size+'/6';
-  const me=members.find(m=>m.userId===cloudUser?.id);
+  const me=members.find(m=>m.userId===currentSocialUserId());
   const leader=party?.leaderId===cloudUser?.id || (!party?.partyId);
   if(leaderHint) leaderHint.textContent=party?.queued?'Searching for '+netModeLabel(party.mode)+'…':'Ready controls and game mode are below DEPLOY on the main screen.';
   if(readyBtn){readyBtn.classList.add('hidden');readyBtn.disabled=true;}
   if(leaveBtn) leaveBtn.disabled=!party?.partyId;
-  ui.partyList.innerHTML=members.map(m=>`<div class="socialPartyMember ${m.ready?'ready':''}"><div><b>${m.leader?'★ ':''}${escapeHtml(m.name)}${m.userId===cloudUser?.id?' (You)':''}</b><small>${m.online?'ONLINE':'OFFLINE'}</small></div><span>${m.leader?'LEADER':m.ready?'READY':'NOT READY'}</span></div>`).join('');
+  ui.partyList.innerHTML=members.map(m=>`<div class="socialPartyMember ${m.ready?'ready':''}"><div><b>${m.leader?'★ ':''}${escapeHtml(m.name)}${m.userId===currentSocialUserId()?' (You)':''}</b><small>${m.online?'ONLINE':'OFFLINE'}</small></div><span>${m.leader?'LEADER':m.ready?'READY':'NOT READY'}</span></div>`).join('');
   ui.friendList.innerHTML=friends.length?friends.map(code=>{
     const profile=cloudFriendProfiles.get(cleanFriendCode(code)); if(!profile)return'';
     const p=socialState.presence.get(profile.id)||{status:'offline'};
@@ -7345,7 +7374,6 @@ function openMenuModal(name){
   if(name==='play'){ setPlayTab(ui.modeSel && ui.modeSel.value==='bossrush' ? 'bossrush' : 'normal'); setTimeout(drawBossPreview,0); }
   if(name==='account-edit' && isGuestAccount()){ setTimeout(()=>openMenuModal('account'),0); return; }
   if(name==='achievements') renderAchievementsBrowser();
-  if(name==='shop' && typeof isGuestAccount==='function' && isGuestAccount()){ renderAccountStatus(); notify('Account required','Login or register to use the shop. Guest mode cannot use purchases.'); openMenuModal('account'); return; }
   if(name==='gacha' || name==='shop') renderGachaMenu();
 }
 function closeMenuModals(){
@@ -7541,7 +7569,7 @@ function renderAccountStatus(){
   if(name) name.textContent=guest?'Playing as Guest':'Logged in as '+displayName;
   if(sub){
     if(!supabaseAvailable()) sub.textContent='Cloud accounts are unavailable because the Supabase configuration or SDK did not load.';
-    else if(guest) sub.textContent='You can deploy normally, but shop and cosmetic pulls are locked until you log in.';
+    else if(guest) sub.textContent='You can play online or offline. Cosmetic purchases and rolls require an account.';
     else sub.textContent='Your account, friend code, Remnant, cosmetics, pity, and equipped items are stored in Supabase.';
   }
 
@@ -7579,7 +7607,7 @@ function renderAccountStatus(){
       if(!lock){
         lock=document.createElement('div');
         lock.className='guestPullLock';
-        lock.textContent='Guest mode: shop is locked. Login or register so purchases can be saved to your cloud account.';
+        lock.textContent='Guest mode: cosmetic purchases are locked. You may browse the market, but an account is required to buy.';
         const grid=shopModal.querySelector('.shopPackGrid');
         shopModal.insertBefore(lock,grid||shopModal.firstChild);
       }
@@ -7589,7 +7617,7 @@ function renderAccountStatus(){
 
   const shopHint=$('shopHint');
   if(shopHint) shopHint.textContent=guest
-    ? 'Login or register to use the shop.'
+    ? 'You can browse the shop, but purchases require an account.'
     : 'Prototype shop: Remnant and cosmetics are saved to your Supabase account.';
 
   const gachaModal=document.querySelector('[data-modal="gacha"] .modalCard');
@@ -16642,8 +16670,8 @@ function spectatorCandidates(){
 function cycleSpectator(dir){const list=spectatorCandidates();if(!list.length)return;let idx=list.findIndex(e=>e.netClientId===socialState.spectateFocusClientId);idx=(idx+dir+list.length)%list.length;socialState.spectateFocusClientId=list[idx].netClientId;updateSpectatorHud();}
 function updateSpectatorHud(){const focus=multiplayer.remoteById.get(socialState.spectateFocusClientId)||multiplayer.remoteById.get(socialState.spectateTargetClientId);if(focus)$('spectatorName').textContent=focus.name||'PLAYER';}
 function renderQueueState(){const box=$('matchmakingStatus');if(!box)return;const q=socialState.queue;if(!q){box.classList.add('hidden');box.classList.remove('searching');$('cancelQueueBtn').disabled=true;return;}box.classList.remove('hidden');box.classList.add('searching');box.querySelector('b').textContent='SEARCHING · '+netModeLabel(q.mode);box.querySelector('span').textContent='Real players found: '+q.players+' · target population '+q.target+' · starts in '+q.startIn+'s';$('cancelQueueBtn').disabled=false;}
-function updateMatchButtons(){const mode=netCurrentSelectedMode();const training=mode==='test';if($('quickPlayBtn'))$('quickPlayBtn').disabled=training||isGuestAccount();if($('partyQueueBtn'))$('partyQueueBtn').disabled=training||isGuestAccount();if($('fillBotsToggle'))$('fillBotsToggle').disabled=mode==='bossrush';}
-function queueSelectedMode(asParty){const mode=netCurrentSelectedMode();if(mode==='test'){notify('Offline training','Test Arena starts from Solo / Offline.');return;}if(isGuestAccount()){openMenuModal('account');notify('Account required','Login before online matchmaking.');return;}ensureSocialConnection().then(()=>netSend({type:'queue_join',mode,asParty,fillBots:$('fillBotsToggle')?.checked!==false}));}
+function updateMatchButtons(){const mode=netCurrentSelectedMode();const training=mode==='test';if($('quickPlayBtn'))$('quickPlayBtn').disabled=training;if($('partyQueueBtn'))$('partyQueueBtn').disabled=training;if($('fillBotsToggle'))$('fillBotsToggle').disabled=mode==='bossrush';}
+function queueSelectedMode(asParty){const mode=netCurrentSelectedMode();if(mode==='test'){notify('Offline training','Test Arena starts from Solo / Offline.');return;}ensureSocialConnection().then(()=>netSend({type:'queue_join',mode,asParty,fillBots:$('fillBotsToggle')?.checked!==false}));}
 function startOfflineSelected(){socialState.queue=null;renderQueueState();multiplayer.matchStarted=false;multiplayer.startingFromServer=false;if(multiplayer.room)netSend({type:'leave_match'});showLoadingThenStart();}
 function installSocialHub(){
   multiplayer.room='';multiplayer.pendingRoomFromUrl='';localStorage.removeItem('fragmentio_room_code');
@@ -16652,14 +16680,14 @@ function installSocialHub(){
     if(multiplayer.connected&&socialState.authenticated)netSend({type:'presence_request'});
   },2200);
   $('soloDeployBtn')?.addEventListener('click',startOfflineSelected);$('quickPlayBtn')?.addEventListener('click',()=>queueSelectedMode(false));$('partyQueueBtn')?.addEventListener('click',()=>queueSelectedMode(true));$('bossSoloBtn')?.addEventListener('click',startOfflineSelected);$('bossPartyQueueBtn')?.addEventListener('click',()=>queueSelectedMode(true));$('cancelQueueBtn')?.addEventListener('click',()=>{socialState.queue=null;renderQueueState();netSend({type:'queue_cancel'});});$('fillBotsToggle')?.addEventListener('change',()=>{socialState.autoFill=$('fillBotsToggle').checked;updateMatchButtons();});
-  $('partyReadyBtn')?.addEventListener('click',()=>{const me=socialState.party?.members?.find(m=>m.userId===cloudUser?.id);netSend({type:'party_ready',ready:!me?.ready});});
+  $('partyReadyBtn')?.addEventListener('click',()=>{const me=socialState.party?.members?.find(m=>m.userId===currentSocialUserId());netSend({type:'party_ready',ready:!me?.ready});});
   $('partyMatchReadyBtn')?.addEventListener('click',()=>{
-    const me=socialState.party?.members?.find(member=>member.userId===cloudUser?.id);
+    const me=socialState.party?.members?.find(member=>member.userId===currentSocialUserId());
     if(me&&!me.leader)netSend({type:'party_ready',ready:!me.ready});
   });
   $('partyMatchModeSelect')?.addEventListener('change',event=>{
     const party=socialState.party;
-    if(!party||party.leaderId!==cloudUser?.id||party.queued)return;
+    if(!party||party.leaderId!==currentSocialUserId()||party.queued)return;
     const mode=event.target.value||'normal';
     if(ui.modeSel)ui.modeSel.value=mode;
     updateMatchButtons();
@@ -16667,7 +16695,7 @@ function installSocialHub(){
   });
   $('partyMatchStartBtn')?.addEventListener('click',()=>{
     const party=socialState.party;
-    if(!party||party.leaderId!==cloudUser?.id)return;
+    if(!party||party.leaderId!==currentSocialUserId())return;
     if(party.queued){
       socialState.queue=null;
       renderQueueState();
@@ -16740,7 +16768,7 @@ function drawPartyPingsOnMap(canvasEl){if(!canvasEl||!partyWorldPings.length)ret
 const _drawMiniMapContentPatch=drawMiniMap;drawMiniMap=function(){const result=_drawMiniMapContentPatch();drawPartyPingsOnMap($('miniMap'));return result;};
 const _drawBigMapContentPatch=drawBigMap;drawBigMap=function(){const result=_drawBigMapContentPatch();drawPartyPingsOnMap($('bigMap'));return result;};
 function pingSpeakerEntity(userId,sourceName){
-  if(userId&&userId===cloudUser?.id)return player;
+  if(userId&&userId===currentSocialUserId())return player;
   if(userId){
     const remote=remotePlayers.find(entity=>entity.userId===userId&&!entity.dead);
     if(remote)return remote;
@@ -16761,7 +16789,7 @@ function sendPartyPing(kind){
   const def=PARTY_PING_TYPES[kind];
   if(!def||!player)return;
   const point=screenToWorld(mouse.x,mouse.y);
-  showPartySpeechBubble(cloudUser?.id||'local',player.name,def.label);
+  showPartySpeechBubble(currentSocialUserId()||'local',player.name,def.label);
   if(multiplayer.connected&&socialState.party?.members?.length>1){
     netSend({type:'party_ping',kind,x:point.x,y:point.y});
   }else{
@@ -16849,7 +16877,7 @@ function renderPartyInGameHud(){
   if(members.length<2)return;
 
   list.innerHTML=members.map(member=>{
-    const ent=member.userId===cloudUser?.id
+    const ent=member.userId===currentSocialUserId()
       ? player
       : remotePlayers.find(remote=>remote.userId===member.userId);
     const status=ent&&!ent.dead
@@ -16945,7 +16973,7 @@ const _updateContentPatch=update;update=function(dt){
   }
   return result;
 };
-const _beginGameContentPatch=beginGame;beginGame=function(){deathRecapState={damageTaken:0,lastAttack:'Unknown attack',lastSource:null,killer:null};const result=_beginGameContentPatch();if(player)player.userId=cloudUser?.id||'';showMatchPlayerCards(incomingMatchPlayerCards,gameMode);incomingMatchPlayerCards=[];renderPartyInGameHud();return result;};
+const _beginGameContentPatch=beginGame;beginGame=function(){deathRecapState={damageTaken:0,lastAttack:'Unknown attack',lastSource:null,killer:null};const result=_beginGameContentPatch();if(player)player.userId=currentSocialUserId()||'';showMatchPlayerCards(incomingMatchPlayerCards,gameMode);incomingMatchPlayerCards=[];renderPartyInGameHud();return result;};
 const _finishPersistentMatchContentPatch=finishPersistentMatch;finishPersistentMatch=function(outcome='left'){if(outcome==='win'&&accountProgress&&player){const root=rootEvolution(player.archetype||'starter');accountProgress.stats.wins_by_evolution=accountProgress.stats.wins_by_evolution||{};accountProgress.stats.wins_by_evolution[root]=(accountProgress.stats.wins_by_evolution[root]||0)+1;weeklyChallengeState.evolutionWins[root]=true;}const result=_finishPersistentMatchContentPatch(outcome);renderWeeklyChallenges();return result;};
 const _recordPersistentEventContentPatch=recordPersistentEvent;recordPersistentEvent=function(type,data={}){const result=_recordPersistentEventContentPatch(type,data);renderWeeklyChallenges();return result;};
 const _handleNetworkContentPatch=handleFragmentNetworkMessage;handleFragmentNetworkMessage=function(msg){if(msg?.type==='party_ping')receivePartyPing(msg);if(msg?.type==='match_start')incomingMatchPlayerCards=Array.isArray(msg.playerCards)?msg.playerCards:[];if(msg?.type==='hit'&&msg.targetId===multiplayer.clientId){const source=multiplayer.remoteById.get(msg.sourceId);if(source&&msg.sourceUserId)source.userId=msg.sourceUserId;recordIncomingDamage(msg.amount,source,msg.attack||primaryName(source?.archetype||'starter'));}if(msg?.type==='bot_hit'&&msg.targetId===multiplayer.clientId){const source=multiplayer.botById.get(msg.botId);recordIncomingDamage(msg.amount,source,msg.cause||'Bot attack');}if(msg?.type==='boss_hit'&&msg.targetId===multiplayer.clientId){const source=multiplayer.bossById.get(msg.bossId);recordIncomingDamage(msg.amount,source,msg.attack||'Boss attack');}return _handleNetworkContentPatch(msg);};
@@ -22693,17 +22721,12 @@ if(v1MenuLogo){
   }
   updateMatchButtons=function(){
     const mode=netCurrentSelectedMode();
-    if($('quickPlayBtn'))$('quickPlayBtn').disabled=isGuestAccount();
-    if($('partyQueueBtn'))$('partyQueueBtn').disabled=isGuestAccount();
+    if($('quickPlayBtn'))$('quickPlayBtn').disabled=false;
+    if($('partyQueueBtn'))$('partyQueueBtn').disabled=false;
     releaseUpdateRosterCard();
   };
   queueSelectedMode=function(asParty){
     const mode=netCurrentSelectedMode();
-    if(isGuestAccount()){
-      openMenuModal('account');
-      notify('Account required','Login before online matchmaking.');
-      return;
-    }
     ensureSocialConnection().then(()=>netSend({
       type:'queue_join',
       mode,
@@ -30279,6 +30302,7 @@ Regards,
 })();
 </script>
 
+<!-- FRAGMENT.IO GUEST MULTIPLAYER PATCH APPLIED -->
 </body>
 </html>
 
