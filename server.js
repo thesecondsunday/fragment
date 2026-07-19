@@ -4049,3 +4049,285 @@ handleMessage=function(client,msg){
 
 console.log('[Fragment.io] Secure Developer Remnant grants enabled.');
 
+
+
+// -----------------------------------------------------------------------------
+// v1.0 boss aggro fairness, automatic-weapon heat, and live page presence
+// -----------------------------------------------------------------------------
+const V16_BOSS_ACQUIRE_RANGE=940;
+const V16_BOSS_RELEASE_RANGE=1120;
+
+function v16BossTargetCandidates(room,boss){
+  const candidates=[];
+  for(const snap of livePlayerSnapshots(room)){
+    if(!clientIsInvincible(snap.client)&&finiteNumber(snap.invisible,0,0,30)<=0.03){
+      candidates.push({
+        kind:'player',key:'player:'+snap.client.id,id:snap.client.id,client:snap.client,
+        name:snap.name||snap.client.name,x:snap.x||0,y:snap.y||0,vx:snap.vx||0,vy:snap.vy||0,
+        r:snap.r||18,hp:snap.hp||1,maxHp:snap.maxHp||1,dead:!!snap.dead
+      });
+    }
+    for(const clone of (snap.clones||[])){
+      if(!clone||clone.dead||finiteNumber(clone.invisible,0,0,30)>0.03)continue;
+      candidates.push({
+        kind:'clone',key:'clone:'+snap.client.id+':'+clone.cloneId,id:snap.client.id+':'+clone.cloneId,
+        client:snap.client,cloneId:clone.cloneId,name:clone.name||((snap.name||snap.client.name)+' Clone'),
+        x:clone.x||snap.x||0,y:clone.y||snap.y||0,vx:clone.vx||0,vy:clone.vy||0,
+        r:clone.r||15,hp:clone.hp||1,maxHp:clone.maxHp||1,dead:!!clone.dead
+      });
+    }
+  }
+  for(const bot of room.bots||[]){
+    if(!bot||bot.dead||bot.passive||Date.now()<(bot.spawnGraceUntil||0))continue;
+    candidates.push({
+      kind:'bot',key:'bot:'+bot.id,id:bot.id,bot,name:bot.name,
+      x:bot.x||0,y:bot.y||0,vx:bot.vx||0,vy:bot.vy||0,r:bot.r||18,
+      hp:bot.hp||1,maxHp:bot.maxHp||1,dead:!!bot.dead
+    });
+  }
+  return candidates;
+}
+
+nearestTargetForBoss=function(room,boss){
+  const now=Date.now();
+  const candidates=v16BossTargetCandidates(room,boss);
+  const locked=candidates.find(candidate=>candidate.key===boss.v16TargetKey);
+  if(locked&&now<(boss.v16TargetLockUntil||0)){
+    const distance=dist(boss,locked);
+    if(distance<=V16_BOSS_RELEASE_RANGE)return{snap:locked,d:distance};
+  }
+
+  let best=null;
+  let bestScore=Infinity;
+  for(const candidate of candidates){
+    const distance=dist(boss,candidate);
+    if(distance>V16_BOSS_ACQUIRE_RANGE)continue;
+    // Distance is the main factor. A tiny bot/clone preference prevents humans
+    // from being selected every time when several targets are equally close.
+    const score=distance-(candidate.kind==='bot'?36:candidate.kind==='clone'?18:0);
+    if(score<bestScore){bestScore=score;best=candidate;}
+  }
+  if(!best){
+    boss.v16TargetKey=null;
+    boss.v16TargetLockUntil=0;
+    return null;
+  }
+  boss.v16TargetKey=best.key;
+  boss.v16TargetLockUntil=now+rand(1050,1650);
+  return{snap:best,d:dist(boss,best)};
+};
+
+function v16DamageBossTarget(room,boss,target,amount,cause){
+  if(!target||target.dead)return false;
+  amount=clamp(finiteNumber(amount,0),0,500);
+  if(amount<=0)return false;
+  if(target.kind==='player'){
+    if(clientIsInvincible(target.client))return false;
+    return sendDamageToClient(target.client,{type:'boss_hit',bossId:boss.id,bossName:boss.name,amount,cause,targetId:target.client.id});
+  }
+  if(target.kind==='clone'){
+    return send(target.client,{type:'boss_hit',bossId:boss.id,bossName:boss.name,cloneId:target.cloneId,amount,cause,targetId:target.client.id});
+  }
+  if(target.kind==='bot'){
+    return damageServerBot(room,target.bot,amount,{kind:'boss',id:boss.id,name:boss.name,boss});
+  }
+  return false;
+}
+
+v1BossHitCircle=function(room,boss,x,y,radius,amount,cause){
+  for(const target of v16BossTargetCandidates(room,boss)){
+    if(Math.hypot(target.x-x,target.y-y)<=radius+(target.r||18))v16DamageBossTarget(room,boss,target,amount,cause);
+  }
+};
+
+v1BossHitBeam=function(room,boss,angle,range,width,amount,cause){
+  const ca=Math.cos(angle),sa=Math.sin(angle);
+  for(const target of v16BossTargetCandidates(room,boss)){
+    const dx=target.x-boss.x,dy=target.y-boss.y;
+    const forward=dx*ca+dy*sa;
+    const side=Math.abs(-dx*sa+dy*ca);
+    if(forward>0&&forward<range&&side<width+(target.r||18))v16DamageBossTarget(room,boss,target,amount,cause);
+  }
+};
+
+v1ExecuteBossAttack=function(room,boss,attack){
+  if(!attack)return;
+  const kind=attack.kind;
+  if(kind==='laser_sweep')v1BossHitBeam(room,boss,attack.angle,attack.range,attack.width,attack.phase===2?32:26,'administrative_beam');
+  else if(kind==='admin_pulse')v1BossHitCircle(room,boss,boss.x,boss.y,attack.radius,attack.phase===2?25:20,'access_denied');
+  else if(kind==='bio_bloom')v1BossHitCircle(room,boss,attack.x,attack.y,attack.radius,attack.phase===2?29:23,'telomere_bloom');
+  else if(kind==='heal')boss.hp=Math.min(boss.maxHp,boss.hp+boss.maxHp*(attack.phase===2?.10:.07));
+  else if(kind==='rocket_barrage'){
+    v1BossHitCircle(room,boss,attack.x,attack.y,attack.radius,attack.phase===2?30:24,'rocket_barrage');
+    const base=Math.atan2(attack.y-boss.y,attack.x-boss.x);
+    for(let i=-2;i<=2;i++)broadcast(room.code,{type:'boss_projectile',bossId:boss.id,boss:bossSnapshot(boss),angle:base+i*.13,options:{kind:'rocket',speed:5.6,life:145,dmg:0,color:boss.color,size:9,visualOnly:true,networkReplay:true,explode:true}});
+  }else if(kind==='ghost_dash'||kind==='blink_strike'){
+    const oldX=boss.x,oldY=boss.y;
+    const point=typeof islandServerNearest==='function'?islandServerNearest(attack.x+rand(-75,75),attack.y+rand(-75,75),(boss.r||48)+80):{x:attack.x,y:attack.y};
+    boss.x=point.x;boss.y=point.y;
+    v1BossHitCircle(room,boss,boss.x,boss.y,attack.radius,attack.phase===2?28:22,kind);
+    attack.fromX=oldX;attack.fromY=oldY;attack.x=boss.x;attack.y=boss.y;
+  }else if(kind==='void_well')v1BossHitCircle(room,boss,attack.x,attack.y,attack.radius,attack.phase===2?31:25,'void_well');
+  else if(kind==='memory_cross'){
+    for(const target of v16BossTargetCandidates(room,boss)){
+      const dx=Math.abs(target.x-attack.x),dy=Math.abs(target.y-attack.y);
+      if((dx<attack.width||dy<attack.width)&&dx<attack.range&&dy<attack.range)v16DamageBossTarget(room,boss,target,attack.phase===2?30:24,'memory_cross');
+    }
+  }else if(kind==='shard_burst'){
+    const count=attack.phase===2?14:10;
+    for(let i=0;i<count;i++)broadcast(room.code,{type:'boss_projectile',bossId:boss.id,boss:bossSnapshot(boss),angle:i/count*Math.PI*2,options:{kind:'memory',speed:6.2,life:120,dmg:0,color:boss.color,size:7,visualOnly:true,networkReplay:true}});
+    for(const target of v16BossTargetCandidates(room,boss)){
+      const distance=Math.hypot(target.x-boss.x,target.y-boss.y);
+      const angle=Math.atan2(target.y-boss.y,target.x-boss.x);
+      const step=Math.PI*2/count;
+      const error=Math.abs(((angle+step/2)%step)-step/2);
+      if(distance<attack.radius&&error<.13)v16DamageBossTarget(room,boss,target,attack.phase===2?25:19,'remembrance_burst');
+    }
+  }
+  v1BossActionSnapshot(room,boss,kind,{...attack,phase:'fire',warn:0,color:boss.color,duration:.55});
+};
+
+updateSharedBosses=function(room,dt){
+  if(!room.matchStarted||['test','br','bossrush'].includes(room.mode))return;
+  const now=Date.now();
+  if(now>room.nextBossAt){spawnSharedBoss(room);room.nextBossAt=now+rand(70000,100000);}
+  for(const boss of room.bosses){
+    if(boss.dead)continue;
+    if(now<(boss.spawnUntil||0)){boss.vx*=.82;boss.vy*=.82;continue;}
+    const target=nearestTargetForBoss(room,boss);
+    if(!target){
+      boss.vx*=.90;boss.vy*=.90;
+      boss.x+=boss.vx*dt/16.6;boss.y+=boss.vy*dt/16.6;
+      if(typeof islandServerConstrainObject==='function')islandServerConstrainObject(boss,(boss.r||48)+70);
+      continue;
+    }
+    const snap=target.snap,distance=target.d;
+    boss.angle=Math.atan2(snap.y-boss.y,snap.x-boss.x);
+    if(boss.pendingAttack){
+      boss.pendingAttack.warn-=dt/1000;boss.vx*=.84;boss.vy*=.84;
+      if(boss.pendingAttack.warn<=0){const attack=boss.pendingAttack;boss.pendingAttack=null;v1ExecuteBossAttack(room,boss,attack);boss.specialCd=rand(4.4,6.8);}
+      continue;
+    }
+    boss.specialCd=Math.max(0,(boss.specialCd||0)-dt/1000);
+    if(boss.specialCd<=0&&distance<880){v1QueueBossAttack(room,boss,target);continue;}
+    const tx=Math.cos(boss.angle),ty=Math.sin(boss.angle),desired=boss.bossKind==='black_entity'?340:430;
+    let mx=0,my=0;
+    if(distance>desired+80){mx=tx;my=ty;}
+    else if(distance<desired-120){mx=-tx;my=-ty;}
+    else{mx=-Math.sin(boss.angle)*.75;my=Math.cos(boss.angle)*.75;}
+    boss.vx=boss.vx*.90+mx*boss.speed*.10;
+    boss.vy=boss.vy*.90+my*boss.speed*.10;
+    boss.fireCd-=dt/1000;
+    if(boss.fireCd<=0&&distance<720){
+      boss.fireCd=rand(1.0,1.55);
+      const shot={kind:'boss',speed:5.2,life:135,dmg:13,color:boss.color,size:9,visualOnly:true,networkReplay:true};
+      broadcast(room.code,{type:'boss_projectile',bossId:boss.id,boss:bossSnapshot(boss),angle:boss.angle+rand(-.16,.16),options:shot});
+      if(distance<620&&Math.random()<.34)v16DamageBossTarget(room,boss,snap,13,'boss_projectile');
+    }
+    boss.x+=boss.vx*dt/16.6;boss.y+=boss.vy*dt/16.6;
+    if(typeof islandServerConstrainObject==='function')islandServerConstrainObject(boss,(boss.r||48)+70);
+    else{boss.x=clamp(boss.x,-HALF_W+80,HALF_W-80);boss.y=clamp(boss.y,-HALF_H+80,HALF_H-80);}
+  }
+  room.bosses=room.bosses.filter(boss=>!boss.removeAt||Date.now()<boss.removeAt);
+};
+
+function v16AutomaticPath(archetype){return['machine','minigunner','bullet_storm'].includes(String(archetype||''));}
+function v16ServerHeatSettings(archetype){
+  if(archetype==='bullet_storm')return{gain:8.0,overheat:1.8,cool:25};
+  if(archetype==='minigunner')return{gain:10.5,overheat:1.55,cool:27};
+  return{gain:13.0,overheat:1.35,cool:30};
+}
+
+const v16BasePerformServerBotClassAttack=performServerBotClassAttack;
+performServerBotClassAttack=function(room,bot,target,angle,distance){
+  if(!v16AutomaticPath(bot.archetype))return v16BasePerformServerBotClassAttack(room,bot,target,angle,distance);
+  const settings=v16ServerHeatSettings(bot.archetype);
+  if((bot.weaponOverheat||0)>0)return Math.max(.28,Math.min(.62,bot.weaponOverheat));
+  const result=v16BasePerformServerBotClassAttack(room,bot,target,angle,distance);
+  bot.weaponHeat=clamp((bot.weaponHeat||0)+settings.gain,0,100);
+  bot.weaponHeatDelay=.32;
+  if(bot.weaponHeat>=100){
+    bot.weaponHeat=100;
+    bot.weaponOverheat=settings.overheat;
+    bot.weaponOverheatMax=settings.overheat;
+    broadcastBotAction(room,bot,'overheat',{range:70,color:'#ff9c54',duration:settings.overheat,label:'WEAPON OVERHEAT'});
+    return Math.max(result,settings.overheat);
+  }
+  return result;
+};
+
+const v16BaseUpdateServerBots=updateServerBots;
+updateServerBots=function(room,dt){
+  for(const bot of room?.bots||[]){
+    if(v16AutomaticPath(bot.archetype)){
+      const settings=v16ServerHeatSettings(bot.archetype);
+      if((bot.weaponOverheat||0)>0){
+        bot.weaponOverheat=Math.max(0,bot.weaponOverheat-dt/1000);
+        bot.weaponHeat=100*bot.weaponOverheat/Math.max(.01,bot.weaponOverheatMax||settings.overheat);
+        if(bot.weaponOverheat<=0)bot.weaponHeat=0;
+      }else{
+        bot.weaponHeatDelay=Math.max(0,(bot.weaponHeatDelay||0)-dt/1000);
+        if(bot.weaponHeatDelay<=0)bot.weaponHeat=Math.max(0,(bot.weaponHeat||0)-settings.cool*dt/1000);
+      }
+    }else{
+      bot.weaponHeat=0;bot.weaponOverheat=0;bot.weaponHeatDelay=0;
+    }
+  }
+  return v16BaseUpdateServerBots(room,dt);
+};
+
+const v16BaseBotSnapshot=botSnapshot;
+botSnapshot=function(bot){
+  const snapshot=v16BaseBotSnapshot(bot);
+  snapshot.weaponHeat=Math.round((bot.weaponHeat||0)*10)/10;
+  snapshot.weaponOverheat=Math.max(0,bot.weaponOverheat||0);
+  return snapshot;
+};
+
+developerOnlinePlayers=function(){
+  const result=[];
+  const seen=new Set();
+  let visitorNumber=0;
+  for(const online of clients){
+    if(!online.socket||online.socket.destroyed)continue;
+    if(!online.authenticated||!online.userId){
+      visitorNumber++;
+      result.push({
+        sessionId:online.id,userId:'',name:'Connecting visitor '+visitorNumber,
+        accountRole:'player',guest:true,authenticated:false,roomCode:online.room||null,
+        mode:online.room?rooms.get(online.room)?.mode||null:null,inMatch:!!online.inMatch,
+        status:'on_page',connectedSessions:1,mutedUntil:0
+      });
+      continue;
+    }
+    if(seen.has(online.userId))continue;
+    seen.add(online.userId);
+    const room=online.room?rooms.get(online.room):null;
+    const sessions=allOnlineClientsForUser(online.userId);
+    result.push({
+      sessionId:online.id,userId:online.userId,
+      name:online.profile?.username||online.name||(online.isGuest?'Unnamed':'Player'),
+      accountRole:publicAccountRole(online.accountRole),guest:!!online.isGuest,authenticated:true,
+      roomCode:online.room||null,mode:room?.mode||online.mode||null,inMatch:!!online.inMatch,
+      status:online.role==='spectator'?'spectating':online.inMatch?'in_match':online.queueId?'searching':online.isGuest?'guest_on_page':'online',
+      connectedSessions:sessions.length,
+      mutedUntil:Math.max(0,...sessions.map(session=>Number(session.moderationMutedUntil)||0))
+    });
+  }
+  return result.sort((a,b)=>Number(a.guest)-Number(b.guest)||a.name.localeCompare(b.name));
+};
+
+const v16BaseDeveloperPanelData=developerPanelData;
+developerPanelData=async function(){
+  const data=await v16BaseDeveloperPanelData();
+  const live=[...clients].filter(client=>client.socket&&!client.socket.destroyed);
+  data.onlineStats={
+    pageConnections:live.length,
+    guestConnections:live.filter(client=>client.isGuest||!client.authenticated).length,
+    accountConnections:live.filter(client=>client.authenticated&&!client.isGuest).length,
+    inMatches:live.filter(client=>client.inMatch).length
+  };
+  return data;
+};
+
+console.log('[Fragment.io] Boss aggro, weapon heat, and live page presence enabled.');

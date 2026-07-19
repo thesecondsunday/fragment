@@ -30358,6 +30358,234 @@ Regards,
 })();
 </script>
 
+
+<script id="fragment-v16-boss-heat-presence-patch">
+(function(){
+  'use strict';
+  const automaticPath=archetype=>['machine','minigunner','bullet_storm'].includes(String(archetype||''));
+  const heatSettings=archetype=>archetype==='bullet_storm'
+    ?{gain:1.6,overheat:1.75,cool:24}
+    :archetype==='minigunner'
+      ?{gain:2.2,overheat:1.55,cool:27}
+      :{gain:2.9,overheat:1.35,cool:30};
+
+  const baseFirePrimary=firePrimary;
+  firePrimary=function(ent){
+    if(automaticPath(ent?.archetype)&&(ent.machineOverheat||0)>0){
+      ent.primaryCooldown=Math.max(ent.primaryCooldown||0,4*ent.reloadMul);
+      if(ent.human&&!ent.isClone&&performance.now()-(ent.machineHeatNoticeAt||0)>850){
+        ent.machineHeatNoticeAt=performance.now();
+        floatText(ent.x,ent.y-ent.r-28,'COOLING','#ff9c54');
+      }
+      return;
+    }
+    const before=ent?.shotCounter||0;
+    const result=baseFirePrimary.apply(this,arguments);
+    if(ent&&automaticPath(ent.archetype)&&(ent.shotCounter||0)!==before){
+      const settings=heatSettings(ent.archetype);
+      ent.machineHeat=clamp((ent.machineHeat||0)+settings.gain,0,100);
+      ent.machineHeatDelay=.28;
+      if(ent.machineHeat>=100){
+        ent.machineHeat=100;
+        ent.machineOverheat=settings.overheat;
+        ent.machineOverheatMax=settings.overheat;
+        ent.burstShots=0;
+        ent.primaryCooldown=Math.max(ent.primaryCooldown||0,settings.overheat*60*ent.reloadMul);
+        if(ent.human&&!ent.isClone){
+          notify('Weapon overheated','Release fire briefly to cool the barrel.');
+          floatText(ent.x,ent.y-ent.r-30,'OVERHEAT','#ff9c54');
+          tone(95,.12,'sawtooth',.035);
+        }
+      }
+    }
+    return result;
+  };
+
+  const baseUpdateEntity=updateEntity;
+  updateEntity=function(ent,dt){
+    const result=baseUpdateEntity.apply(this,arguments);
+    if(automaticPath(ent?.archetype)){
+      const settings=heatSettings(ent.archetype);
+      if((ent.machineOverheat||0)>0){
+        ent.machineOverheat=Math.max(0,ent.machineOverheat-dt/1000);
+        ent.machineHeat=100*ent.machineOverheat/Math.max(.01,ent.machineOverheatMax||settings.overheat);
+        if(ent.machineOverheat<=0)ent.machineHeat=0;
+      }else{
+        ent.machineHeatDelay=Math.max(0,(ent.machineHeatDelay||0)-dt/1000);
+        if(ent.machineHeatDelay<=0)ent.machineHeat=Math.max(0,(ent.machineHeat||0)-settings.cool*dt/1000);
+      }
+    }else{
+      ent.machineHeat=0;ent.machineOverheat=0;ent.machineHeatDelay=0;
+    }
+    return result;
+  };
+
+  const baseApplyArchetype=applyArchetype;
+  applyArchetype=function(ent,type){
+    const previous=ent?.archetype;
+    const result=baseApplyArchetype.apply(this,arguments);
+    if(ent&&previous!==ent.archetype){ent.machineHeat=0;ent.machineOverheat=0;ent.machineHeatDelay=0;ent.machineOverheatMax=0;}
+    return result;
+  };
+
+  const baseResetEntityCombatForDebug=resetEntityCombatForDebug;
+  resetEntityCombatForDebug=function(ent){
+    const result=baseResetEntityCombatForDebug.apply(this,arguments);
+    if(ent){ent.machineHeat=0;ent.machineOverheat=0;ent.machineHeatDelay=0;ent.machineOverheatMax=0;}
+    return result;
+  };
+
+  const baseNetApplySnapshot=netApplySnapshot;
+  netApplySnapshot=function(snapshot){
+    const result=baseNetApplySnapshot.apply(this,arguments);
+    const ent=snapshot?.id?multiplayer.remoteById.get(snapshot.id):null;
+    if(ent){
+      ent.machineHeat=Number(snapshot.machineHeat)||0;
+      ent.machineOverheat=Number(snapshot.machineOverheat)||0;
+    }
+    return result;
+  };
+
+  const baseNetApplyBotSnapshots=netApplyBotSnapshots;
+  netApplyBotSnapshots=function(list,partial=false){
+    const result=baseNetApplyBotSnapshots.apply(this,arguments);
+    for(const snapshot of Array.isArray(list)?list:[]){
+      const ent=multiplayer.botById.get(snapshot?.id);
+      if(!ent)continue;
+      ent.machineHeat=Number(snapshot.weaponHeat)||0;
+      ent.machineOverheat=Number(snapshot.weaponOverheat)||0;
+    }
+    return result;
+  };
+
+  const baseNetApplyBossHit=netApplyBossHit;
+  netApplyBossHit=function(message){
+    if(message?.cloneId&&player&&state.screen==='play'){
+      const amount=Number(message.amount)||0;
+      const clone=(player.clones||[]).find(candidate=>candidate.cloneId===message.cloneId);
+      if(!clone||clone.dead||amount<=0)return;
+      const killer=multiplayer.bossById.get(message.bossId)||{name:message.bossName||'Server Boss'};
+      clone.hp=Math.max(0,clone.hp-amount);
+      clone.spawnShieldPulse=Math.max(clone.spawnShieldPulse||0,.22);
+      floatText(clone.x,clone.y-clone.r-20,'-'+Math.round(amount),'#ff5d67');
+      if(clone.hp<=0){
+        killEntity(clone,killer);
+        if(player.controlCloneIndex>=0){
+          const active=player.clones?.[player.controlCloneIndex];
+          if(!active||active.dead)player.controlCloneIndex=-1;
+        }
+      }
+      updateHud();netBroadcastState(true);
+      return;
+    }
+    return baseNetApplyBossHit.apply(this,arguments);
+  };
+
+  const baseDrawEntity=drawEntity;
+  drawEntity=function(ent,camX,camY){
+    const result=baseDrawEntity.apply(this,arguments);
+    if(!ent||ent.dead||!automaticPath(ent.archetype))return result;
+    if((ent.invisible||0)>0&&ent!==player&&ent!==controlledEntity())return result;
+    const heat=clamp(Number(ent.machineHeat)||0,0,100);
+    if(heat<=1&&(ent.machineOverheat||0)<=0)return result;
+    const x=ent.x-camX,y=ent.y-camY;
+    if(x<-100||y<-100||x>W/cameraZoom+100||y>H/cameraZoom+100)return result;
+    ctx.save();
+    ctx.lineWidth=4;
+    ctx.strokeStyle=(ent.machineOverheat||0)>0?'#ffffff':'#ff9c54';
+    ctx.beginPath();
+    ctx.arc(x,y,ent.r+18,-Math.PI/2,-Math.PI/2+Math.PI*2*(heat/100));
+    ctx.stroke();
+    if(ent.human||ent===controlledEntity()){
+      ctx.font='900 10px Arial';ctx.textAlign='center';
+      ctx.fillStyle=(ent.machineOverheat||0)>0?'#ffffff':'#ff9c54';
+      ctx.fillText((ent.machineOverheat||0)>0?'OVERHEAT':'HEAT '+Math.round(heat)+'%',x,y-ent.r-27);
+    }
+    ctx.restore();
+    return result;
+  };
+
+  // The server count now represents every live WebSocket/page session, while
+  // the player list marks guest identities and keeps account-only tools hidden.
+  const baseHandleFragmentNetworkMessage=handleFragmentNetworkMessage;
+  handleFragmentNetworkMessage=function(message){
+    const result=baseHandleFragmentNetworkMessage.apply(this,arguments);
+    if(message?.type==='developer_panel_data'){
+      developerPanelState.onlineStats=message.onlineStats||{pageConnections:(developerPanelState.players||[]).length};
+      renderDeveloperPanel();
+    }
+    return result;
+  };
+
+  renderDeveloperPlayers=function(){
+    const container=$('developerPlayerList');
+    if(!container)return;
+    const query=String($('developerPlayerSearch')?.value||'').trim().toLowerCase();
+    const players=(developerPanelState.players||[]).filter(entry=>
+      !query
+      ||String(entry.name||'').toLowerCase().includes(query)
+      ||String(entry.userId||'').toLowerCase().includes(query)
+      ||String(entry.roomCode||'').toLowerCase().includes(query)
+      ||(entry.guest&&'guest'.includes(query))
+    );
+    container.innerHTML=players.length?players.map(entry=>{
+      const developer=entry.accountRole==='developer';
+      const guest=!!entry.guest;
+      const muted=Number(entry.mutedUntil)>Date.now();
+      const identity=entry.userId||entry.sessionId||'';
+      return`<article class="developerPlayerRow ${developer?'protected':''} ${guest?'guest':''}">
+        <div class="developerPlayerIdentity">
+          <div class="developerAvatar">${developer?'D':guest?'G':escapeHtml(String(entry.name||'?').slice(0,1).toUpperCase())}</div>
+          <div><b>${escapeHtml(entry.name||'Player')} ${developer?verifiedDeveloperBadgeHtml():''}${guest?' <span class="developerGuestBadge">GUEST</span>':''}</b><small>${escapeHtml(entry.status||'online')} · ${escapeHtml(entry.mode||'menu')} · ${escapeHtml(entry.roomCode||'no room')} · ${Number(entry.connectedSessions)||1} page session${Number(entry.connectedSessions)===1?'':'s'}${muted?' · MUTED':''}</small></div>
+        </div>
+        <div class="developerPlayerActions">
+          ${guest?`${entry.authenticated&&entry.userId?`<button type="button" data-developer-action="kick" data-target-user="${escapeHtml(entry.userId)}" data-target-name="${escapeHtml(entry.name||'Guest')}">Kick</button>`:''}`:`
+            <button type="button" data-developer-profile="${escapeHtml(entry.userId)}">Profile</button>
+            ${developer?'':`
+              <button type="button" data-developer-action="warn" data-target-user="${escapeHtml(entry.userId)}" data-target-name="${escapeHtml(entry.name)}">Warn</button>
+              <button type="button" data-developer-action="mute" data-target-user="${escapeHtml(entry.userId)}" data-target-name="${escapeHtml(entry.name)}">Mute</button>
+              <button type="button" data-developer-action="kick" data-target-user="${escapeHtml(entry.userId)}" data-target-name="${escapeHtml(entry.name)}">Kick</button>
+              <button class="danger" type="button" data-developer-action="ban" data-target-user="${escapeHtml(entry.userId)}" data-target-name="${escapeHtml(entry.name)}">Suspend</button>
+            `}
+          `}
+        </div>
+      </article>`;
+    }).join(''):'<div class="developerEmptyState">No matching page visitors.</div>';
+  };
+
+  const baseRenderDeveloperPanel=renderDeveloperPanel;
+  renderDeveloperPanel=function(){
+    const result=baseRenderDeveloperPanel.apply(this,arguments);
+    const stats=developerPanelState.onlineStats||{};
+    const count=Number.isFinite(Number(stats.pageConnections))?Number(stats.pageConnections):(developerPanelState.players||[]).length;
+    if($('developerOnlineCount'))$('developerOnlineCount').textContent=count;
+    const label=$('developerOnlineCount')?.previousElementSibling;
+    if(label)label.textContent='PLAYERS ON PAGE';
+    const countNode=$('developerOnlineCount');
+    if(countNode&&stats){
+      countNode.title=`${Number(stats.accountConnections)||0} account session(s) · ${Number(stats.guestConnections)||0} guest/visitor session(s) · ${Number(stats.inMatches)||0} in matches`;
+    }
+    return result;
+  };
+
+  const style=document.createElement('style');
+  style.id='fragment-v16-heat-presence-style';
+  style.textContent=`
+    .developerGuestBadge{display:inline-block;margin-left:5px;padding:2px 6px;border:2px solid #101820;background:#ffcf58;color:#101820;font-size:9px;font-weight:1000;vertical-align:middle}
+    .developerPlayerRow.guest{background:#fff8d9}
+  `;
+  document.head.appendChild(style);
+
+  // Connect menu visitors too, not only people who press matchmaking. This is
+  // what lets the Developer panel report how many pages are genuinely open.
+  window.addEventListener('load',()=>setTimeout(()=>{
+    if(!multiplayer.connected&&!multiplayer.connecting)ensureSocialConnection().catch(()=>{});
+  },1200),{once:true});
+
+  console.log('[Fragment.io] Boss aggro, weapon heat, and live page presence client patch enabled.');
+})();
+</script>
+
 <!-- FRAGMENT.IO GUEST MULTIPLAYER PATCH APPLIED -->
 </body>
 </html>
